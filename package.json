@@ -1,21 +1,33 @@
 {
-  "name": "<github-action>",
+  "name": "unity-setup",
   "version": "1.0.0",
-  "description": "A GitHub Actions template repository for JavaScript based Actions",
+  "description": "A GitHub action for setting up the Unity Game Engine for CI/CD workflows.",
   "author": "RageAgainstThePixel",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RageAgainstThePixel/<github-action>.git"
+    "url": "git+https://github.com/RageAgainstThePixel/unity-setup.git"
   },
   "bugs": {
-    "url": "https://github.com/RageAgainstThePixel/<github-action>/issues"
+    "url": "https://github.com/RageAgainstThePixel/unity-setup/issues"
   },
-  "homepage": "https://github.com/RageAgainstThePixel/<github-action>",
+  "homepage": "https://github.com/RageAgainstThePixel/unity-setup",
   "main": "dist/index.js",
-  "keywords": [],
+  "keywords": [
+    "setup",
+    "install",
+    "unity",
+    "editor",
+    "ci",
+    "cd",
+    "github",
+    "action"
+  ],
   "dependencies": {
-    "@actions/core": "^1.10.1"
+    "@actions/core": "^1.10.1",
+    "@actions/exec": "^1.1.1",
+    "@actions/glob": "^0.4.0",
+    "semver": "^7.6.3"
   },
   "devDependencies": {
     "@vercel/ncc": "^0.34.0"
