@@ -1,0 +1,8 @@
+name: <github-action>
+description: 'A GitHub Actions template repository for JavaScript based Actions'
+# inputs:
+# outputs:
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
+  #post: 'dist/index.js'
