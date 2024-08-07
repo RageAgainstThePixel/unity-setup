@@ -1,5 +1,5 @@
+const { FindGlobPattern } = require('./utility');
 const core = require('@actions/core');
-const glob = require('@actions/glob');
 const fs = require('fs').promises;
 const semver = require('semver');
 const path = require('path');
@@ -47,7 +47,7 @@ async function ValidateInputs() {
     const [unityVersion, changeset] = await getUnityVersionFromFile(versionFilePath);
     const versions = getUnityVersionsFromInput();
     const pathInput = core.getInput('version-file');
-    const overrideVersion = (pathInput === '' || pathInput === undefined) && versions.length > 0;
+    const overrideVersion = pathInput && pathInput.length > 0 && versions.length > 0;
     if (versions.length > 0) {
         const version = versions.find(([v, c]) => v === unityVersion && c === changeset);
         if (!version && !overrideVersion) {
@@ -141,39 +141,37 @@ function getDefaultModules() {
 
 async function getVersionFilePath() {
     let projectVersionPath = core.getInput('version-file');
-    if (!projectVersionPath) {
-        projectVersionPath = await searchForVersionFile();
+    if (projectVersionPath) {
     } else {
-        projectVersionPath = path.join(process.cwd(), projectVersionPath);
-        core.debug(`resolve absolute: ${projectVersionPath}`);
+        projectVersionPath = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt'));
     }
     try {
         await fs.access(projectVersionPath, fs.constants.R_OK);
         return projectVersionPath;
     } catch (error) {
+        core.debug(error);
         try {
-            projectVersionPath = await searchForVersionFile();
+            projectVersionPath = path.join(process.env.GITHUB_WORKSPACE, projectVersionPath);
             await fs.access(projectVersionPath, fs.constants.R_OK);
             return projectVersionPath;
         } catch (error) {
-            // ignore
+            core.error(error);
+            try {
+                projectVersionPath = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt'));
+                await fs.access(projectVersionPath, fs.constants.R_OK);
+                return projectVersionPath;
+            } catch (error) {
+                core.debug(error);
+            }
         }
         throw Error(`Could not find ProjectVersion.txt in ${projectVersionPath}`);
-    }
-}
-
-async function searchForVersionFile() {
-    const globber = await glob.create('**/ProjectVersion.txt');
-    for await (const file of globber.globGenerator()) {
-        core.debug(`resolve glob: ${file}`);
-        return file;
     }
 }
 
 function getUnityVersionsFromInput() {
     const versions = [];
     const inputVersions = core.getInput('unity-version');
-    if (!inputVersions) {
+    if (!inputVersions || inputVersions.length == 0) {
         return versions;
     }
     const versionRegEx = new RegExp(/(?<version>(?:(?<major>\d+)\.)?(?:(?<minor>\d+)\.)?(?:(?<patch>\d+[fab]\d+)\b))\s?(?:\((?<changeset>\w+)\))?/g);
