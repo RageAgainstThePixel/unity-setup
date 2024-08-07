@@ -31286,36 +31286,27 @@ function getDefaultModules() {
 
 async function getVersionFilePath() {
     let projectVersionPath = core.getInput('version-file');
-    if (!projectVersionPath) {
-        core.info(`projectVersionPath 1: ${projectVersionPath}`);
+    if (projectVersionPath) {
+    } else {
+        projectVersionPath = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt'));
     }
     try {
         await fs.access(projectVersionPath, fs.constants.R_OK);
         return projectVersionPath;
     } catch (error) {
-        core.error(error);
+        core.debug(error);
         try {
-            const path2 = path.join(process.env.GITHUB_WORKSPACE, projectVersionPath);
-            core.info(`projectVersionPath 2: ${path2}`);
-            await fs.access(path2, fs.constants.R_OK);
-            return path2;
+            projectVersionPath = path.join(process.env.GITHUB_WORKSPACE, projectVersionPath);
+            await fs.access(projectVersionPath, fs.constants.R_OK);
+            return projectVersionPath;
         } catch (error) {
             core.error(error);
             try {
-                const path3 = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', projectVersionPath));
-                core.info(`projectVersionPath 3: ${path3}`);
-                await fs.access(path3, fs.constants.R_OK);
-                return path3
+                projectVersionPath = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt'));
+                await fs.access(projectVersionPath, fs.constants.R_OK);
+                return projectVersionPath;
             } catch (error) {
-                core.error(error);
-                try {
-                    const path4 = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt'));
-                    core.info(`projectVersionPath 4: ${path4}`);
-                    await fs.access(path4, fs.constants.R_OK);
-                    return path4;
-                } catch (error) {
-                    core.error(error);
-                }
+                core.debug(error);
             }
         }
         throw Error(`Could not find ProjectVersion.txt in ${projectVersionPath}`);
