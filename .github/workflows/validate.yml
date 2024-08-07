@@ -54,7 +54,7 @@ jobs:
 
       - uses: ./ # RageAgainstThePixel/unity-setup
         with:
-          version-file: 'com.utilities.buildpipline/ProjectSettings/ProjectVersion.txt'
+          version-file: com.utilities.buildpipline/Utilities.BuildPipeline/ProjectSettings/ProjectVersion.txt
           unity-version: ${{ matrix.unity-versions }}
           build-targets: ${{ matrix.build-targets }}
           modules: ${{ matrix.modules }}
