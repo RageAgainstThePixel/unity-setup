@@ -144,7 +144,7 @@ async function getVersionFilePath() {
     if (!projectVersionPath) {
         projectVersionPath = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt'));
     } else {
-        core.info(`projectVersionPath: ${projectVersionPath}`);
+        core.info(`projectVersionPath 1: ${projectVersionPath}`);
     }
     try {
         await fs.access(projectVersionPath, fs.constants.R_OK);
@@ -152,13 +152,13 @@ async function getVersionFilePath() {
     } catch (error) {
         try {
             projectVersionPath = path.Resolve(process.env.GITHUB_WORKSPACE, projectVersionPath);
-            core.info(`projectVersionPath: ${projectVersionPath}`);
+            core.info(`projectVersionPath 2: ${projectVersionPath}`);
             await fs.access(projectVersionPath, fs.constants.R_OK);
             return projectVersionPath;
         } catch (error) {
             try {
                 projectVersionPath = await FindGlobPattern(projectVersionPath);
-                core.info(`projectVersionPath: ${projectVersionPath}`);
+                core.info(`projectVersionPath 3: ${projectVersionPath}`);
                 await fs.access(projectVersionPath, fs.constants.R_OK);
                 return projectVersionPath
             } catch (error) {
