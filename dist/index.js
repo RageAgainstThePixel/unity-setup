@@ -31287,8 +31287,6 @@ function getDefaultModules() {
 async function getVersionFilePath() {
     let projectVersionPath = core.getInput('version-file');
     if (!projectVersionPath) {
-        projectVersionPath = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt'));
-    } else {
         core.info(`projectVersionPath 1: ${projectVersionPath}`);
     }
     try {
@@ -31310,7 +31308,14 @@ async function getVersionFilePath() {
                 return path3
             } catch (error) {
                 core.error(error);
-                // ignored
+                try {
+                    const path4 = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt'));
+                    core.info(`projectVersionPath 4: ${path4}`);
+                    await fs.access(path4, fs.constants.R_OK);
+                    return path4;
+                } catch (error) {
+                    core.error(error);
+                }
             }
         }
         throw Error(`Could not find ProjectVersion.txt in ${projectVersionPath}`);
