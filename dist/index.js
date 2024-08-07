@@ -31297,11 +31297,18 @@ async function getVersionFilePath() {
     } catch (error) {
         try {
             projectVersionPath = path.Resolve(process.env.GITHUB_WORKSPACE, projectVersionPath);
-            projectVersionPath = await FindGlobPattern(projectVersionPath);
+            core.info(`projectVersionPath: ${projectVersionPath}`);
             await fs.access(projectVersionPath, fs.constants.R_OK);
             return projectVersionPath;
         } catch (error) {
-            // ignore
+            try {
+                projectVersionPath = await FindGlobPattern(projectVersionPath);
+                core.info(`projectVersionPath: ${projectVersionPath}`);
+                await fs.access(projectVersionPath, fs.constants.R_OK);
+                return projectVersionPath
+            } catch (error) {
+                // ignored
+            }
         }
         throw Error(`Could not find ProjectVersion.txt in ${projectVersionPath}`);
     }
@@ -31833,10 +31840,10 @@ async function ReadFileContents(filePath) {
 }
 
 async function FindGlobPattern(pattern) {
-    core.debug(`searching for: ${pattern}...`);
+    core.info(`searching for: ${pattern}...`);
     const globber = await glob.create(pattern);
     for await (const file of globber.globGenerator()) {
-        core.debug(`found glob: ${file}`);
+        core.info(`found glob: ${file}`);
         return file;
     }
 }

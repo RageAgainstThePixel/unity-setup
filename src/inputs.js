@@ -152,11 +152,18 @@ async function getVersionFilePath() {
     } catch (error) {
         try {
             projectVersionPath = path.Resolve(process.env.GITHUB_WORKSPACE, projectVersionPath);
-            projectVersionPath = await FindGlobPattern(projectVersionPath);
+            core.info(`projectVersionPath: ${projectVersionPath}`);
             await fs.access(projectVersionPath, fs.constants.R_OK);
             return projectVersionPath;
         } catch (error) {
-            // ignore
+            try {
+                projectVersionPath = await FindGlobPattern(projectVersionPath);
+                core.info(`projectVersionPath: ${projectVersionPath}`);
+                await fs.access(projectVersionPath, fs.constants.R_OK);
+                return projectVersionPath
+            } catch (error) {
+                // ignored
+            }
         }
         throw Error(`Could not find ProjectVersion.txt in ${projectVersionPath}`);
     }
