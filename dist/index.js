@@ -31297,17 +31297,17 @@ async function getVersionFilePath() {
     } catch (error) {
         core.error(error);
         try {
-            projectVersionPath = path.join(process.env.GITHUB_WORKSPACE, projectVersionPath);
-            core.info(`projectVersionPath 2: ${projectVersionPath}`);
-            await fs.access(projectVersionPath, fs.constants.R_OK);
-            return projectVersionPath;
+            const path2 = path.join(process.env.GITHUB_WORKSPACE, projectVersionPath);
+            core.info(`projectVersionPath 2: ${path2}`);
+            await fs.access(path2, fs.constants.R_OK);
+            return path2;
         } catch (error) {
             core.error(error);
             try {
-                projectVersionPath = await FindGlobPattern(projectVersionPath);
-                core.info(`projectVersionPath 3: ${projectVersionPath}`);
-                await fs.access(projectVersionPath, fs.constants.R_OK);
-                return projectVersionPath
+                const path3 = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', projectVersionPath));
+                core.info(`projectVersionPath 3: ${path3}`);
+                await fs.access(path3, fs.constants.R_OK);
+                return path3
             } catch (error) {
                 core.error(error);
                 // ignored
