@@ -171,7 +171,7 @@ async function getVersionFilePath() {
 function getUnityVersionsFromInput() {
     const versions = [];
     const inputVersions = core.getInput('unity-version');
-    if (!inputVersions) {
+    if (!inputVersions || inputVersions.length == 0) {
         return versions;
     }
     const versionRegEx = new RegExp(/(?<version>(?:(?<major>\d+)\.)?(?:(?<minor>\d+)\.)?(?:(?<patch>\d+[fab]\d+)\b))\s?(?:\((?<changeset>\w+)\))?/g);
