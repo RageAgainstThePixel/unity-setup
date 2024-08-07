@@ -10,7 +10,13 @@ A GitHub Action for setting up the [Unity Game Engine](https://unity.com) on Git
 strategy:
   matrix:
     os: [ubuntu-latest, windows-latest, macos-13, macos-latest]
-    unity-versions: [2020.3.48f1 (b805b124c6b7), 2021.3.41f1 (6c5a9e20c022), 2022.3.40f1 (cbdda657d2f0)]
+    unity-versions:
+      - 'in version file'
+      - 2019.4.40f1 (ffc62b691db5)
+      - 2020.3.48f1 (b805b124c6b7)
+      - 2021.3.41f1 (6c5a9e20c022)
+      - 2022.3.40f1 (cbdda657d2f0)
+      - 6000.0.13f1 (53a692e3fca9)
     include:
       - os: ubuntu-latest
         build-targets: StandaloneLinux64, Android, iOS
@@ -45,7 +51,7 @@ steps:
 | ----------- | ----------- | ----------- |
 | `version-file` | Specify a path to search for the unity project version text file. Useful if there are multiple projects in a single repo. | false |
 | `unity-version` | Specify the Unity version(s) to install. You must include the changeset! i.e `2019.4.13f1 (518737b1de84)`. ***This will override any version specified in the `version-file`!*** | false |
-| `build-targets` | Specify the build targets to install for. Remaps to corresponding module. One or more of `StandaloneWindows64` `WSAPlayer` `StandaloneOSX` `iOS` `StandaloneLinux64` `Android` `Lumin` `WebGL`. | false |
+| `build-targets` | Specify the build targets to install for. Remaps to corresponding module. One or more of `StandaloneWindows64` `WSAPlayer` `StandaloneOSX` `iOS` `StandaloneLinux64` `Android` `Lumin` `WebGL` `VisionOS`. | false |
 | `modules` | Modules to install with the editor. This list can be different per editor version. | false |
 | `architecture` | Specify the architecture to install. Either `x86_64` or `arm64`. | false |
 
