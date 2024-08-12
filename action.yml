@@ -1,8 +1,11 @@
 name: 'unity-setup'
-description: 'A GitHub action for setting up the Unity Game Engine for CI/CD workflows.'
+description: A GitHub action for setting up the Unity Game Engine for CI/CD workflows.
+branding:
+  icon: 'download'
+  color: 'blue'
 inputs:
   version-file:
-    description: 'Specify a path to search for the unity project version text file. Useful if there are multiple projects in a single repo.'
+    description: 'Specify a path to search for the unity project version text file. Useful if there are multiple projects in a single repo. Pass `None` if creating a new project to skip file search.'
     required: false
     default: ''
   unity-version:
