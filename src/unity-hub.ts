@@ -234,9 +234,14 @@ async function Unity(version: string, changeset: string, architecture: string, m
     await fs.promises.access(editorPath, fs.constants.R_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
     if (process.platform === 'linux') {
+        const symlinkPath = editorPath.replace(/home\/runner/, 'opt');
         await exec.exec('chmod', ['-R', '777', editorPath]);
+        await fs.promises.symlink(editorPath, symlinkPath);
+        await fs.promises.access(symlinkPath, fs.constants.X_OK);
+        core.info(`Unity Editor Symlink:\n  > "${symlinkPath}"`);
+        core.addPath(symlinkPath);
+        editorPath = symlinkPath;
     }
-    core.addPath(path.dirname(editorPath));
     try {
         core.startGroup(`Checking installed modules for Unity ${version} (${changeset})...`);
         const [installedModules, additionalModules] = await checkEditorModules(editorPath, version, architecture, modules);
