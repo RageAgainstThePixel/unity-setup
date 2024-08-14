@@ -234,7 +234,7 @@ async function Unity(version: string, changeset: string, architecture: string, m
     await fs.promises.access(editorPath, fs.constants.R_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
     core.addPath(path.dirname(editorPath));
-    if (process.platform === 'darwin') {
+    if (process.platform === 'linux') {
         await exec.exec('chmod', ['+R', '777', editorPath]);
     }
     try {
