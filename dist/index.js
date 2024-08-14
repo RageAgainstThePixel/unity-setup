@@ -34787,18 +34787,18 @@ async function Unity(version, changeset, architecture, modules) {
     if (!editorPath) {
         await installUnity(version, changeset, architecture, modules);
         editorPath = await checkInstalledEditors(version, architecture);
+        if (process.platform === 'linux') {
+            editorPath = await createSymlink(editorPath);
+        }
     }
-    await fs.promises.access(editorPath, fs.constants.R_OK);
+    else {
+        if (process.platform === 'linux') {
+            editorPath = await createSymlink(editorPath);
+        }
+    }
+    await fs.promises.access(editorPath, fs.constants.X_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
-    if (process.platform === 'linux') {
-        const symlinkPath = editorPath.replace(/home\/runner/, 'opt');
-        await exec.exec('chmod', ['-R', '777', editorPath]);
-        await fs.promises.symlink(editorPath, symlinkPath);
-        await fs.promises.access(symlinkPath, fs.constants.X_OK);
-        core.info(`Unity Editor Symlink:\n  > "${symlinkPath}"`);
-        core.addPath(symlinkPath);
-        editorPath = symlinkPath;
-    }
+    core.addPath(editorPath);
     try {
         core.startGroup(`Checking installed modules for Unity ${version} (${changeset})...`);
         const [installedModules, additionalModules] = await checkEditorModules(editorPath, version, architecture, modules);
@@ -34819,6 +34819,25 @@ async function Unity(version, changeset, architecture, modules) {
         core.endGroup();
     }
     return editorPath;
+}
+async function createSymlink(editorPath) {
+    if (editorPath.startsWith('/opt')) {
+        return editorPath;
+    }
+    try {
+        const symlinkPath = editorPath.replace(/home\/runner/, 'opt');
+        const symlinkDir = path.dirname(symlinkPath);
+        await fs.promises.mkdir(symlinkDir, { recursive: true });
+        await exec.exec('chmod', ['-R', '777', editorPath]);
+        await fs.promises.symlink(editorPath, symlinkPath);
+        await fs.promises.access(symlinkPath, fs.constants.X_OK);
+        core.info(`Unity Editor Symlink:\n  > "${symlinkPath}"`);
+        return symlinkPath;
+    }
+    catch (error) {
+        core.error(`Failed to create symlink: ${error.message}`);
+        throw error;
+    }
 }
 async function installUnity(version, changeset, architecture, modules) {
     core.startGroup(`Installing Unity ${version} (${changeset})...`);
