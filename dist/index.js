@@ -34790,10 +34790,10 @@ async function Unity(version, changeset, architecture, modules) {
     }
     await fs.promises.access(editorPath, fs.constants.R_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
-    core.addPath(path.dirname(editorPath));
     if (process.platform === 'linux') {
         await exec.exec('chmod', ['-R', '777', editorPath]);
     }
+    core.addPath(path.dirname(editorPath));
     try {
         core.startGroup(`Checking installed modules for Unity ${version} (${changeset})...`);
         const [installedModules, additionalModules] = await checkEditorModules(editorPath, version, architecture, modules);
