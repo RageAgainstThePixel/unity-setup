@@ -34712,9 +34712,9 @@ async function getLatestHubVersion() {
     }
 }
 const ignoredLines = [
-    `This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason:`,
+    `This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch().The promise rejected with the reason: `,
     `dri3 extension not supported`,
-    `Failed to connect to the bus:`
+    `Failed to connect to the bus: `
 ];
 async function execUnityHub(args) {
     if (!hubPath) {
@@ -34737,7 +34737,7 @@ async function execUnityHub(args) {
             });
             break;
         case 'linux':
-            core.info(`[command]xvfb-run --auto-servernum ${hubPath} --headless ${args.join(' ')}`);
+            core.info(`[command]xvfb - run--auto - servernum ${hubPath} --headless ${args.join(' ')} `);
             await exec.exec('xvfb-run', ['--auto-servernum', hubPath, '--headless', ...args], {
                 listeners: {
                     stdline: (data) => {
@@ -34773,12 +34773,17 @@ async function execUnityHub(args) {
             case 'No modules found to install.':
                 return output;
             default:
-                throw new Error(`Failed to execute Unity Hub: ${error}`);
+                throw new Error(`Failed to execute Unity Hub: ${error} `);
         }
     }
     return output;
 }
 async function Unity(version, changeset, architecture, modules) {
+    if (process.platform === 'linux') {
+        await exec.exec('sudo', [`mkdir`, `-p`, `/opt/unity/`]);
+        await exec.exec('sudo', [`chown`, `777`, `/opt/unity/`]);
+        await execUnityHub([`--set`, `/opt/unity/`]);
+    }
     if (os.arch() == 'arm64' && !isArmCompatible(version)) {
         core.info(`Unity ${version} does not support arm64 architecture, falling back to x86_64`);
         architecture = 'x86_64';
@@ -34787,31 +34792,23 @@ async function Unity(version, changeset, architecture, modules) {
     if (!editorPath) {
         await installUnity(version, changeset, architecture, modules);
         editorPath = await checkInstalledEditors(version, architecture);
-        if (process.platform === 'linux') {
-            editorPath = await createSymlink(editorPath);
-        }
-    }
-    else {
-        if (process.platform === 'linux') {
-            editorPath = await createSymlink(editorPath);
-        }
     }
     await fs.promises.access(editorPath, fs.constants.X_OK);
-    core.info(`Unity Editor Path:\n  > "${editorPath}"`);
+    core.info(`Unity Editor Path: \n > "${editorPath}"`);
     core.addPath(editorPath);
     try {
-        core.startGroup(`Checking installed modules for Unity ${version} (${changeset})...`);
+        core.startGroup(`Checking installed modules for Unity ${version}(${changeset})...`);
         const [installedModules, additionalModules] = await checkEditorModules(editorPath, version, architecture, modules);
         if (installedModules && installedModules.length > 0) {
-            core.info(`Installed Modules:`);
+            core.info(`Installed Modules: `);
             for (const module of installedModules) {
-                core.info(`  > ${module}`);
+                core.info(`  > ${module} `);
             }
         }
         if (additionalModules && additionalModules.length > 0) {
-            core.info(`Additional Modules:`);
+            core.info(`Additional Modules: `);
             for (const module of additionalModules) {
-                core.info(`  > ${module}`);
+                core.info(`  > ${module} `);
             }
         }
     }
@@ -34820,25 +34817,6 @@ async function Unity(version, changeset, architecture, modules) {
     }
     return editorPath;
 }
-async function createSymlink(editorPath) {
-    if (editorPath.startsWith('/opt')) {
-        return editorPath;
-    }
-    try {
-        const symlinkPath = editorPath.replace(/home\/runner/, 'opt');
-        const symlinkDir = path.dirname(symlinkPath);
-        await fs.promises.mkdir(symlinkDir, { recursive: true });
-        await exec.exec('chmod', ['-R', '777', editorPath]);
-        await fs.promises.symlink(editorPath, symlinkPath);
-        await fs.promises.access(symlinkPath, fs.constants.X_OK);
-        core.info(`Unity Editor Symlink:\n  > "${symlinkPath}"`);
-        return symlinkPath;
-    }
-    catch (error) {
-        core.error(`Failed to create symlink: ${error.message}`);
-        throw error;
-    }
-}
 async function installUnity(version, changeset, architecture, modules) {
     core.startGroup(`Installing Unity ${version} (${changeset})...`);
     const args = ['install', '--version', version, '--changeset', changeset];
@@ -34846,7 +34824,7 @@ async function installUnity(version, changeset, architecture, modules) {
         args.push('-a', architecture);
     }
     for (const module of modules) {
-        core.info(`  > with module: ${module}`);
+        core.info(`  > with module: ${module} `);
         args.push('-m', module);
     }
     try {
@@ -34890,18 +34868,18 @@ async function checkInstalledEditors(version, architecture, failOnEmpty = true) 
         if (archMap[architecture] === match.groups.arch) {
             editorPath = match.groups.editorPath;
         }
-        if (match.groups.editorPath.includes(`-${architecture}`)) {
+        if (match.groups.editorPath.includes(`- ${architecture} `)) {
             editorPath = match.groups.editorPath;
         }
     }
     if (!editorPath) {
-        throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture !== null && architecture !== void 0 ? architecture : ''}`);
+        throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture !== null && architecture !== void 0 ? architecture : ''} `);
     }
     if (process.platform === 'darwin') {
         editorPath = path.join(editorPath, '/Contents/MacOS/Unity');
     }
     await fs.promises.access(editorPath, fs.constants.R_OK);
-    core.debug(`Found installed Unity Editor: ${editorPath}`);
+    core.debug(`Found installed Unity Editor: ${editorPath} `);
     return editorPath;
 }
 const archMap = {
@@ -34919,7 +34897,7 @@ async function checkEditorModules(editorPath, version, architecture, modules) {
     const output = await execUnityHub([...args, '--cm']);
     const editorRootPath = await (0, utility_1.GetEditorRootPath)(editorPath);
     const modulesPath = path.join(editorRootPath, 'modules.json');
-    core.debug(`Editor Modules Manifest:\n  > "${modulesPath}"`);
+    core.debug(`Editor Modules Manifest: \n > "${modulesPath}"`);
     const moduleMatches = output.matchAll(/Omitting module (?<module>.+) because it's already installed/g);
     if (moduleMatches) {
         const omittedModules = [...moduleMatches].map(match => match.groups.module);
