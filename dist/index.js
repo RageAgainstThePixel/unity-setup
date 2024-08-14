@@ -34737,7 +34737,7 @@ async function execUnityHub(args) {
             });
             break;
         case 'linux':
-            core.info(`[command]xvfb - run--auto - servernum ${hubPath} --headless ${args.join(' ')} `);
+            core.info(`[command]xvfb-run --auto-servernum ${hubPath} --headless ${args.join(' ')}`);
             await exec.exec('xvfb-run', ['--auto-servernum', hubPath, '--headless', ...args], {
                 listeners: {
                     stdline: (data) => {
