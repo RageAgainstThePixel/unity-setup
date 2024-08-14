@@ -34712,9 +34712,9 @@ async function getLatestHubVersion() {
     }
 }
 const ignoredLines = [
-    `This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch().The promise rejected with the reason: `,
+    `This error originated either by throwing inside of an async function without a catch block`,
     `dri3 extension not supported`,
-    `Failed to connect to the bus: `
+    `Failed to connect to the bus:`
 ];
 async function execUnityHub(args) {
     if (!hubPath) {
@@ -34782,7 +34782,7 @@ async function Unity(version, changeset, architecture, modules) {
     if (process.platform === 'linux') {
         await exec.exec('sudo', [`mkdir`, `-p`, `/opt/unity/`]);
         await exec.exec('sudo', [`chown`, `777`, `/opt/unity/`]);
-        await execUnityHub([`--set`, `/opt/unity/`]);
+        await execUnityHub([`install-path`, `--set`, `/opt/unity/`]);
     }
     if (os.arch() == 'arm64' && !isArmCompatible(version)) {
         core.info(`Unity ${version} does not support arm64 architecture, falling back to x86_64`);
