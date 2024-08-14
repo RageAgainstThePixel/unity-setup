@@ -34792,7 +34792,7 @@ async function Unity(version, changeset, architecture, modules) {
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
     core.addPath(path.dirname(editorPath));
     if (process.platform === 'linux') {
-        await exec.exec('chmod', ['+R', '777', editorPath]);
+        await exec.exec('chmod', ['-R', '777', editorPath]);
     }
     try {
         core.startGroup(`Checking installed modules for Unity ${version} (${changeset})...`);
