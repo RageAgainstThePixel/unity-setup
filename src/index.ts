@@ -1,7 +1,7 @@
-const { CheckAndroidSdkInstalled } = require('./install-android-sdk');
-const { ValidateInputs } = require('./inputs');
-const unityHub = require('./unity-hub');
-const core = require('@actions/core');
+import { CheckAndroidSdkInstalled } from './install-android-sdk';
+import { ValidateInputs } from './inputs';
+import unityHub = require('./unity-hub');
+import core = require('@actions/core');
 
 const main = async () => {
     try {
@@ -23,7 +23,6 @@ const main = async () => {
         }
         const installedEditors = editors.map(([version, path]) => `\"${version}\":\"${path}\"`).join(',');
         core.exportVariable('UNITY_EDITORS', `[${installedEditors}]`);
-        await unityHub.ListInstalledEditors();
         core.info('Unity Setup Complete!');
         process.exit(0);
     } catch (error) {
