@@ -309,7 +309,7 @@ async function checkInstalledEditors(version: string, architecture: string, fail
         if (archMap[architecture] === match.groups.arch) {
             editorPath = match.groups.editorPath;
         }
-        if (match.groups.editorPath.includes(`- ${architecture}`)) {
+        if (match.groups.editorPath.includes(`-${architecture}`)) {
             editorPath = match.groups.editorPath;
         }
     }
