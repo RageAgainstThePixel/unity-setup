@@ -8,7 +8,7 @@ sudo apt-get update
 sudo apt-get install -y --no-install-recommends desktop-file-utils unityhub
 sudo apt-get clean
 sudo sed -i 's/^\(.*DISPLAY=:.*XAUTHORITY=.*\)\( "\$@" \)2>&1$/\1\2/' /usr/bin/xvfb-run
-sudo printf '#!/bin/bash\nxvfb-run -a /opt/unityhub/unityhub --no-sandbox --headless "$@" 2>/dev/null' | sudo tee /usr/bin/unity-hub >/dev/null
+sudo printf '#!/bin/bash\nxvfb-run --auto-servernum /opt/unityhub/unityhub --no-sandbox --headless "$@" 2>/dev/null' | sudo tee /usr/bin/unity-hub >/dev/null
 sudo chmod 777 /usr/bin/unity-hub
 hubPath=$(which unityhub)
 if [ -z "$hubPath" ]; then
