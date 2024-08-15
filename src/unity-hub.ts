@@ -340,7 +340,7 @@ async function checkEditorModules(editorPath: string, version: string, architect
     const output = await execUnityHub([...args, '--cm']);
     const editorRootPath = await GetEditorRootPath(editorPath);
     const modulesPath = path.join(editorRootPath, 'modules.json');
-    core.debug(`Editor Modules Manifest: \n > "${modulesPath}"`);
+    core.debug(`Editor Modules Manifest:\n  > "${modulesPath}"`);
     const moduleMatches = output.matchAll(/Omitting module (?<module>.+) because it's already installed/g);
     if (moduleMatches) {
         const omittedModules = [...moduleMatches].map(match => match.groups.module);
