@@ -178,9 +178,9 @@ async function execUnityHub(args: string[]): Promise<string> {
                 ignoreReturnCode: true
             });
             break;
-        case 'linux': // unity-hub --headless help
-            core.info(`[command]unity-hub --headless ${args.join(' ')}`);
-            await exec.exec('unity-hub', args, {
+        case 'linux': // unityhub --headless help
+            core.info(`[command]unityhub --headless ${args.join(' ')}`);
+            await exec.exec('unityhub', [`--headless`, ...args], {
                 listeners: {
                     stdline: (data) => {
                         const line = data.toString();
