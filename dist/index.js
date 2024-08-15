@@ -34774,7 +34774,7 @@ async function execUnityHub(args) {
             case 'No modules found to install.':
                 return output;
             default:
-                throw new Error(`Failed to execute Unity Hub: ${error} `);
+                throw new Error(`Failed to execute Unity Hub: ${error}`);
         }
     }
     return output;
@@ -34796,15 +34796,15 @@ async function Unity(version, changeset, architecture, modules) {
         core.startGroup(`Checking installed modules for Unity ${version}(${changeset})...`);
         const [installedModules, additionalModules] = await checkEditorModules(editorPath, version, architecture, modules);
         if (installedModules && installedModules.length > 0) {
-            core.info(`Installed Modules: `);
+            core.info(`Installed Modules:`);
             for (const module of installedModules) {
-                core.info(`  > ${module} `);
+                core.info(`  > ${module}`);
             }
         }
         if (additionalModules && additionalModules.length > 0) {
-            core.info(`Additional Modules: `);
+            core.info(`Additional Modules:`);
             for (const module of additionalModules) {
-                core.info(`  > ${module} `);
+                core.info(`  > ${module}`);
             }
         }
     }
@@ -34820,7 +34820,7 @@ async function installUnity(version, changeset, architecture, modules) {
         args.push('-a', architecture);
     }
     for (const module of modules) {
-        core.info(`  > with module: ${module} `);
+        core.info(`  > with module: ${module}`);
         args.push('-m', module);
     }
     try {
@@ -34864,7 +34864,7 @@ async function checkInstalledEditors(version, architecture, failOnEmpty = true) 
         if (archMap[architecture] === match.groups.arch) {
             editorPath = match.groups.editorPath;
         }
-        if (match.groups.editorPath.includes(`- ${architecture} `)) {
+        if (match.groups.editorPath.includes(`- ${architecture}`)) {
             editorPath = match.groups.editorPath;
         }
     }
@@ -34875,7 +34875,7 @@ async function checkInstalledEditors(version, architecture, failOnEmpty = true) 
         editorPath = path.join(editorPath, '/Contents/MacOS/Unity');
     }
     await fs.promises.access(editorPath, fs.constants.R_OK);
-    core.debug(`Found installed Unity Editor: ${editorPath} `);
+    core.debug(`Found installed Unity Editor: ${editorPath}`);
     return editorPath;
 }
 const archMap = {
