@@ -34790,7 +34790,7 @@ async function Unity(version, changeset, architecture, modules) {
         editorPath = await checkInstalledEditors(version, architecture);
     }
     await fs.promises.access(editorPath, fs.constants.X_OK);
-    core.info(`Unity Editor Path: \n > "${editorPath}"`);
+    core.info(`Unity Editor Path:\n  > "${editorPath}"`);
     core.addPath(editorPath);
     try {
         core.startGroup(`Checking installed modules for Unity ${version}(${changeset})...`);
@@ -34864,7 +34864,7 @@ async function checkInstalledEditors(version, architecture, failOnEmpty = true) 
         if (archMap[architecture] === match.groups.arch) {
             editorPath = match.groups.editorPath;
         }
-        if (match.groups.editorPath.includes(`- ${architecture}`)) {
+        if (match.groups.editorPath.includes(`-${architecture}`)) {
             editorPath = match.groups.editorPath;
         }
     }
@@ -34893,7 +34893,7 @@ async function checkEditorModules(editorPath, version, architecture, modules) {
     const output = await execUnityHub([...args, '--cm']);
     const editorRootPath = await (0, utility_1.GetEditorRootPath)(editorPath);
     const modulesPath = path.join(editorRootPath, 'modules.json');
-    core.debug(`Editor Modules Manifest: \n > "${modulesPath}"`);
+    core.debug(`Editor Modules Manifest:\n  > "${modulesPath}"`);
     const moduleMatches = output.matchAll(/Omitting module (?<module>.+) because it's already installed/g);
     if (moduleMatches) {
         const omittedModules = [...moduleMatches].map(match => match.groups.module);
