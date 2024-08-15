@@ -34737,8 +34737,8 @@ async function execUnityHub(args) {
             });
             break;
         case 'linux':
-            core.info(`[command]unityhub --headless ${args.join(' ')}`);
-            await exec.exec('unityhub', [`--headless`, ...args], {
+            core.info(`[command]unity-hub --headless ${args.join(' ')}`);
+            await exec.exec('unity-hub', args, {
                 listeners: {
                     stdline: (data) => {
                         const line = data.toString();
