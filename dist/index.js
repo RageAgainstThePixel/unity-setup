@@ -34713,6 +34713,7 @@ async function getLatestHubVersion() {
 }
 const ignoredLines = [
     `This error originated either by throwing inside of an async function without a catch block`,
+    `Unexpected error attempting to determine if executable file exists`,
     `dri3 extension not supported`,
     `Failed to connect to the bus:`
 ];
@@ -34737,8 +34738,8 @@ async function execUnityHub(args) {
             });
             break;
         case 'linux':
-            core.info(`[command]xvfb-run --auto-servernum "${hubPath}" --headless ${args.join(' ')}`);
-            await exec.exec('xvfb-run', ['--auto-servernum', hubPath, '--headless', ...args], {
+            core.info(`[command]unity-hub --headless ${args.join(' ')}`);
+            await exec.exec('unity-hub', ['--headless', ...args], {
                 listeners: {
                     stdline: (data) => {
                         const line = data.toString();
