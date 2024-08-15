@@ -178,9 +178,9 @@ async function execUnityHub(args: string[]): Promise<string> {
                 ignoreReturnCode: true
             });
             break;
-        case 'linux': // xvfb-run --auto-servernum "~/Unity Hub/UnityHub.AppImage" --headless help
-            core.info(`[command]xvfb-run --auto-servernum ${hubPath} --headless ${args.join(' ')}`);
-            await exec.exec('xvfb-run', ['--auto-servernum', hubPath, '--headless', ...args], {
+        case 'linux': // unity-hub --headless help
+            core.info(`[command]unity-hub --headless ${args.join(' ')}`);
+            await exec.exec('unity-hub', args, {
                 listeners: {
                     stdline: (data) => {
                         const line = data.toString();
@@ -222,11 +222,6 @@ async function execUnityHub(args: string[]): Promise<string> {
 }
 
 async function Unity(version: string, changeset: string, architecture: string, modules: string[]): Promise<string> {
-    if (process.platform === 'linux') {
-        await exec.exec('sudo', [`mkdir`, `-p`, `/opt/unity`]);
-        await exec.exec('sudo', [`chown`, `777`, `/opt/unity`]);
-        await execUnityHub([`install-path`, `--set`, `/opt/unity`]);
-    }
     if (os.arch() == 'arm64' && !isArmCompatible(version)) {
         core.info(`Unity ${version} does not support arm64 architecture, falling back to x86_64`);
         architecture = 'x86_64';

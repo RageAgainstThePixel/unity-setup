@@ -7,6 +7,9 @@ sudo sh -c 'echo "deb [signed-by=/usr/share/keyrings/Unity_Technologies_ApS.gpg]
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends desktop-file-utils unityhub
 sudo apt-get clean
+sed -i 's/^\(.*DISPLAY=:.*XAUTHORITY=.*\)\( "\$@" \)2>&1$/\1\2/' /usr/bin/xvfb-run
+printf '#!/bin/bash\nxvfb-run -a /opt/unityhub/unityhub-bin --no-sandbox --headless "$@" 2>/dev/null' >/usr/bin/unity-hub
+sudo chmod 777 /usr/bin/unity-hub
 hubPath=$(which unityhub)
 if [ -z "$hubPath" ]; then
     echo "Failed to install Unity Hub"
