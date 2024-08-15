@@ -178,9 +178,9 @@ async function execUnityHub(args: string[]): Promise<string> {
                 ignoreReturnCode: true
             });
             break;
-        case 'linux': // unity-hub --auto-servernum "/opt/unityhub/unityhub" --headless help
-            core.info(`[command]unity-hub --headless ${args.join(' ')}`);
-            await exec.exec(`unity-hub`, [`--headless`, ...args], {
+        case 'linux': // xvfb-run --auto-servernum "/opt/unityhub/unityhub" --headless help
+            core.info(`[command]xvfb-run --auto-servernum "${hubPath}" --headless ${args.join(' ')}`);
+            await exec.exec('xvfb-run', ['--auto-servernum', hubPath, '--headless', ...args], {
                 listeners: {
                     stdline: (data) => {
                         const line = data.toString();
