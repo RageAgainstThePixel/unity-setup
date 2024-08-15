@@ -223,9 +223,9 @@ async function execUnityHub(args: string[]): Promise<string> {
 
 async function Unity(version: string, changeset: string, architecture: string, modules: string[]): Promise<string> {
     if (process.platform === 'linux') {
-        await exec.exec('sudo', [`mkdir`, `-p`, `/opt/unity/`]);
-        await exec.exec('sudo', [`chown`, `777`, `/opt/unity/`]);
-        await execUnityHub([`install-path`, `--set`, `/opt/unity/`]);
+        await exec.exec('sudo', [`mkdir`, `-p`, `/opt/unity`]);
+        await exec.exec('sudo', [`chown`, `777`, `/opt/unity`]);
+        await execUnityHub([`install-path`, `--set`, `/opt/unity`]);
     }
     if (os.arch() == 'arm64' && !isArmCompatible(version)) {
         core.info(`Unity ${version} does not support arm64 architecture, falling back to x86_64`);
@@ -318,7 +318,7 @@ async function checkInstalledEditors(version: string, architecture: string, fail
         }
     }
     if (!editorPath) {
-        throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture ?? ''} `);
+        throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture ?? ''}`);
     }
     if (process.platform === 'darwin') {
         editorPath = path.join(editorPath, '/Contents/MacOS/Unity');
