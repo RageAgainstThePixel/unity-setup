@@ -34836,10 +34836,12 @@ async function getLatestRelease(version, isSilicon) {
         if (semVersion.major === releaseVersion.major) {
             core.info(`Found Unity ${version} release.`);
             if (semVersion.minor === undefined || semVersion.minor === releaseVersion.minor) {
-                const match = release.downloadUrl.match(/download_unity\/(?<changeset>.+\/)/);
-                const changeset = match.groups.changeset;
-                core.info(`Found Unity ${release.version} (${changeset})`);
-                return [release.version, changeset];
+                const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
+                if (match && match.groups && match.groups.changeset) {
+                    const changeset = match.groups.changeset;
+                    core.info(`Found Unity ${release.version} (${changeset})`);
+                    return [release.version, changeset];
+                }
             }
         }
     }
