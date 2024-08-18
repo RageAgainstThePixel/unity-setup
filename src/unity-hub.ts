@@ -291,20 +291,15 @@ async function parseReleases(version: string, data: string): Promise<[string, st
     core.debug(`Found ${releases.official.length} official releases...`);
     releases.official.sort((a, b) => semver.rcompare(semver.coerce(a.version), semver.coerce(b.version)));
     for (const release of releases.official) {
-        const semVersion = semver.coerce(version);
         const releaseVersion = semver.coerce(release.version);
-        core.debug(`Checking ${semVersion.major} against ${releaseVersion}`);
-        if (semVersion.major === releaseVersion.major) {
-            if (semVersion.minor === undefined ||
-                semVersion.minor === 0 ||
-                semVersion.minor === releaseVersion.minor) {
-                core.debug(`Found Unity ${releaseVersion} release.`);
-                const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
-                if (match && match.groups && match.groups.changeset) {
-                    const changeset = match.groups.changeset;
-                    core.info(`Found Unity ${release.version} (${changeset})`);
-                    return [release.version, changeset];
-                }
+        core.debug(`Checking ${version} against ${releaseVersion}`);
+        if (releaseVersion && semver.satisfies(releaseVersion, `^${version}`)) {
+            core.debug(`Found Unity ${releaseVersion} release.`);
+            const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
+            if (match && match.groups && match.groups.changeset) {
+                const changeset = match.groups.changeset;
+                core.info(`Found Unity ${release.version} (${changeset})`);
+                return [release.version, changeset];
             }
         }
     }

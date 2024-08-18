@@ -29,8 +29,8 @@ jobs:
           - 'in version file'
           - 2019.4
           - 2020.x
-          - 2021.0
-          - 2022
+          - 2021.3.x
+          - 2022.3
           - 6000
         include:
           - os: ubuntu-latest

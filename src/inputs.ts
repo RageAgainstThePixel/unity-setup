@@ -56,7 +56,8 @@ async function ValidateInputs(): Promise<[string[][], string | undefined, string
     versions.sort(([a], [b]) => semver.compare(a, b, true));
     core.info(`Unity Versions:`);
     for (const [version, changeset] of versions) {
-        core.info(`  > ${version} (${changeset})`);
+        const changesetStr = changeset ? ` (${changeset})` : '';
+        core.info(`  > ${version}${changesetStr}`);
     }
     return [versions, architecture, modules, unityProjectPath];
 }
@@ -176,9 +177,9 @@ function getUnityVersionsFromInput(): string[][] {
     }
     const versionRegEx = new RegExp(/(?<version>(?:(?<major>\d+)\.?)(?:(?<minor>\d+)\.?)?(?:(?<patch>\d+[fab]\d+)?\b))\s?(?:\((?<changeset>\w+)\))?/g);
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
-    core.info(`Unity Versions from input:`);
+    core.debug(`Unity Versions from input:`);
     for (const match of matches) {
-        core.info(`${match.groups.version} (${match.groups.changeset})`);
+        core.debug(`${match.groups.version} (${match.groups.changeset})`);
         versions.push([match.groups.version, match.groups.changeset]);
     }
     return versions;
