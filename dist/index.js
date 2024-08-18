@@ -34786,6 +34786,11 @@ async function Unity(version, changeset, architecture, modules) {
         core.info(`Unity ${version} does not support arm64 architecture, falling back to x86_64`);
         architecture = 'x86_64';
     }
+    if (!changeset) {
+        const [latestVersion, latestChangeset] = await getLatestRelease(version, architecture === 'arm64');
+        version = latestVersion;
+        changeset = latestChangeset;
+    }
     let editorPath = await checkInstalledEditors(version, architecture, false);
     if (!editorPath) {
         await installUnity(version, changeset, architecture, modules);
@@ -34814,6 +34819,31 @@ async function Unity(version, changeset, architecture, modules) {
         core.endGroup();
     }
     return editorPath;
+}
+async function getLatestRelease(version, isSilicon) {
+    core.info(`Searching for Unity ${version} release...`);
+    const baseUrl = `https://public-cdn.cloud.unity3d.com/hub/prod`;
+    const url = isSilicon
+        ? `${baseUrl}/releases-silicon.json`
+        : `${baseUrl}/releases-${process.platform}.json`;
+    const response = await fetch(url);
+    const data = await response.text();
+    const releases = JSON.parse(data);
+    core.info(`Found ${releases.official.length} official releases....`);
+    for (const release of releases.official) {
+        const semVersion = semver.coerce(version);
+        const releaseVersion = semver.coerce(release.version);
+        if (semVersion.major === releaseVersion.major) {
+            core.info(`Found Unity ${version} release.`);
+            if (semVersion.minor === undefined || semVersion.minor === releaseVersion.minor) {
+                const match = release.downloadUrl.match(/download_unity\/(?<changeset>.+)\//);
+                const changeset = match.groups.changeset;
+                core.info(`Found Unity ${version} (${changeset})`);
+                return [release.version, changeset];
+            }
+        }
+    }
+    throw new Error(`Failed to find Unity ${version} release.`);
 }
 async function installUnity(version, changeset, architecture, modules) {
     core.startGroup(`Installing Unity ${version} (${changeset})...`);
