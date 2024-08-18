@@ -34848,7 +34848,7 @@ async function getLatestRelease(version, isSilicon) {
 }
 async function parseReleases(version, data) {
     const releases = JSON.parse(data);
-    core.info(`Found ${releases.official.length} official releases....`);
+    core.debug(`Found ${releases.official.length} official releases...`);
     releases.official.sort((a, b) => semver.rcompare(semver.coerce(a.version), semver.coerce(b.version)));
     for (const release of releases.official) {
         const semVersion = semver.coerce(version);

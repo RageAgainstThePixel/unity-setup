@@ -28,7 +28,7 @@ jobs:
         unity-versions:
           - 'in version file'
           - 2019.4
-          - 2020.2
+          - 2020.x
           - 2021.0
           - 2022
           - 6000
