@@ -34834,8 +34834,8 @@ async function getLatestRelease(version, isSilicon) {
         const semVersion = semver.coerce(version);
         const releaseVersion = semver.coerce(release.version);
         if (semVersion.major === releaseVersion.major) {
-            core.info(`Found Unity ${version} release.`);
             if (semVersion.minor === undefined || semVersion.minor === releaseVersion.minor) {
+                core.info(`Found Unity ${releaseVersion} release.`);
                 const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
                 if (match && match.groups && match.groups.changeset) {
                     const changeset = match.groups.changeset;
