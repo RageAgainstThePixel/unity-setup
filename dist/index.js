@@ -34854,7 +34854,7 @@ async function parseReleases(version, data) {
     releases.official.sort((a, b) => semver.rcompare(semver.coerce(a.version), semver.coerce(b.version)));
     for (const release of releases.official) {
         core.debug(`Checking ${version} against ${release.version}`);
-        if (release.version && semver.satisfies(release.version, `^${version}`)) {
+        if (release.version && semver.satisfies(release.version, `^${version}`, { loose: true })) {
             core.debug(`Found Unity ${release.version} release.`);
             const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
             if (match && match.groups && match.groups.changeset) {
