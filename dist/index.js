@@ -34823,11 +34823,14 @@ async function Unity(version, changeset, architecture, modules) {
 async function getLatestRelease(version, isSilicon) {
     const releases = (await execUnityHub([`editors`, `--releases`])).split('\n');
     for (const release of releases) {
+        if (!release || release.trim().length === 0) {
+            continue;
+        }
         const semVersion = semver.coerce(version);
         const releaseVersion = semver.coerce(release);
-        core.info(`Checking ${semVersion.major} against ${releaseVersion}`);
+        core.debug(`Checking ${semVersion.major} against ${releaseVersion}`);
         if (releaseVersion && semver.satisfies(releaseVersion, `^${version}`)) {
-            core.info(`Found Unity ${releaseVersion} release.`);
+            core.debug(`Found Unity ${release}`);
             return [release, undefined];
         }
     }
@@ -34843,16 +34846,16 @@ async function getLatestRelease(version, isSilicon) {
 async function parseReleases(version, data) {
     const releases = JSON.parse(data);
     core.info(`Found ${releases.official.length} official releases....`);
-    releases.official.sort((a, b) => semver.rcompare(semver.coerce(a.version, { loose: true }), semver.coerce(b.version, { loose: true })));
+    releases.official.sort((a, b) => semver.rcompare(semver.coerce(a.version), semver.coerce(b.version)));
     for (const release of releases.official) {
         const semVersion = semver.coerce(version);
         const releaseVersion = semver.coerce(release.version);
-        core.info(`Checking ${semVersion.major} against ${releaseVersion}`);
+        core.debug(`Checking ${semVersion.major} against ${releaseVersion}`);
         if (semVersion.major === releaseVersion.major) {
             if (semVersion.minor === undefined ||
                 semVersion.minor === 0 ||
                 semVersion.minor === releaseVersion.minor) {
-                core.info(`Found Unity ${releaseVersion} release.`);
+                core.debug(`Found Unity ${releaseVersion} release.`);
                 const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
                 if (match && match.groups && match.groups.changeset) {
                     const changeset = match.groups.changeset;
@@ -45478,7 +45481,7 @@ const main = async () => {
         process.exit(0);
     }
     catch (error) {
-        core.setFailed(`${error.message}\n${error.stack}`);
+        core.setFailed(error.stack);
     }
 };
 main();
