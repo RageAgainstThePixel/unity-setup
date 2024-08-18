@@ -45421,7 +45421,7 @@ const main = async () => {
         process.exit(0);
     }
     catch (error) {
-        core.setFailed(error);
+        core.setFailed(`${error.message}\n${error.stack}`);
     }
 };
 main();
