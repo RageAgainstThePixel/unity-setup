@@ -294,7 +294,7 @@ async function parseReleases(version: string, data: string): Promise<[string, st
         const semVersion = semver.coerce(version);
         const semVerRelease = semver.coerce(release.version);
         core.info(`Checking ${semVersion} against ${semVerRelease}`);
-        if (semver.satisfies(semVerRelease, `^${semVersion}`, true)) {
+        if (semver.satisfies(semVerRelease, `^${semVersion}`)) {
             core.info(`Found Unity ${release.version} release.`);
             const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
             if (match && match.groups && match.groups.changeset) {
