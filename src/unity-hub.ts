@@ -269,8 +269,11 @@ async function getLatestRelease(version: string, isSilicon: boolean): Promise<[s
         const releaseVersion = semver.coerce(release);
         core.debug(`Checking ${semVersion.major} against ${releaseVersion}`);
         if (releaseVersion && semver.satisfies(releaseVersion, `^${version}`)) {
-            core.debug(`Found Unity ${release}`);
-            return [release, undefined];
+            const match = release.match(/(?<version>\d+\.\d+\.\d+[fab]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?/);
+            if (match && match.groups && match.groups.version) {
+                core.info(`Found Unity ${match.groups.version}`);
+                return [match.groups.version, undefined];
+            }
         }
     }
     core.info(`Searching for Unity ${version} release...`);
@@ -337,10 +340,7 @@ async function ListInstalledEditors(): Promise<string> {
 
 function isArmCompatible(version: string): boolean {
     const semVersion = semver.coerce(version);
-    core.info(`isArmCompatible: ${semVersion}`);
-    if (semVersion.major < 2021) {
-        return false;
-    }
+    if (semVersion.major < 2021) { return false; }
     return semver.compare(semVersion, '2021.1.0f1', true) >= 0;
 }
 
