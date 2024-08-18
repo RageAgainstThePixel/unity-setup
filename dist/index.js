@@ -34830,7 +34830,7 @@ async function getLatestRelease(version, isSilicon) {
         if (!release || release.trim().length === 0) {
             continue;
         }
-        core.debug(`Checking ${version} against ${release}`);
+        core.info(`Checking ${version} against ${release}`);
         if (release && semver.satisfies(release, `^${version}`, true)) {
             const match = release.match(/(?<version>\d+\.\d+\.\d+[fab]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?/);
             if (match && match.groups && match.groups.version) {
@@ -34850,12 +34850,12 @@ async function getLatestRelease(version, isSilicon) {
 }
 async function parseReleases(version, data) {
     const releases = JSON.parse(data);
-    core.debug(`Found ${releases.official.length} official releases...`);
-    releases.official.sort((a, b) => semver.rcompare(semver.coerce(a.version), semver.coerce(b.version)));
+    core.info(`Found ${releases.official.length} official releases...`);
+    releases.official.sort((a, b) => semver.compare(a.version, b.version, true));
     for (const release of releases.official) {
-        core.debug(`Checking ${version} against ${release.version}`);
+        core.info(`Checking ${version} against ${release.version}`);
         if (release.version && semver.satisfies(release.version, `^${version}`, { loose: true })) {
-            core.debug(`Found Unity ${release.version} release.`);
+            core.info(`Found Unity ${release.version} release.`);
             const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
             if (match && match.groups && match.groups.changeset) {
                 const changeset = match.groups.changeset;
