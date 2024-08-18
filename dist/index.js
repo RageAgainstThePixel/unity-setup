@@ -34830,7 +34830,7 @@ async function getLatestRelease(version, isSilicon) {
     const data = await response.text();
     const releases = JSON.parse(data);
     core.info(`Found ${releases.official.length} official releases....`);
-    releases.official.sort((a, b) => semver.rcompare(a.version, b.version));
+    releases.official.sort((a, b) => semver.rcompare(semver.coerce(a.version, { loose: true }), semver.coerce(b.version, { loose: true })));
     for (const release of releases.official) {
         const semVersion = semver.coerce(version);
         const releaseVersion = semver.coerce(release.version);
@@ -34849,7 +34849,7 @@ async function getLatestRelease(version, isSilicon) {
             }
         }
     }
-    throw new Error(`Failed to find Unity ${version} release.`);
+    throw new Error(`Failed to find Unity ${version} release. Please provide a valid changeset.`);
 }
 async function installUnity(version, changeset, architecture, modules) {
     core.startGroup(`Installing Unity ${version} (${changeset})...`);

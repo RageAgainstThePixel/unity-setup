@@ -271,15 +271,15 @@ async function getLatestRelease(version: string, isSilicon: boolean): Promise<[s
     const data = await response.text();
     const releases = JSON.parse(data);
     core.info(`Found ${releases.official.length} official releases....`);
-    releases.official.sort((a, b) => semver.rcompare(a.version, b.version));
+    releases.official.sort((a, b) => semver.rcompare(semver.coerce(a.version, { loose: true }), semver.coerce(b.version, { loose: true })));
     for (const release of releases.official) {
         const semVersion = semver.coerce(version);
         const releaseVersion = semver.coerce(release.version);
         core.info(`Checking ${semVersion.major} against ${releaseVersion.major}`);
         if (semVersion.major === releaseVersion.major) {
             if (semVersion.minor === undefined ||
-                 semVersion.minor === 0 ||
-                 semVersion.minor === releaseVersion.minor) {
+                semVersion.minor === 0 ||
+                semVersion.minor === releaseVersion.minor) {
                 core.info(`Found Unity ${releaseVersion} release.`);
                 const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
                 if (match && match.groups && match.groups.changeset) {
@@ -290,7 +290,7 @@ async function getLatestRelease(version: string, isSilicon: boolean): Promise<[s
             }
         }
     }
-    throw new Error(`Failed to find Unity ${version} release.`);
+    throw new Error(`Failed to find Unity ${version} release. Please provide a valid changeset.`);
 }
 
 async function installUnity(version: string, changeset: string, architecture: string, modules: string[]): Promise<void> {
