@@ -281,7 +281,12 @@ async function ListInstalledEditors(): Promise<string> {
 }
 
 function isArmCompatible(version: string): boolean {
-    return semver.compare(version, '2021.1.0f1', true) >= 0;
+    const semVersion = semver.coerce(version);
+    core.info(`isArmCompatible: ${semVersion}`);
+    if (semVersion.major < 2021) {
+        return false;
+    }
+    return semver.compare(semVersion, '2021.1.0f1', true) >= 0;
 }
 
 async function checkInstalledEditors(version: string, architecture: string, failOnEmpty = true): Promise<string> {
