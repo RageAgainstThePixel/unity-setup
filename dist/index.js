@@ -34831,6 +34831,7 @@ async function getLatestRelease(version, isSilicon) {
     const releases = JSON.parse(data);
     core.info(`Found ${releases.official.length} official releases....`);
     for (const release of releases.official) {
+        core.info(`Checking Unity ${release.version}...`);
         const semVersion = semver.coerce(version);
         const releaseVersion = semver.coerce(release.version);
         if (semVersion.major === releaseVersion.major) {
