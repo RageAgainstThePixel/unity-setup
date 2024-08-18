@@ -34821,22 +34821,24 @@ async function Unity(version, changeset, architecture, modules) {
     return editorPath;
 }
 async function getLatestRelease(version, isSilicon) {
-    const output = await execUnityHub([`editors`, `--releases`]);
-    let [latestVersion, latestChangeset] = await parseReleases(version, output);
-    if (!latestVersion || !latestChangeset) {
-        core.info(`Searching for Unity ${version} release...`);
-        const baseUrl = `https://public-cdn.cloud.unity3d.com/hub/prod`;
-        const url = isSilicon
-            ? `${baseUrl}/releases-silicon.json`
-            : `${baseUrl}/releases-${process.platform}.json`;
-        const response = await fetch(url);
-        const data = await response.text();
-        [latestVersion, latestChangeset] = await parseReleases(version, data);
+    const releases = (await execUnityHub([`editors`, `--releases`])).split('\n');
+    for (const release of releases) {
+        const semVersion = semver.coerce(version);
+        const releaseVersion = semver.coerce(release);
+        core.info(`Checking ${semVersion.major} against ${releaseVersion}`);
+        if (releaseVersion && semver.satisfies(releaseVersion, `^${version}`)) {
+            core.info(`Found Unity ${releaseVersion} release.`);
+            return [release, undefined];
+        }
     }
-    if (latestVersion && latestChangeset) {
-        return [latestVersion, latestChangeset];
-    }
-    throw new Error(`Failed to find Unity ${version} release. Please provide a valid changeset.`);
+    core.info(`Searching for Unity ${version} release...`);
+    const baseUrl = `https://public-cdn.cloud.unity3d.com/hub/prod`;
+    const url = isSilicon
+        ? `${baseUrl}/releases-silicon.json`
+        : `${baseUrl}/releases-${process.platform}.json`;
+    const response = await fetch(url);
+    const data = await response.text();
+    return await parseReleases(version, data);
 }
 async function parseReleases(version, data) {
     const releases = JSON.parse(data);
@@ -34860,10 +34862,14 @@ async function parseReleases(version, data) {
             }
         }
     }
+    throw new Error(`Failed to find Unity ${version} release. Please provide a valid changeset.`);
 }
 async function installUnity(version, changeset, architecture, modules) {
     core.startGroup(`Installing Unity ${version} (${changeset})...`);
-    const args = ['install', '--version', version, '--changeset', changeset];
+    const args = ['install', '--version', version];
+    if (changeset) {
+        args.push('--changeset', changeset);
+    }
     if (architecture) {
         args.push('-a', architecture);
     }
