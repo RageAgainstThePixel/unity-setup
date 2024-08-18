@@ -34821,7 +34821,7 @@ async function Unity(version, changeset, architecture, modules) {
     return editorPath;
 }
 async function getLatestRelease(version, isSilicon) {
-    const output = await execUnityHub(['--releases']);
+    const output = await execUnityHub([`editors`, `--releases`]);
     let [latestVersion, latestChangeset] = await parseReleases(version, output);
     if (!latestVersion || !latestChangeset) {
         core.info(`Searching for Unity ${version} release...`);
