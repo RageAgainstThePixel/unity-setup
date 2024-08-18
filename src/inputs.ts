@@ -176,7 +176,9 @@ function getUnityVersionsFromInput(): string[][] {
     }
     const versionRegEx = new RegExp(/(?<version>(?:(?<major>\d+)\.?)(?:(?<minor>\d+)\.?)?(?:(?<patch>\d+[fab]\d+)?\b))\s?(?:\((?<changeset>\w+)\))?/g);
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
+    core.info(`Unity Versions from input:`);
     for (const match of matches) {
+        core.info(`${match.groups.version} (${match.groups.changeset})`);
         versions.push([match.groups.version, match.groups.changeset]);
     }
     return versions;
