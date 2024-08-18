@@ -34402,8 +34402,11 @@ function getUnityVersionsFromInput() {
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
     core.debug(`Unity Versions from input:`);
     for (const match of matches) {
-        core.debug(`${match.groups.version} (${match.groups.changeset})`);
-        versions.push([match.groups.version, match.groups.changeset]);
+        const version = match.groups.version.replace(/\.$/, '');
+        const changeset = match.groups.changeset;
+        const changesetStr = changeset ? ` (${changeset})` : '';
+        core.debug(`${version}${changesetStr}`);
+        versions.push([version, changeset]);
     }
     return versions;
 }
@@ -34827,10 +34830,8 @@ async function getLatestRelease(version, isSilicon) {
         if (!release || release.trim().length === 0) {
             continue;
         }
-        const semVersion = semver.coerce(version);
-        const releaseVersion = semver.coerce(release);
-        core.debug(`Checking ${semVersion.major} against ${releaseVersion}`);
-        if (releaseVersion && semver.satisfies(releaseVersion, `^${version}`)) {
+        core.debug(`Checking ${version} against ${release}`);
+        if (release && semver.satisfies(release, `^${version}`, true)) {
             const match = release.match(/(?<version>\d+\.\d+\.\d+[fab]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?/);
             if (match && match.groups && match.groups.version) {
                 core.info(`Found Unity ${match.groups.version}`);
@@ -34850,12 +34851,11 @@ async function getLatestRelease(version, isSilicon) {
 async function parseReleases(version, data) {
     const releases = JSON.parse(data);
     core.debug(`Found ${releases.official.length} official releases...`);
-    releases.official.sort((a, b) => semver.rcompare(semver.coerce(a.version), semver.coerce(b.version)));
+    releases.official.sort((a, b) => semver.rcompare(a.version, b.version), true);
     for (const release of releases.official) {
-        const releaseVersion = semver.coerce(release.version);
-        core.debug(`Checking ${version} against ${releaseVersion}`);
-        if (releaseVersion && semver.satisfies(releaseVersion, `^${version}`)) {
-            core.debug(`Found Unity ${releaseVersion} release.`);
+        core.debug(`Checking ${version} against ${release.version}`);
+        if (release.version && semver.satisfies(release.version, `^${version}`)) {
+            core.debug(`Found Unity ${release.version} release.`);
             const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
             if (match && match.groups && match.groups.changeset) {
                 const changeset = match.groups.changeset;
