@@ -34804,7 +34804,8 @@ async function Unity(version, changeset, architecture, modules) {
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
     core.addPath(editorPath);
     try {
-        core.startGroup(`Checking installed modules for Unity ${version} (${changeset})...`);
+        const changesetStr = changeset ? ` (${changeset})` : '';
+        core.startGroup(`Checking installed modules for Unity ${version}${changesetStr}...`);
         const [installedModules, additionalModules] = await checkEditorModules(editorPath, version, architecture, modules);
         if (installedModules && installedModules.length > 0) {
             core.info(`Installed Modules:`);
@@ -34832,7 +34833,7 @@ async function getLatestRelease(version, isSilicon) {
         }
         const semVersion = semver.coerce(version);
         const semVerRelease = semver.coerce(release);
-        core.info(`Checking ${semVersion} against ${semVerRelease}`);
+        core.debug(`Checking ${semVersion} against ${semVerRelease}`);
         if (semver.satisfies(semVerRelease, `^${semVersion}`)) {
             const match = release.match(/(?<version>\d+\.\d+\.\d+[fab]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?/);
             if (match && match.groups && match.groups.version) {
@@ -34852,14 +34853,14 @@ async function getLatestRelease(version, isSilicon) {
 }
 async function parseReleases(version, data) {
     const releases = JSON.parse(data);
-    core.info(`Found ${releases.official.length} official releases...`);
+    core.debug(`Found ${releases.official.length} official releases...`);
     releases.official.sort((a, b) => semver.compare(a.version, b.version, true));
     for (const release of releases.official) {
         const semVersion = semver.coerce(version);
         const semVerRelease = semver.coerce(release.version);
-        core.info(`Checking ${semVersion} against ${semVerRelease}`);
+        core.debug(`Checking ${semVersion} against ${semVerRelease}`);
         if (semver.satisfies(semVerRelease, `^${semVersion}`)) {
-            core.info(`Found Unity ${release.version} release.`);
+            core.debug(`Found Unity ${release.version} release.`);
             const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
             if (match && match.groups && match.groups.changeset) {
                 const changeset = match.groups.changeset;
@@ -34871,7 +34872,8 @@ async function parseReleases(version, data) {
     throw new Error(`Failed to find Unity ${version} release. Please provide a valid changeset.`);
 }
 async function installUnity(version, changeset, architecture, modules) {
-    core.startGroup(`Installing Unity ${version} (${changeset})...`);
+    const changesetStr = changeset ? ` (${changeset})` : '';
+    core.startGroup(`Installing Unity ${version}${changesetStr}...`);
     const args = ['install', '--version', version];
     if (changeset) {
         args.push('--changeset', changeset);
