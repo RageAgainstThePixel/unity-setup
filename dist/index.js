@@ -34829,7 +34829,7 @@ async function getLatestRelease(version, isSilicon) {
     const semVersion = semver.coerce(version);
     const validReleases = releases
         .map(release => semver.coerce(release))
-        .filter(release => release && semver.satisfies(release, `^${semVersion}`))
+        .filter(release => release && semver.satisfies(release, `^${semVersion}`) && release.version.endsWith('f1'))
         .sort((a, b) => semver.compare(b, a));
     for (const release of validReleases) {
         const originalRelease = releases.find(r => r.includes(release.version));
