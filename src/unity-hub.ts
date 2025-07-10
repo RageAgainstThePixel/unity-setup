@@ -245,6 +245,11 @@ const retryErrorMessages = [
     'failed to download. Error given: Request timeout'
 ];
 
+export async function setInstallPath(installPath: string): Promise<void> {
+    await fs.promises.mkdir(installPath, { recursive: true });
+    await execUnityHub(["install-path", "--set", installPath]);
+}
+
 export async function Unity(version: string, changeset: string, architecture: string, modules: string[]): Promise<string> {
     if (os.arch() == 'arm64' && !isArmCompatible(version)) {
         core.warning(`Unity ${version} does not support arm64 architecture, falling back to x86_64`);

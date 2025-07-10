@@ -5,7 +5,7 @@ import path = require('path');
 import os = require('os');
 import fs = require('fs');
 
-export async function ValidateInputs(): Promise<[string[][], string | undefined, string[], string | undefined]> {
+export async function ValidateInputs(): Promise<[string[][], string | undefined, string[], string | undefined, string]> {
     const modules = [];
     const architecture = core.getInput('architecture') || getInstallationArch();
     if (architecture) {
@@ -59,7 +59,7 @@ export async function ValidateInputs(): Promise<[string[][], string | undefined,
         const changesetStr = changeset ? ` (${changeset})` : '';
         core.info(`  > ${version}${changesetStr}`);
     }
-    return [versions, architecture, modules, unityProjectPath];
+    return [versions, architecture, modules, unityProjectPath, core.getInput('install-path')];
 }
 
 function getArrayInput(key: string): string[] {
