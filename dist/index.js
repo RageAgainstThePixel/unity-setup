@@ -34753,6 +34753,14 @@ async function Unity(version, changeset, architecture, modules) {
                 core.info(`  > ${module}`);
             }
         }
+        if (process.platform === 'linux') {
+            await fs.promises.chmod(__nccwpck_require__.ab + "patch-linux-bee-backend.sh", 0o755);
+            const scriptPath = __nccwpck_require__.ab + "patch-linux-bee-backend.sh";
+            const exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "patch-linux-bee-backend.sh", editorPath]);
+            if (exitCode !== 0) {
+                core.warning(`Failed to patch bee backend: ${exitCode}`);
+            }
+        }
     }
     catch (error) {
         if (error.message.includes(`No modules found`)) {
