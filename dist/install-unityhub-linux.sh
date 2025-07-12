@@ -4,16 +4,13 @@ sudo sh -c 'dbus-uuidgen >/etc/machine-id && mkdir -p /var/lib/dbus/ && ln -sf /
 echo "::group::Installing Unity Hub..."
 wget -qO - https://hub.unity3d.com/linux/keys/public | gpg --dearmor | sudo tee /usr/share/keyrings/Unity_Technologies_ApS.gpg >/dev/null
 sudo sh -c 'echo "deb [signed-by=/usr/share/keyrings/Unity_Technologies_ApS.gpg] https://hub.unity3d.com/linux/repos/deb stable main" > /etc/apt/sources.list.d/unityhub.list'
-codename=$(lsb_release -cs)
-echo "deb https://archive.ubuntu.com/ubuntu $codename main universe" | sudo tee /etc/apt/sources.list.d/$codename.list
+echo "deb https://archive.ubuntu.com/ubuntu jammy main universe" | sudo tee /etc/apt/sources.list.d/jammy.list
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends unityhub ffmpeg libgtk2.0-0 libglu1-mesa libgconf-2-4
 sudo apt-get clean
 # Unity 2019.x/2020.x
 curl -LO https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.0g-2ubuntu4_amd64.deb
 sudo dpkg -i libssl1.1_1.1.0g-2ubuntu4_amd64.deb
-sudo apt-get install -f -y
-rm libssl1.1_1.1.0g-2ubuntu4_amd64.deb
 # https://discussions.unity.com/t/linux-editor-stuck-on-loading-because-of-bee-backend-w-workaround/854480
 UNITY_EDITOR_DATA_PATH="$(dirname "$UNITY_EDITOR_PATH")"/Data
 if [[ -f "$UNITY_EDITOR_DATA_PATH"/bee_backend && ! -f "$UNITY_EDITOR_DATA_PATH"/.bee_backend ]]; then
