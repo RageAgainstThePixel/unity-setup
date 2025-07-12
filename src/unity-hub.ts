@@ -265,7 +265,7 @@ export async function Unity(version: string, changeset: string, architecture: st
             await installUnity(version, changeset, architecture, modules);
         } catch (error) {
             if (retryErrorMessages.some(msg => error.message.includes(msg))) {
-                removePath(editorPath);
+                await removePath(editorPath);
                 await installUnity(version, changeset, architecture, modules);
             }
         }

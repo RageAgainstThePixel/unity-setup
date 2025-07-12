@@ -34729,7 +34729,7 @@ async function Unity(version, changeset, architecture, modules) {
         }
         catch (error) {
             if (retryErrorMessages.some(msg => error.message.includes(msg))) {
-                removePath(editorPath);
+                await removePath(editorPath);
                 await installUnity(version, changeset, architecture, modules);
             }
         }
