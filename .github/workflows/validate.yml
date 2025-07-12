@@ -27,6 +27,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         unity-versions:
           - 'in version file'
+          - '5.6.7f1 (e80cc3114ac1)'
           - 2019.4.40f1
           - 2020.3
           - 2021.3.x
