@@ -289,12 +289,12 @@ export async function Unity(version: string, changeset: string, architecture: st
                 core.info(`  > ${module}`);
             }
         }
-        if (process.platform === 'linux') {
-            await fs.promises.chmod(path.join(__dirname, 'patch-linux-bee-backend.sh'), 0o755);
-            const scriptPath = path.join(__dirname, 'patch-linux-bee-backend.sh');
+        if (process.platform === 'linux' && fs.existsSync(path.join(editorPath, 'bee_backend')) && !fs.existsSync(path.join(editorPath, '.bee_backend'))) {
+            await fs.promises.chmod(path.join(__dirname, 'linux-bee-backend-wrapper.sh'), 0o755);
+            const scriptPath = path.join(__dirname, 'linux-bee-backend-wrapper.sh');
             const exitCode = await exec.exec('sh', [scriptPath, editorPath]);
             if (exitCode !== 0) {
-                core.warning(`Failed to patch bee backend: ${exitCode}`);
+                throw new Error(`Failed to set up Bee backend wrapper: ${exitCode}`);
             }
         }
     } catch (error) {
