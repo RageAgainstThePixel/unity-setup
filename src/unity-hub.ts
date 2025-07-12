@@ -294,14 +294,15 @@ export async function Unity(version: string, changeset: string, architecture: st
                 core.info(`  > ${module}`);
             }
         }
-        if (process.platform === 'linux' &&
-            fs.existsSync(path.join(editorPath, 'bee_backend')) &&
-            !fs.existsSync(path.join(editorPath, '.bee_backend'))) {
-            await fs.promises.chmod(path.join(__dirname, 'linux-bee-backend-wrapper.sh'), 0o755);
-            const scriptPath = path.join(__dirname, 'linux-bee-backend-wrapper.sh');
-            const exitCode = await exec.exec('sh', [scriptPath, editorPath]);
-            if (exitCode !== 0) {
-                throw new Error(`Failed to set up Bee backend wrapper: ${exitCode}`);
+        if (process.platform === 'linux') {
+            const dataPath = path.join(path.dirname(editorPath), 'Data');
+            const beeBackend = path.join(dataPath, 'bee_backend');
+            const dotBeeBackend = path.join(dataPath, '.bee_backend');
+            if (fs.existsSync(beeBackend) && !fs.existsSync(dotBeeBackend)) {
+                await fs.promises.rename(beeBackend, dotBeeBackend);
+                const wrapperSource = path.join(__dirname, 'linux-bee-backend-wrapper.sh');
+                await fs.promises.copyFile(wrapperSource, beeBackend);
+                await fs.promises.chmod(beeBackend, 0o755);
             }
         }
     } catch (error) {

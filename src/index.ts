@@ -12,7 +12,7 @@ const main = async () => {
         const unityHubPath = await unityHub.Get();
         core.exportVariable('UNITY_HUB_PATH', unityHubPath);
 
-        if (installPath !== "") {
+        if (installPath.length > 0) {
             await unityHub.setInstallPath(installPath);
         }
 
