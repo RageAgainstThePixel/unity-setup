@@ -34753,7 +34753,9 @@ async function Unity(version, changeset, architecture, modules) {
                 core.info(`  > ${module}`);
             }
         }
-        if (process.platform === 'linux' && fs.existsSync(path.join(editorPath, 'bee_backend')) && !fs.existsSync(path.join(editorPath, '.bee_backend'))) {
+        if (process.platform === 'linux' &&
+            fs.existsSync(path.join(editorPath, 'bee_backend')) &&
+            !fs.existsSync(path.join(editorPath, '.bee_backend'))) {
             await fs.promises.chmod(__nccwpck_require__.ab + "linux-bee-backend-wrapper.sh", 0o755);
             const scriptPath = __nccwpck_require__.ab + "linux-bee-backend-wrapper.sh";
             const exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "linux-bee-backend-wrapper.sh", editorPath]);

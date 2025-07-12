@@ -289,7 +289,9 @@ export async function Unity(version: string, changeset: string, architecture: st
                 core.info(`  > ${module}`);
             }
         }
-        if (process.platform === 'linux' && fs.existsSync(path.join(editorPath, 'bee_backend')) && !fs.existsSync(path.join(editorPath, '.bee_backend'))) {
+        if (process.platform === 'linux' &&
+            fs.existsSync(path.join(editorPath, 'bee_backend')) &&
+            !fs.existsSync(path.join(editorPath, '.bee_backend'))) {
             await fs.promises.chmod(path.join(__dirname, 'linux-bee-backend-wrapper.sh'), 0o755);
             const scriptPath = path.join(__dirname, 'linux-bee-backend-wrapper.sh');
             const exitCode = await exec.exec('sh', [scriptPath, editorPath]);
