@@ -11,6 +11,7 @@ sudo apt-get clean
 # Unity 2019.x/2020.x
 curl -LO https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.0g-2ubuntu4_amd64.deb
 sudo dpkg -i libssl1.1_1.1.0g-2ubuntu4_amd64.deb
+rm libssl1.1_1.1.0g-2ubuntu4_amd64.deb
 # https://discussions.unity.com/t/linux-editor-stuck-on-loading-because-of-bee-backend-w-workaround/854480
 UNITY_EDITOR_DATA_PATH="$(dirname "$UNITY_EDITOR_PATH")"/Data
 if [[ -f "$UNITY_EDITOR_DATA_PATH"/bee_backend && ! -f "$UNITY_EDITOR_DATA_PATH"/.bee_backend ]]; then
