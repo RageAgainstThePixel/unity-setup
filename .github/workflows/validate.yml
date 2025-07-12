@@ -43,6 +43,10 @@ jobs:
           - os: macos-latest
             build-targets: StandaloneOSX Android iOS VisionOS
             modules: mac-server
+        exclude:
+          # Exclude Unity 5.x for linux as it is not supported
+          - os: ubuntu-latest
+            unity-versions: '5.6.7f1 (e80cc3114ac1)'
     steps:
       - uses: actions/checkout@v4
 
