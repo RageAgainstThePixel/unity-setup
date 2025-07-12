@@ -34704,6 +34704,10 @@ async function execUnityHub(args) {
     }
     return output;
 }
+const retryErrorMessages = [
+    'Editor already installed in this location',
+    'failed to download. Error given: Request timeout'
+];
 async function Unity(version, changeset, architecture, modules) {
     if (os.arch() == 'arm64' && !isArmCompatible(version)) {
         core.warning(`Unity ${version} does not support arm64 architecture, falling back to x86_64`);
@@ -34724,7 +34728,7 @@ async function Unity(version, changeset, architecture, modules) {
             await installUnity(version, changeset, architecture, modules);
         }
         catch (error) {
-            if (error.message.includes('Editor already installed in this location')) {
+            if (retryErrorMessages.some(msg => error.message.includes(msg))) {
                 removePath(editorPath);
                 await installUnity(version, changeset, architecture, modules);
             }
