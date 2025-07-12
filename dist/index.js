@@ -34753,12 +34753,12 @@ async function Unity(version, changeset, architecture, modules) {
                 core.info(`  > ${module}`);
             }
         }
-        if (process.platform === 'linux') {
-            await fs.promises.chmod(__nccwpck_require__.ab + "patch-linux-bee-backend.sh", 0o755);
-            const scriptPath = __nccwpck_require__.ab + "patch-linux-bee-backend.sh";
-            const exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "patch-linux-bee-backend.sh", editorPath]);
+        if (process.platform === 'linux' && fs.existsSync(path.join(editorPath, 'bee_backend')) && !fs.existsSync(path.join(editorPath, '.bee_backend'))) {
+            await fs.promises.chmod(__nccwpck_require__.ab + "linux-bee-backend-wrapper.sh", 0o755);
+            const scriptPath = __nccwpck_require__.ab + "linux-bee-backend-wrapper.sh";
+            const exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "linux-bee-backend-wrapper.sh", editorPath]);
             if (exitCode !== 0) {
-                core.warning(`Failed to patch bee backend: ${exitCode}`);
+                throw new Error(`Failed to set up Bee backend wrapper: ${exitCode}`);
             }
         }
     }
