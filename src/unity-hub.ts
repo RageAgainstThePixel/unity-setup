@@ -426,6 +426,7 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<void> {
                         throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
                     }
                 }
+                await fs.promises.access(installPath, fs.constants.R_OK);
                 if (!installedEditors.includes(installPath)) {
                     installedEditors.push(installPath);
                 }
@@ -442,6 +443,7 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<void> {
                         throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
                     }
                 }
+                await fs.promises.access(installPath, fs.constants.R_OK);
                 if (!installedEditors.includes(installPath)) {
                     installedEditors.push(installPath);
                 }
