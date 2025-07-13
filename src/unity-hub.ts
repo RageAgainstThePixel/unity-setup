@@ -262,10 +262,10 @@ export async function Unity(unityVersion: UnityVersion, architecture: string, mo
         core.info(`Unity ${unityVersion.toString()} does not support arm64 architecture, falling back to x86_64`);
         architecture = 'x86_64';
     }
-    if (!unityVersion.changeset) {
+    if (!unityVersion.changeset && semver.major(unityVersion.version, { loose: true }) > 4) {
         unityVersion = await getLatestRelease(unityVersion.version, architecture === 'arm64');
     }
-    if (!unityVersion.changeset) {
+    if (!unityVersion.changeset && semver.major(unityVersion.version, { loose: true }) > 4) {
         core.debug(`Fetching changeset for Unity ${unityVersion.toString()}...`);
         unityVersion = await getChangeset(unityVersion);
     }
