@@ -38,9 +38,9 @@ if [ -z "${volume}" ]; then
     exit 1
 fi
 echo "selected volume: ${volume}"
-appPath=$(find "${volume}" -name "*.app" | head -n1)
-if [ -z "${appPath}" ]; then
-    echo "Failed to find Unity app in ${volume}"
+pkgPath=$(find "${volume}" -name "*.pkg" | head -n1)
+if [ -z "${pkgPath}" ]; then
+    echo "Failed to find Unity .app or .pkg in ${volume}"
     echo "Available files in ${volume}:"
     find "${volume}" -type f
     echo "Available directories in ${volume}:"
@@ -48,8 +48,10 @@ if [ -z "${appPath}" ]; then
     hdiutil unmount "${volume}" -quiet
     exit 1
 fi
-mkdir -p "${INSTALL_DIR}/Unity ${VERSION}"
-cp -vrf "${appPath}" "${INSTALL_DIR}/Unity ${VERSION}"
-sudo chmod -R 777 "${INSTALL_DIR}/Unity ${VERSION}/Unity.app"
+
+echo "Found .pkg installer: ${pkgPath}"
+installer -pkg "${pkgPath}" -showChoicesXML
+sudo installer -pkg "${pkgPath}" -target /
 hdiutil unmount "${volume}" -quiet
 echo "::endgroup::"
+exit 0
