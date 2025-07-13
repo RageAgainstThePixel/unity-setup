@@ -11,4 +11,8 @@ export class UnityVersion {
     const vB = b.version;
     return semver.compare(vA, vB, true);
   }
+
+  toString(): string {
+    return this.changeset ? `${this.version} (${this.changeset})` : this.version;
+  }
 }
