@@ -31,27 +31,35 @@ if [ -z "${volumes}" ]; then
 fi
 echo "Mounted volumes:"
 echo "${volumes}"
-volume=$(echo "${volumes}" | grep -o "/Volumes/.*" | head -n1)
+volume=$(echo "${volumes}" | grep -o "/Volumes/Unity Installer" | head -n1)
 if [ -z "${volume}" ]; then
     echo "Failed to mount ${downloadPath}"
     hdiutil unmount "${volume}" -quiet
     exit 1
 fi
 echo "selected volume: ${volume}"
-pkgPath=$(find "${volume}" -name "*.pkg" | head -n1)
+pkgPath=$(find "${volume}" -type f -name "*Unity.pkg" | head -n1)
 if [ -z "${pkgPath}" ]; then
-    echo "Failed to find Unity .app or .pkg in ${volume}"
+    echo "Failed to find Unity .pkg in ${volume}"
     echo "Available files in ${volume}:"
     find "${volume}" -type f
-    echo "Available directories in ${volume}:"
-    find "${volume}" -type d
     hdiutil unmount "${volume}" -quiet
     exit 1
 fi
 
 echo "Found .pkg installer: ${pkgPath}"
-installer -pkg "${pkgPath}" -showChoicesXML
-sudo installer -pkg "${pkgPath}" -target /
+sudo installer -pkg "${pkgPath}" -target / -verboseR
+UNITY_APP_PATH="/Applications/Unity"
+TARGET_PATH="${INSTALL_DIR}/Unity ${VERSION}"
+if [ -d "$UNITY_APP_PATH" ]; then
+    echo "Moving $UNITY_APP_PATH to $TARGET_PATH..."
+    mv "$UNITY_APP_PATH" "$TARGET_PATH"
+    echo "Unity moved to $TARGET_PATH."
+else
+    echo "$UNITY_APP_PATH not found after installation."
+    hdiutil unmount "${volume}" -quiet
+    exit 1
+fi
 hdiutil unmount "${volume}" -quiet
 echo "::endgroup::"
 exit 0
