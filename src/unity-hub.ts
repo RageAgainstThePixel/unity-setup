@@ -12,6 +12,7 @@ import fs = require('fs');
 
 const unityHub = init();
 let hubPath = unityHub.hubPath;
+const installedEditors: string[] = [];
 
 function init(): { hubPath: string, editorRootPath: string, editorFileExtension: string } {
     switch (process.platform) {
@@ -90,6 +91,9 @@ async function getInstallPath(): Promise<string> {
 
 async function addEditorPathToHub(editorPath: string): Promise<void> {
     await execUnityHub(["install-path", "--add", editorPath]);
+    if (!installedEditors.includes(editorPath)) {
+        installedEditors.push(editorPath);
+    }
 }
 
 async function installUnityHub(): Promise<string> {
@@ -266,10 +270,11 @@ export async function Unity(unityVersion: UnityVersion, architecture: string, mo
         core.info(`Unity ${unityVersion.toString()} does not support arm64 architecture, falling back to x86_64`);
         architecture = 'x86_64';
     }
-    if (!unityVersion.changeset && semver.major(unityVersion.version, { loose: true }) > 4) {
+    const isModernEditor = semver.major(unityVersion.version, { loose: true }) > 4;
+    if (!unityVersion.changeset && isModernEditor) {
         unityVersion = await getLatestRelease(unityVersion.version, architecture === 'arm64');
     }
-    if (!unityVersion.changeset && semver.major(unityVersion.version, { loose: true }) > 4) {
+    if (!unityVersion.changeset && isModernEditor) {
         core.debug(`Fetching changeset for Unity ${unityVersion.toString()}...`);
         unityVersion = await getChangeset(unityVersion);
     }
@@ -287,6 +292,9 @@ export async function Unity(unityVersion: UnityVersion, architecture: string, mo
     }
     await fs.promises.access(editorPath, fs.constants.X_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
+    if (!isModernEditor) {
+        return editorPath;
+    }
     try {
         core.startGroup(`Checking installed modules for Unity ${unityVersion.toString()}...`);
         const [installedModules, additionalModules] = await checkEditorModules(editorPath, unityVersion.version, architecture, modules);
@@ -404,29 +412,35 @@ async function installUnity(unityVersion: UnityVersion, architecture: string, mo
 }
 
 async function installUnity4x(unityVersion: UnityVersion): Promise<void> {
-    const installPath = await getInstallPath();
+    const installDir = await getInstallPath();
     switch (process.platform) {
         case 'linux':
             throw new Error(`Unity ${unityVersion.toString()} is not supported on Linux!`);
         case 'win32':
             {
-                const scriptPath = path.join(__dirname, 'unity-editor-installer.ps1');
-                const exitCode = await exec.exec('pwsh', [scriptPath, unityVersion.version, installPath]);
-                if (exitCode !== 0) {
-                    throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
+                const installPath = path.join(installDir, `Unity ${unityVersion.version}`, 'Editor');
+                if (!fs.existsSync(installPath)) {
+                    const scriptPath = path.join(__dirname, 'unity-editor-installer.ps1');
+                    const exitCode = await exec.exec('pwsh', [scriptPath, unityVersion.version, installDir]);
+                    if (exitCode !== 0) {
+                        throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
+                    }
                 }
-                await addEditorPathToHub(path.join(installPath, `Unity ${unityVersion.version}`, 'Editor'));
+                await addEditorPathToHub(installPath);
                 break;
             }
         case 'darwin':
             {
-                const scriptPath = path.join(__dirname, 'unity-editor-installer.sh');
-                await fs.promises.chmod(scriptPath, 0o755);
-                const exitCode = await exec.exec('sh', [scriptPath, unityVersion.version, installPath]);
-                if (exitCode !== 0) {
-                    throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
+                const installPath = path.join(installDir, `Unity ${unityVersion.version}`, 'Unity.app');
+                if (!fs.existsSync(installPath)) {
+                    const scriptPath = path.join(__dirname, 'unity-editor-installer.sh');
+                    await fs.promises.chmod(scriptPath, 0o755);
+                    const exitCode = await exec.exec('sh', [scriptPath, unityVersion.version, installDir]);
+                    if (exitCode !== 0) {
+                        throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
+                    }
                 }
-                await addEditorPathToHub(path.join(installPath, `Unity ${unityVersion.version}`, 'Unity.app'));
+                await addEditorPathToHub(installPath);
                 break;
             }
     }
@@ -469,6 +483,11 @@ async function checkInstalledEditors(version: string, architecture: string, fail
         }
         if (match.groups.editorPath.includes(`-${architecture}`)) {
             editorPath = match.groups.editorPath;
+        }
+    }
+    for (const editor of installedEditors) {
+        if (editor.includes(version)) {
+            editorPath = editor;
         }
     }
     if (!editorPath) {
