@@ -35035,7 +35035,7 @@ class UnityVersion {
     static compare(a, b) {
         const vA = a.version;
         const vB = b.version;
-        return semver.compare(vA, vB) || vA.localeCompare(vB);
+        return semver.compare(vA, vB, true);
     }
 }
 exports.UnityVersion = UnityVersion;
