@@ -17,13 +17,14 @@ if (-not $installDir) {
 Write-Host "::group::Installing Unity $version..."
 $installerUrl = "https://beta.unity3d.com/download/UnitySetup-$version.exe"
 $installerPath = "$env:TEMP\UnitySetup-$version.exe"
+$wc = New-Object System.Net.WebClient
 Write-Host "Downloading `"$installerUrl`" to `"$installerPath`"..."
-Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+$wc.DownloadFile($installerUrl, $installerPath)
 if (-not (Test-Path $installerPath)) {
     Write-Host "Error: Failed to download Unity installer."
     exit 1
 }
-Write-Host "[command]pwsh "$installerPath" /S /D=$installDir/Unity $version"
+Write-Host "[command]pwsh `"$installerPath`" /S /D=$installDir/Unity $version"
 try {
     Start-Process -FilePath $installerPath -ArgumentList "/S /D=$installDir/Unity $version" -Wait -NoNewWindow
     if ($LASTEXITCODE -ne 0) {

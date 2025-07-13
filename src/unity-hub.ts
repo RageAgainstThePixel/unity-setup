@@ -426,7 +426,9 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<void> {
                         throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
                     }
                 }
-                await addEditorPathToHub(installPath);
+                if (!installedEditors.includes(installPath)) {
+                    installedEditors.push(installPath);
+                }
                 break;
             }
         case 'darwin':
@@ -440,7 +442,9 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<void> {
                         throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
                     }
                 }
-                await addEditorPathToHub(installPath);
+                if (!installedEditors.includes(installPath)) {
+                    installedEditors.push(installPath);
+                }
                 break;
             }
     }

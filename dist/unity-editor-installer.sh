@@ -18,20 +18,34 @@ fi
 url="https://beta.unity3d.com/download/unity-${VERSION}.dmg"
 downloadPath="${RUNNER_TEMP}/unity-${VERSION}.dmg"
 echo "::group::Installing Unity ${VERSION}..."
-echo "Downloading Unity Hub from ${url} to ${downloadPath}..."
+echo "Downloading Unity from ${url} to ${downloadPath}..."
 wget -qO "${downloadPath}" "${url}"
 if [ ! -f "${downloadPath}" ]; then
     echo "Failed to download Unity ${VERSION}"
     exit 1
 fi
-volume=$(hdiutil attach "${downloadPath}" -nobrowse | grep -o "/Volumes/.*" | head -n1)
-if [ -z "${volume}" ]; then
+volumes=$(hdiutil attach "${downloadPath}" -nobrowse | grep -o "/Volumes/.*")
+if [ -z "${volumes}" ]; then
     echo "Failed to mount ${downloadPath}"
     exit 1
 fi
+echo "Mounted volumes:"
+echo "${volumes}"
+volume=$(echo "${volumes}" | grep -o "/Volumes/.*" | head -n1)
+if [ -z "${volume}" ]; then
+    echo "Failed to mount ${downloadPath}"
+    hdiutil unmount "${volume}" -quiet
+    exit 1
+fi
+echo "selected volume: ${volume}"
 appPath=$(find "${volume}" -name "*.app" | head -n1)
 if [ -z "${appPath}" ]; then
     echo "Failed to find Unity app in ${volume}"
+    echo "Available files in ${volume}:"
+    find "${volume}" -type f
+    echo "Available directories in ${volume}:"
+    find "${volume}" -type d
+    hdiutil unmount "${volume}" -quiet
     exit 1
 fi
 mkdir -p "${INSTALL_DIR}/Unity ${VERSION}"
