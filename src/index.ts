@@ -11,11 +11,9 @@ const main = async () => {
         }
         const unityHubPath = await unityHub.Get();
         core.exportVariable('UNITY_HUB_PATH', unityHubPath);
-
-        if (installPath.length > 0) {
+        if (installPath && installPath.length > 0) {
             await unityHub.SetInstallPath(installPath);
         }
-
         const editors = [];
         for (const [version, changeset] of versions) {
             const unityEditorPath = await unityHub.Unity(version, changeset, architecture, modules);

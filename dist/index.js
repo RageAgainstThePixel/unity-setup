@@ -34969,12 +34969,14 @@ async function getChangeset(version) {
     return null;
 }
 async function removePath(targetPath) {
-    core.startGroup(`deleting ${targetPath}...`);
-    try {
-        await fs.promises.rm(targetPath, { recursive: true, force: true });
-    }
-    finally {
-        core.endGroup();
+    if (targetPath && fs.existsSync(targetPath)) {
+        core.startGroup(`deleting ${targetPath}...`);
+        try {
+            await fs.promises.rm(targetPath, { recursive: true, force: true });
+        }
+        finally {
+            core.endGroup();
+        }
     }
 }
 
@@ -45592,7 +45594,7 @@ const main = async () => {
         }
         const unityHubPath = await unityHub.Get();
         core.exportVariable('UNITY_HUB_PATH', unityHubPath);
-        if (installPath.length > 0) {
+        if (installPath && installPath.length > 0) {
             await unityHub.SetInstallPath(installPath);
         }
         const editors = [];
