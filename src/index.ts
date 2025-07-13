@@ -13,7 +13,7 @@ const main = async () => {
         core.exportVariable('UNITY_HUB_PATH', unityHubPath);
 
         if (installPath.length > 0) {
-            await unityHub.setInstallPath(installPath);
+            await unityHub.SetInstallPath(installPath);
         }
 
         const editors = [];
