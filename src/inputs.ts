@@ -1,9 +1,9 @@
+import { UnityVersion } from './unity-version';
 import { FindGlobPattern } from './utility';
 import core = require('@actions/core');
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
-import { UnityVersion } from './unity-version';
 
 export async function ValidateInputs(): Promise<[UnityVersion[], string | undefined, string[], string | undefined, string]> {
     const modules: string[] = [];
@@ -188,15 +188,22 @@ function getUnityVersionsFromInput(): UnityVersion[] {
     if (!inputVersions || inputVersions.length == 0) {
         return versions;
     }
-    const versionRegEx = new RegExp(/(?<version>(?:(?<major>\d+)\.?)(?:(?<minor>\d+)\.?)?(?:(?<patch>\d+[abcfpx]\d+)?\b))\s?(?:\((?<changeset>\w+)\))?/g);
+    // Only match full Unity version strings like 4.7.2, 2021.3.15f1, 2022.1.0b3, etc.
+    // This regex requires at least major.minor.patch, and optionally a Unity suffix and changeset
+    const versionRegEx = /(?<version>\d+\.\d+\.\d+(?:[abcfpx]\d+)?)(?:\s*\((?<changeset>\w+)\))?/g;
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
     core.debug(`Unity Versions from input:`);
     for (const match of matches) {
+        if (!match.groups || !match.groups.version) { continue; }
         const version = match.groups.version.replace(/\.$/, '');
         const changeset = match.groups.changeset;
-        const changesetStr = changeset ? ` (${changeset})` : '';
-        core.debug(`${version}${changesetStr}`);
-        versions.push(new UnityVersion(version, changeset));
+        const unityVersion = new UnityVersion(version, changeset);
+        core.debug(`${unityVersion.toString()}`);
+        try {
+            versions.push(unityVersion);
+        } catch (e) {
+            core.error(`Invalid Unity version: ${unityVersion.toString()}\nError: ${e.message}`);
+        }
     }
     return versions;
 }

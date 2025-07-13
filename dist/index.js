@@ -34119,12 +34119,12 @@ function wrappy (fn, cb) {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ValidateInputs = ValidateInputs;
+const unity_version_1 = __nccwpck_require__(5988);
 const utility_1 = __nccwpck_require__(5418);
 const core = __nccwpck_require__(2186);
 const path = __nccwpck_require__(1017);
 const os = __nccwpck_require__(2037);
 const fs = __nccwpck_require__(7147);
-const unity_version_1 = __nccwpck_require__(5988);
 async function ValidateInputs() {
     const modules = [];
     const architecture = core.getInput('architecture') || getInstallationArch();
@@ -34310,15 +34310,23 @@ function getUnityVersionsFromInput() {
     if (!inputVersions || inputVersions.length == 0) {
         return versions;
     }
-    const versionRegEx = new RegExp(/(?<version>(?:(?<major>\d+)\.?)(?:(?<minor>\d+)\.?)?(?:(?<patch>\d+[abcfpx]\d+)?\b))\s?(?:\((?<changeset>\w+)\))?/g);
+    const versionRegEx = /(?<version>\d+\.\d+\.\d+(?:[abcfpx]\d+)?)(?:\s*\((?<changeset>\w+)\))?/g;
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
     core.debug(`Unity Versions from input:`);
     for (const match of matches) {
+        if (!match.groups || !match.groups.version) {
+            continue;
+        }
         const version = match.groups.version.replace(/\.$/, '');
         const changeset = match.groups.changeset;
-        const changesetStr = changeset ? ` (${changeset})` : '';
-        core.debug(`${version}${changesetStr}`);
-        versions.push(new unity_version_1.UnityVersion(version, changeset));
+        const unityVersion = new unity_version_1.UnityVersion(version, changeset);
+        core.debug(`${unityVersion.toString()}`);
+        try {
+            versions.push(unityVersion);
+        }
+        catch (e) {
+            core.error(`Invalid Unity version: ${unityVersion.toString()}\nError: ${e.message}`);
+        }
     }
     return versions;
 }
