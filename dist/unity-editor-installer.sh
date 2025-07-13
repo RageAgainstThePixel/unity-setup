@@ -31,11 +31,11 @@ if [ -z "${volume}" ]; then
 fi
 appPath=$(find "${volume}" -name "*.app" | head -n1)
 if [ -z "${appPath}" ]; then
-    echo "Failed to find Unity Hub app in ${volume}"
+    echo "Failed to find Unity app in ${volume}"
     exit 1
 fi
 mkdir -p "${INSTALL_DIR}/Unity ${VERSION}"
 cp -vrf "${appPath}" "${INSTALL_DIR}/Unity ${VERSION}"
-sudo chmod -R 777 "${INSTALL_DIR}/Unity ${VERSION}/Unity Hub.app"
-hdiutil unmount "$volume" -quiet
+sudo chmod -R 777 "${INSTALL_DIR}/Unity ${VERSION}/Unity.app"
+hdiutil unmount "${volume}" -quiet
 echo "::endgroup::"
