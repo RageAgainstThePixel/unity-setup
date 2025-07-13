@@ -76,6 +76,11 @@ export async function Get(): Promise<string> {
     return hubPath;
 }
 
+export async function SetInstallPath(installPath: string): Promise<void> {
+    await fs.promises.mkdir(installPath, { recursive: true });
+    await execUnityHub(["install-path", "--set", installPath]);
+}
+
 async function installUnityHub(): Promise<string> {
     let exitCode = undefined;
     switch (process.platform) {
@@ -244,11 +249,6 @@ const retryErrorMessages = [
     'Editor already installed in this location',
     'failed to download. Error given: Request timeout'
 ];
-
-export async function setInstallPath(installPath: string): Promise<void> {
-    await fs.promises.mkdir(installPath, { recursive: true });
-    await execUnityHub(["install-path", "--set", installPath]);
-}
 
 export async function Unity(version: string, changeset: string, architecture: string, modules: string[]): Promise<string> {
     if (os.arch() == 'arm64' && !isArmCompatible(version)) {
@@ -500,11 +500,13 @@ async function getChangeset(version: string): Promise<string | null> {
     return null;
 }
 
-async function removePath(targetPath: string): Promise<void> {
-    core.startGroup(`deleting ${targetPath}...`);
-    try {
-        await fs.promises.rm(targetPath, { recursive: true, force: true });
-    } finally {
-        core.endGroup();
+async function removePath(targetPath: string | undefined): Promise<void> {
+    if (targetPath && targetPath.length > 0) {
+        core.startGroup(`deleting ${targetPath}...`);
+        try {
+            await fs.promises.rm(targetPath, { recursive: true, force: true });
+        } finally {
+            core.endGroup();
+        }
     }
 }

@@ -10,7 +10,7 @@ A GitHub Action for setting up the [Unity Game Engine](https://unity.com) on Git
 strategy:
   matrix:
       os: [ubuntu-latest, windows-latest, macos-latest]
-      unity-versions:
+      unity-version:
         - 'in version file'
         - 2019.4.40f1
         - 2020.x
@@ -34,7 +34,7 @@ steps:
   - uses: RageAgainstThePixel/unity-setup@v1
     with:
       version-file: 'path/to/your/ProjectSettings.ProjectVersion.txt'
-      unity-version: ${{ matrix.unity-versions }} # overrides version in version-file
+      unity-version: ${{ matrix.unity-version }} # overrides version in version-file
       build-targets: ${{ matrix.build-targets }}
       modules: ${{ matrix.modules }}
 
