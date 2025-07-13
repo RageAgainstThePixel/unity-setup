@@ -44,10 +44,10 @@ jobs:
             build-targets: StandaloneOSX Android iOS VisionOS
             modules: mac-server
           - os: ubuntu-latest
-            unity-version: 2017.4.40f1
+            unity-version: 2017.4.40f1 (6e14067f8a9a)
             modules: None
           - os: ubuntu-latest
-            unity-version: 2018.4.36f1
+            unity-version: 2018.4.36f1 (6cd387d23174)
             modules: None
         exclude:
           # Exclude Unity 5.x for linux as it is not supported
