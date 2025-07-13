@@ -1,4 +1,6 @@
 import { GetHubRootPath, GetEditorRootPath, ReadFileContents } from './utility';
+import { UnityReleasesClient } from '@rage-against-the-pixel/unity-releases-api'
+import { UnityVersion } from './unity-version';
 import asar = require('@electron/asar');
 import core = require('@actions/core');
 import exec = require('@actions/exec');
@@ -79,6 +81,11 @@ export async function Get(): Promise<string> {
 export async function SetInstallPath(installPath: string): Promise<void> {
     await fs.promises.mkdir(installPath, { recursive: true });
     await execUnityHub(["install-path", "--set", installPath]);
+}
+
+async function getInstallPath(): Promise<string> {
+    const result = await execUnityHub(["install-path", "--get"]);
+    return result.trim();
 }
 
 async function installUnityHub(): Promise<string> {
@@ -250,38 +257,35 @@ const retryErrorMessages = [
     'failed to download. Error given: Request timeout'
 ];
 
-export async function Unity(version: string, changeset: string, architecture: string, modules: string[]): Promise<string> {
-    if (os.arch() == 'arm64' && !isArmCompatible(version)) {
-        core.warning(`Unity ${version} does not support arm64 architecture, falling back to x86_64`);
+export async function Unity(unityVersion: UnityVersion, architecture: string, modules: string[]): Promise<string> {
+    if (os.arch() == 'arm64' && !isArmCompatible(unityVersion.version)) {
+        core.info(`Unity ${unityVersion.toString()} does not support arm64 architecture, falling back to x86_64`);
         architecture = 'x86_64';
     }
-    if (!changeset) {
-        const [latestVersion, latestChangeset] = await getLatestRelease(version, architecture === 'arm64');
-        version = latestVersion;
-        changeset = latestChangeset
+    if (!unityVersion.changeset) {
+        unityVersion = await getLatestRelease(unityVersion.version, architecture === 'arm64');
     }
-    if (!changeset) {
-        core.debug(`Fetching changeset for Unity ${version}...`);
-        changeset = await getChangeset(version);
+    if (!unityVersion.changeset) {
+        core.debug(`Fetching changeset for Unity ${unityVersion.toString()}...`);
+        unityVersion = await getChangeset(unityVersion);
     }
-    let editorPath = await checkInstalledEditors(version, architecture, false);
+    let editorPath = await checkInstalledEditors(unityVersion.version, architecture, false);
     if (!editorPath) {
         try {
-            await installUnity(version, changeset, architecture, modules);
+            await installUnity(unityVersion, architecture, modules);
         } catch (error) {
             if (retryErrorMessages.some(msg => error.message.includes(msg))) {
                 await removePath(editorPath);
-                await installUnity(version, changeset, architecture, modules);
+                await installUnity(unityVersion, architecture, modules);
             }
         }
-        editorPath = await checkInstalledEditors(version, architecture);
+        editorPath = await checkInstalledEditors(unityVersion.version, architecture);
     }
     await fs.promises.access(editorPath, fs.constants.X_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
     try {
-        const changesetStr = changeset ? ` (${changeset})` : '';
-        core.startGroup(`Checking installed modules for Unity ${version}${changesetStr}...`);
-        const [installedModules, additionalModules] = await checkEditorModules(editorPath, version, architecture, modules);
+        core.startGroup(`Checking installed modules for Unity ${unityVersion.toString()}...`);
+        const [installedModules, additionalModules] = await checkEditorModules(editorPath, unityVersion.version, architecture, modules);
         if (installedModules && installedModules.length > 0) {
             core.info(`Installed Modules:`);
             for (const module of installedModules) {
@@ -308,7 +312,7 @@ export async function Unity(version: string, changeset: string, architecture: st
     } catch (error) {
         if (error.message.includes(`No modules found`)) {
             removePath(editorPath);
-            await Unity(version, changeset, architecture, modules);
+            await Unity(unityVersion, architecture, modules);
         }
     } finally {
         core.endGroup();
@@ -316,7 +320,7 @@ export async function Unity(version: string, changeset: string, architecture: st
     return editorPath;
 }
 
-async function getLatestRelease(version: string, isSilicon: boolean): Promise<[string, string]> {
+async function getLatestRelease(version: string, isSilicon: boolean): Promise<UnityVersion> {
     const releases = (await execUnityHub([`editors`, `--releases`])).split('\n');
     const semVersion = semver.coerce(version);
     const validReleases = releases
@@ -331,7 +335,7 @@ async function getLatestRelease(version: string, isSilicon: boolean): Promise<[s
             (version.includes('b') && match.groups.version.includes('b')) ||
             match.groups.version.includes('f')) {
             core.info(`Found Unity ${match.groups.version}`);
-            return [match.groups.version, undefined];
+            return new UnityVersion(match.groups.version);
         }
     }
     core.debug(`Searching for Unity ${version} release from online releases list...`);
@@ -344,7 +348,7 @@ async function getLatestRelease(version: string, isSilicon: boolean): Promise<[s
     return await parseReleases(version, data);
 }
 
-async function parseReleases(version: string, data: string): Promise<[string, string]> {
+async function parseReleases(version: string, data: string): Promise<UnityVersion> {
     const releases = JSON.parse(data);
     core.debug(`Found ${releases.official.length} official releases...`);
     releases.official.sort((a: any, b: any) => semver.compare(a.version, b.version, true));
@@ -358,33 +362,67 @@ async function parseReleases(version: string, data: string): Promise<[string, st
             if (match && match.groups && match.groups.changeset) {
                 const changeset = match.groups.changeset;
                 core.debug(`Found Unity ${release.version} (${changeset})`);
-                return [release.version, changeset];
+                return new UnityVersion(release.version, changeset);
             }
         }
     }
     throw new Error(`Failed to find Unity ${version} release. Please provide a valid changeset.`);
 }
 
-async function installUnity(version: string, changeset: string, architecture: string, modules: string[]): Promise<void> {
-    core.startGroup(`Installing Unity ${version} (${changeset})...`);
-    const args = ['install', '--version', version];
-    if (changeset) {
-        args.push('--changeset', changeset);
+async function installUnity(unityVersion: UnityVersion, architecture: string, modules: string[]): Promise<void> {
+    if (semver.major(unityVersion.version, { loose: true }) === 4) {
+        return await installUnity4x(unityVersion);
+    }
+    core.startGroup(`Installing Unity ${unityVersion.toString()}...`);
+    const args = ['install', '--version', unityVersion.version];
+    if (unityVersion.changeset) {
+        args.push('--changeset', unityVersion.changeset);
     }
     if (architecture) {
         args.push('-a', architecture);
     }
-    for (const module of modules) {
-        core.info(`  > with module: ${module}`);
-        args.push('-m', module);
+    if (modules.length > 0) {
+        for (const module of modules) {
+            core.info(`  > with module: ${module}`);
+            args.push('-m', module);
+        }
+
+        args.push('--cm');
     }
     try {
-        const output = await execUnityHub([...args, '--cm']);
+        const output = await execUnityHub(args);
         if (output.includes(`Error while installing an editor or a module from changeset`)) {
-            throw new Error(`Failed to install Unity ${version} (${changeset})`);
+            throw new Error(`Failed to install Unity ${unityVersion.toString()}`);
         }
     } finally {
         core.endGroup();
+    }
+}
+
+async function installUnity4x(unityVersion: UnityVersion): Promise<void> {
+    const installPath = await getInstallPath();
+    switch (process.platform) {
+        case 'linux':
+            throw new Error(`Unity ${unityVersion.toString()} is not supported on Linux!`);
+        case 'win32':
+            {
+                const scriptPath = path.join(__dirname, 'unity-editor-installer.ps1');
+                const exitCode = await exec.exec('pwsh', [scriptPath, unityVersion.version, installPath]);
+                if (exitCode !== 0) {
+                    throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
+                }
+                break;
+            }
+        case 'darwin':
+            {
+                const scriptPath = path.join(__dirname, 'unity-editor-installer.sh');
+                await fs.promises.chmod(scriptPath, 0o755);
+                const exitCode = await exec.exec('sh', [scriptPath, unityVersion.version, installPath]);
+                if (exitCode !== 0) {
+                    throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
+                }
+                break;
+            }
     }
 }
 
@@ -484,9 +522,9 @@ async function getModulesContent(modulesPath: string): Promise<any> {
     return JSON.parse(modulesContent);
 }
 
-async function getChangeset(version: string): Promise<string | null> {
-    version = version.split(/[abf]/)[0];
-    const url = `https://unity.com/releases/editor/whats-new/${version}`;
+async function getChangeset(unityVersion: UnityVersion): Promise<UnityVersion> {
+    const splitVersion = unityVersion.version.split(/[abf]/)[0];
+    const url = `https://unity.com/releases/editor/whats-new/${splitVersion}`;
     const response = await fetch(url);
     if (!response.ok) {
         throw new Error(`Failed to fetch changeset [${response.status}] "${url}"`);
@@ -494,10 +532,10 @@ async function getChangeset(version: string): Promise<string | null> {
     const data = await response.text();
     const match = data.match(/unityhub:\/\/(?<version>\d+\.\d+\.\d+[fab]?\d*)\/(?<changeset>[a-zA-Z0-9]+)/);
     if (match && match.groups && match.groups.changeset) {
-        return match.groups.changeset;
+        return new UnityVersion(match.groups.version, match.groups.changeset);
     }
-    core.error(`Failed to find changeset for Unity ${version}`);
-    return null;
+    core.error(`Failed to find changeset for Unity ${unityVersion.toString()}`);
+    return unityVersion;
 }
 
 async function removePath(targetPath: string | undefined): Promise<void> {

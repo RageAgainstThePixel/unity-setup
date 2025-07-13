@@ -15,14 +15,14 @@ const main = async () => {
             await unityHub.SetInstallPath(installPath);
         }
         const editors = [];
-        for (const [version, changeset] of versions) {
-            const unityEditorPath = await unityHub.Unity(version, changeset, architecture, modules);
+        for (const unityVersion of versions) {
+            const unityEditorPath = await unityHub.Unity(unityVersion, architecture, modules);
             // for now just export the highest installed version
             core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath);
             if (modules.includes('android') && unityProjectPath !== undefined) {
                 await CheckAndroidSdkInstalled(unityEditorPath, unityProjectPath);
             }
-            editors.push([version, unityEditorPath]);
+            editors.push([unityVersion.version, unityEditorPath]);
         }
         const installedEditors = editors.map(([version, path]) => `\"${version}\":\"${path}\"`).join(',');
         core.exportVariable('UNITY_EDITORS', `[${installedEditors}]`);

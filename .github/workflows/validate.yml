@@ -27,6 +27,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         unity-version:
           - None
+          - 4.7.2
           - 5.6.7f1 (e80cc3114ac1)
           - 2020.3
           - 2021.3.x
@@ -56,6 +57,9 @@ jobs:
           # Exclude Unity 5.x for linux as it is not supported
           - os: ubuntu-latest
             unity-version: '5.6.7f1 (e80cc3114ac1)'
+          - os: ubuntu-latest
+            unity-version: '4.7.2'
+            modules: None
     steps:
       - uses: actions/checkout@v4
 

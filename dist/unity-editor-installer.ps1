@@ -1,0 +1,23 @@
+# This script is used to download and install older unity versions.
+# https://discussions.unity.com/t/early-unity-versions-downloads/927331
+# input arguments:
+# 1. Unity Editor Version (Required)
+# 2. Install Directory (Required)
+# url example: https://beta.unity3d.com/download/UnitySetup-4.7.2.exe
+$version = $args[0]
+$installDir = $args[1]
+if (-not $version) {
+    Write-Host "Error: Unity version is required."
+    exit 1
+}
+if (-not $installDir) {
+    Write-Host "Error: Install directory is required."
+    exit 1
+}
+Write-Host "::group::Installing Unity $version..."
+$installerUrl = "https://beta.unity3d.com/download/UnitySetup-$version.exe"
+$installerPath = "$env:TEMP\UnitySetup-$version.exe"
+Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+Start-Process -FilePath $installerPath -ArgumentList "/S /D=$installDir/Unity $version" -Wait -NoNewWindow
+Remove-Item -Path $installerPath -Force
+Write-Host "::endgroup::"

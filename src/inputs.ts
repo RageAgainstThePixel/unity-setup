@@ -1,11 +1,11 @@
 import { FindGlobPattern } from './utility';
 import core = require('@actions/core');
-import semver = require('semver');
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
+import { UnityVersion } from './unity-version';
 
-export async function ValidateInputs(): Promise<[string[][], string | undefined, string[], string | undefined, string]> {
+export async function ValidateInputs(): Promise<[UnityVersion[], string | undefined, string[], string | undefined, string]> {
     const modules: string[] = [];
     const architecture = core.getInput('architecture') || getInstallationArch();
     if (architecture) {
@@ -48,16 +48,15 @@ export async function ValidateInputs(): Promise<[string[][], string | undefined,
     if (versionFilePath) {
         core.info(`versionFilePath:\n  > "${versionFilePath}"`);
         core.info(`Unity Project Path:\n  > "${unityProjectPath}"`);
-        const [unityVersion, changeset] = await getUnityVersionFromFile(versionFilePath);
+        const unityVersion = await getUnityVersionFromFile(versionFilePath);
         if (versions.length === 0) {
-            versions.push([unityVersion, changeset]);
+            versions.push(unityVersion);
         }
     }
-    versions.sort(([a], [b]) => semver.compare(a, b, true));
+    versions.sort(UnityVersion.compare);
     core.info(`Unity Versions:`);
-    for (const [version, changeset] of versions) {
-        const changesetStr = changeset ? ` (${changeset})` : '';
-        core.info(`  > ${version}${changesetStr}`);
+    for (const unityVersion of versions) {
+        core.info(`  > ${unityVersion.toString()}`);
     }
     let installPath = core.getInput('install-path');
     if (installPath) {
@@ -181,8 +180,8 @@ async function getVersionFilePath(): Promise<string | undefined> {
     return undefined;
 }
 
-function getUnityVersionsFromInput(): string[][] {
-    const versions = [];
+function getUnityVersionsFromInput(): UnityVersion[] {
+    const versions: UnityVersion[] = [];
     const inputVersions = core.getInput('unity-version');
     if (!inputVersions || inputVersions.length == 0) {
         return versions;
@@ -195,12 +194,12 @@ function getUnityVersionsFromInput(): string[][] {
         const changeset = match.groups.changeset;
         const changesetStr = changeset ? ` (${changeset})` : '';
         core.debug(`${version}${changesetStr}`);
-        versions.push([version, changeset]);
+        versions.push(new UnityVersion(version, changeset));
     }
     return versions;
 }
 
-async function getUnityVersionFromFile(versionFilePath: string): Promise<[string, string]> {
+async function getUnityVersionFromFile(versionFilePath: string): Promise<UnityVersion> {
     const versionString = await fs.promises.readFile(versionFilePath, 'utf8');
     core.debug(`ProjectSettings.txt:\n${versionString}`);
     const match = versionString.match(/m_EditorVersionWithRevision: (?<version>(?:(?<major>\d+)\.)?(?:(?<minor>\d+)\.)?(?:(?<patch>\d+[fab]\d+)\b))\s?(?:\((?<changeset>\w+)\))?/);
@@ -213,5 +212,5 @@ async function getUnityVersionFromFile(versionFilePath: string): Promise<[string
     if (!match.groups.changeset) {
         throw Error(`No changeset group found!`);
     }
-    return [match.groups.version, match.groups.changeset];
+    return new UnityVersion(match.groups.version, match.groups.changeset);
 }
