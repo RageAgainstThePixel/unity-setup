@@ -88,6 +88,10 @@ async function getInstallPath(): Promise<string> {
     return result.trim();
 }
 
+async function addEditorPathToHub(editorPath: string): Promise<void> {
+    await execUnityHub(["install-path", "--add", editorPath]);
+}
+
 async function installUnityHub(): Promise<string> {
     let exitCode = undefined;
     switch (process.platform) {
@@ -411,6 +415,7 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<void> {
                 if (exitCode !== 0) {
                     throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
                 }
+                await addEditorPathToHub(path.join(installPath, `Unity ${unityVersion.version}`, 'Editor'));
                 break;
             }
         case 'darwin':
@@ -421,6 +426,7 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<void> {
                 if (exitCode !== 0) {
                     throw new Error(`Failed to install Unity ${unityVersion.toString()}: ${exitCode}`);
                 }
+                await addEditorPathToHub(path.join(installPath, `Unity ${unityVersion.version}`, 'Unity.app'));
                 break;
             }
     }

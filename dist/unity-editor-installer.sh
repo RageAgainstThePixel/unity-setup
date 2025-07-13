@@ -19,10 +19,22 @@ URL="https://beta.unity3d.com/download/unity-${VERSION}.dmg"
 echo "::group::Installing Unity ${VERSION}..."
 curl -L -o "unity-${VERSION}.dmg" "$URL"
 echo "Mounting DMG..."
-hdiutil attach "unity-${VERSION}.dmg"
+MOUNT_OUTPUT=$(hdiutil attach "unity-${VERSION}.dmg")
+MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | grep -o '/Volumes/[^ ]*' | head -n 1)
+if [ -z "$MOUNT_POINT" ]; then
+    echo "Failed to detect DMG mount point."
+    exit 1
+fi
+echo "DMG mounted at $MOUNT_POINT"
+UNITY_APP_PATH=$(find "$MOUNT_POINT" -name 'Unity.app' -type d -maxdepth 2 | head -n 1)
+if [ -z "$UNITY_APP_PATH" ]; then
+    echo "Unity.app not found in mounted DMG."
+    hdiutil detach "$MOUNT_POINT"
+    exit 1
+fi
 echo "Installing Unity ${VERSION}..."
 mkdir -p "$INSTALL_DIR/Unity ${VERSION}"
-sudo cp -R "/Volumes/Unity ${VERSION}/Unity.app" "$INSTALL_DIR/Unity ${VERSION}/Unity.app"
+sudo cp -R "$UNITY_APP_PATH" "$INSTALL_DIR/Unity ${VERSION}/Unity.app"
 echo "Unmounting DMG..."
-hdiutil detach "/Volumes/Unity ${VERSION}"
+hdiutil detach "$MOUNT_POINT"
 echo "::endgroup::"
