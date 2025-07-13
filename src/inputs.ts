@@ -53,7 +53,9 @@ export async function ValidateInputs(): Promise<[UnityVersion[], string | undefi
             versions.push(unityVersion);
         }
     }
-    versions.sort(UnityVersion.compare);
+    if (versions.length > 1) {
+        versions.sort(UnityVersion.compare);
+    }
     core.info(`Unity Versions:`);
     for (const unityVersion of versions) {
         core.info(`  > ${unityVersion.toString()}`);
@@ -186,7 +188,7 @@ function getUnityVersionsFromInput(): UnityVersion[] {
     if (!inputVersions || inputVersions.length == 0) {
         return versions;
     }
-    const versionRegEx = new RegExp(/(?<version>(?:(?<major>\d+)\.?)(?:(?<minor>\d+)\.?)?(?:(?<patch>\d+[fab]\d+)?\b))\s?(?:\((?<changeset>\w+)\))?/g);
+    const versionRegEx = new RegExp(/(?<version>(?:(?<major>\d+)\.?)(?:(?<minor>\d+)\.?)?(?:(?<patch>\d+[abcfpx]\d+)?\b))\s?(?:\((?<changeset>\w+)\))?/g);
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
     core.debug(`Unity Versions from input:`);
     for (const match of matches) {
@@ -202,7 +204,7 @@ function getUnityVersionsFromInput(): UnityVersion[] {
 async function getUnityVersionFromFile(versionFilePath: string): Promise<UnityVersion> {
     const versionString = await fs.promises.readFile(versionFilePath, 'utf8');
     core.debug(`ProjectSettings.txt:\n${versionString}`);
-    const match = versionString.match(/m_EditorVersionWithRevision: (?<version>(?:(?<major>\d+)\.)?(?:(?<minor>\d+)\.)?(?:(?<patch>\d+[fab]\d+)\b))\s?(?:\((?<changeset>\w+)\))?/);
+    const match = versionString.match(/m_EditorVersionWithRevision: (?<version>(?:(?<major>\d+)\.)?(?:(?<minor>\d+)\.)?(?:(?<patch>\d+[abcfpx]\d+)\b))\s?(?:\((?<changeset>\w+)\))?/);
     if (!match) {
         throw Error(`No version match found!`);
     }
