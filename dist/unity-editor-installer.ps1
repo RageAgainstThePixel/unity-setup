@@ -24,9 +24,9 @@ if (-not (Test-Path $installerPath)) {
     Write-Host "Error: Failed to download Unity installer."
     exit 1
 }
-Write-Host "[command]pwsh `"$installerPath`" /S /D=$installDir/Unity $version"
+Write-Host "[command]pwsh `"$installerPath`" /S /D=$installDir\Unity $version"
 try {
-    Start-Process -FilePath $installerPath -ArgumentList "/S /D=$installDir/Unity $version" -Wait -NoNewWindow
+    Start-Process -FilePath $installerPath -ArgumentList "/S /D=$installDir\Unity $version" -Wait -NoNewWindow
 } catch {
     Write-Host "Error: Failed to start Unity installer."
     exit 1

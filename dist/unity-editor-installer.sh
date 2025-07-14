@@ -54,8 +54,8 @@ TARGET_PATH="${INSTALL_DIR}/Unity ${VERSION}"
 if [ -d "$UNITY_APP_PATH" ]; then
     echo "Moving $UNITY_APP_PATH to $TARGET_PATH..."
     mkdir -p "$(dirname "$TARGET_PATH")"
-    mv "$UNITY_APP_PATH" "$TARGET_PATH"
-    echo "Unity moved to $TARGET_PATH."
+    cp -R "$UNITY_APP_PATH" "$TARGET_PATH"
+    rm -rf "$UNITY_APP_PATH"
     chmod -R 777 "$TARGET_PATH"
 else
     echo "$UNITY_APP_PATH not found after installation."

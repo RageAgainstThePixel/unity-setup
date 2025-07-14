@@ -492,6 +492,7 @@ async function checkInstalledEditors(version: string, architecture: string, fail
         }
     }
     for (const editor of installedEditors) {
+        core.info(`Checking installed editor: ${editor}`);
         if (editor.includes(version)) {
             editorPath = editor;
         }
