@@ -15,4 +15,8 @@ export class UnityVersion {
   toString(): string {
     return this.changeset ? `${this.version} (${this.changeset})` : this.version;
   }
+
+  isLegacy(): boolean {
+    return semver.major(this.version, { loose: true }) === 4;
+  }
 }

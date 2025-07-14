@@ -12,7 +12,6 @@ import fs = require('fs');
 
 const unityHub = init();
 let hubPath = unityHub.hubPath;
-const installedEditors: string[] = [];
 
 function init(): { hubPath: string, editorRootPath: string, editorFileExtension: string } {
     switch (process.platform) {
@@ -90,10 +89,8 @@ async function getInstallPath(): Promise<string> {
 }
 
 async function addEditorPathToHub(editorPath: string): Promise<void> {
+    await fs.promises.access(editorPath, fs.constants.R_OK);
     await execUnityHub(["install-path", "--add", editorPath]);
-    if (!installedEditors.includes(editorPath)) {
-        installedEditors.push(editorPath);
-    }
 }
 
 async function installUnityHub(): Promise<string> {
@@ -270,29 +267,29 @@ export async function Unity(unityVersion: UnityVersion, architecture: string, mo
         core.info(`Unity ${unityVersion.toString()} does not support arm64 architecture, falling back to x86_64`);
         architecture = 'x86_64';
     }
-    const isModernEditor = semver.major(unityVersion.version, { loose: true }) > 4;
-    if (!unityVersion.changeset && isModernEditor) {
+    if (!unityVersion.changeset && !unityVersion.isLegacy()) {
         unityVersion = await getLatestRelease(unityVersion.version, architecture === 'arm64');
     }
-    if (!unityVersion.changeset && isModernEditor) {
+    if (!unityVersion.changeset && !unityVersion.isLegacy()) {
         core.debug(`Fetching changeset for Unity ${unityVersion.toString()}...`);
         unityVersion = await getChangeset(unityVersion);
     }
     let editorPath = await checkInstalledEditors(unityVersion.version, architecture, false);
+    let installPath = undefined;
     if (!editorPath) {
         try {
-            await installUnity(unityVersion, architecture, modules);
+            installPath = await installUnity(unityVersion, architecture, modules);
         } catch (error) {
             if (retryErrorMessages.some(msg => error.message.includes(msg))) {
                 await removePath(editorPath);
-                await installUnity(unityVersion, architecture, modules);
+                installPath = await installUnity(unityVersion, architecture, modules);
             }
         }
-        editorPath = await checkInstalledEditors(unityVersion.version, architecture);
+        editorPath = await checkInstalledEditors(unityVersion.version, architecture, true, installPath);
     }
     await fs.promises.access(editorPath, fs.constants.X_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
-    if (!isModernEditor) {
+    if (unityVersion.isLegacy()) {
         return editorPath;
     }
     try {
@@ -381,8 +378,8 @@ async function parseReleases(version: string, data: string): Promise<UnityVersio
     throw new Error(`Failed to find Unity ${version} release. Please provide a valid changeset.`);
 }
 
-async function installUnity(unityVersion: UnityVersion, architecture: string, modules: string[]): Promise<void> {
-    if (semver.major(unityVersion.version, { loose: true }) === 4) {
+async function installUnity(unityVersion: UnityVersion, architecture: string, modules: string[]): Promise<string | undefined> {
+    if (unityVersion.isLegacy()) {
         return await installUnity4x(unityVersion);
     }
     core.startGroup(`Installing Unity ${unityVersion.toString()}...`);
@@ -411,7 +408,7 @@ async function installUnity(unityVersion: UnityVersion, architecture: string, mo
     }
 }
 
-async function installUnity4x(unityVersion: UnityVersion): Promise<void> {
+async function installUnity4x(unityVersion: UnityVersion): Promise<string> {
     const installDir = await getInstallPath();
     switch (process.platform) {
         case 'linux':
@@ -427,10 +424,7 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<void> {
                     }
                 }
                 await fs.promises.access(installPath, fs.constants.R_OK);
-                if (!installedEditors.includes(installPath)) {
-                    installedEditors.push(installPath);
-                }
-                break;
+                return installPath;
             }
         case 'darwin':
             {
@@ -444,10 +438,7 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<void> {
                     }
                 }
                 await fs.promises.access(installPath, fs.constants.R_OK);
-                if (!installedEditors.includes(installPath)) {
-                    installedEditors.push(installPath);
-                }
-                break;
+                return installPath;
             }
     }
 }
@@ -462,46 +453,55 @@ function isArmCompatible(version: string): boolean {
     return semver.compare(semVersion, '2021.0.0', true) >= 0;
 }
 
-async function checkInstalledEditors(version: string, architecture: string, failOnEmpty: boolean = true): Promise<string | undefined> {
+async function checkInstalledEditors(version: string, architecture: string, failOnEmpty: boolean, installPath: string | undefined = undefined): Promise<string | undefined> {
     let editorPath = undefined;
-    const output = await ListInstalledEditors();
-    if (output && output.trim().length > 0) {
-        const pattern = new RegExp(/(?<version>\d+\.\d+\.\d+[fab]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?, installed at (?<editorPath>.*)/, 'g');
-        const matches = [...output.matchAll(pattern)];
-        const versionMatches = matches.filter(match => match.groups.version === version);
-        if (versionMatches.length === 0) {
-            return undefined;
-        }
-        for (const match of versionMatches) {
-            if (!architecture) {
-                editorPath = match.groups.editorPath;
+    if (!installPath) {
+        const output = await ListInstalledEditors();
+        if (output && output.trim().length > 0) {
+            const pattern = new RegExp(/(?<version>\d+\.\d+\.\d+[fab]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?, installed at (?<editorPath>.*)/, 'g');
+            const matches = [...output.matchAll(pattern)];
+            const versionMatches = matches.filter(match => match.groups.version === version);
+            if (versionMatches.length === 0) {
+                return undefined;
             }
-            if (archMap[architecture] === match.groups.arch) {
-                editorPath = match.groups.editorPath;
+            for (const match of versionMatches) {
+                if (!architecture) {
+                    editorPath = match.groups.editorPath;
+                }
+                if (archMap[architecture] === match.groups.arch) {
+                    editorPath = match.groups.editorPath;
+                }
+                if (match.groups.editorPath.includes(`-${architecture}`)) {
+                    editorPath = match.groups.editorPath;
+                }
             }
-            if (match.groups.editorPath.includes(`-${architecture}`)) {
-                editorPath = match.groups.editorPath;
+        }
+        if (!editorPath) {
+            if (failOnEmpty) {
+                throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture ?? ''}`);
+            }
+            else {
+                return undefined;
             }
         }
-    }
-    for (const editor of installedEditors) {
-        core.info(`Checking installed editor: ${editor}`);
-        if (editor.includes(version)) {
-            editorPath = editor;
-        }
-    }
-    if (!editorPath) {
-        if (failOnEmpty) {
-            throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture ?? ''}`);
-        }
-        else {
-            return undefined;
+    } else {
+        switch (process.platform) {
+            case 'win32':
+                editorPath = path.join(installPath, `Unity ${version}`, 'Editor', 'Unity.exe');
+                break;
+            case 'linux':
+                editorPath = path.join(installPath, `Unity ${version}`, 'Editor', 'Unity');
+                break;
         }
     }
     if (process.platform === 'darwin') {
         editorPath = path.join(editorPath, '/Contents/MacOS/Unity');
     }
-    await fs.promises.access(editorPath, fs.constants.R_OK);
+    try {
+        await fs.promises.access(editorPath, fs.constants.R_OK);
+    } catch (error) {
+        throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture ?? ''}\n  > ${error.message}`);
+    }
     core.debug(`Found installed Unity Editor: ${editorPath}`);
     return editorPath;
 }
