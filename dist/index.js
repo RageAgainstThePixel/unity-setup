@@ -34905,6 +34905,7 @@ async function installUnity4x(unityVersion) {
                     }
                 }
                 await fs.promises.access(installPath, fs.constants.R_OK);
+                exec.exec('bash', ['ls', '-R', installPath]);
                 return installPath;
             }
         case 'darwin':
@@ -34919,6 +34920,7 @@ async function installUnity4x(unityVersion) {
                     }
                 }
                 await fs.promises.access(installPath, fs.constants.R_OK);
+                exec.exec('bash', ['ls', '-R', installPath]);
                 return installPath;
             }
     }
@@ -34959,7 +34961,7 @@ async function checkInstalledEditors(version, architecture, failOnEmpty, install
     }
     else {
         if (process.platform == 'win32') {
-            editorPath = path.join(installPath, `Unity ${version}`, 'Editor', 'Unity.exe');
+            editorPath = path.join(installPath, `Unity ${version}`, 'Unity.exe');
         }
         else {
             editorPath = installPath;
