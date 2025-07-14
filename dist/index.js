@@ -34314,7 +34314,7 @@ function getUnityVersionsFromInput() {
         core.info('No Unity Versions Specified...');
         return versions;
     }
-    const versionRegEx = /(?<version>\d+\.(?:\d+|x|\*)(?:\.(?:\d+|x|\*))?(?:[abcfpx]\d+)?)(?:\s*\((?<changeset>\w+)\))?/g;
+    const versionRegEx = /(?<version>\d+(?:\.(?:\d+|x|\*)){0,2}(?:[abcfpx]\d+)?)(?:\s*\((?<changeset>\w+)\))?/g;
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
     core.info(`Unity Versions from input:`);
     for (const match of matches) {
