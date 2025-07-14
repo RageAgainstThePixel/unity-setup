@@ -54,10 +54,11 @@ TARGET_PATH="${INSTALL_DIR}/Unity ${VERSION}"
 if [ -d "$UNITY_APP_PATH" ]; then
     echo "Moving $UNITY_APP_PATH to $TARGET_PATH..."
     mkdir -p "$(dirname "$TARGET_PATH")"
-    for item in "Documentation" "MonoDevelop.app" "Standard Packages" "Unity Bug Reporter.app" "Unity.app"; do
-        if [ -e "$UNITY_APP_PATH/$item" ]; then
-            sudo cp -R "$UNITY_APP_PATH/$item" "$TARGET_PATH/"
-            sudo rm -rf "$UNITY_APP_PATH/$item"
+    for item in "$UNITY_APP_PATH"/*; do
+        name="$(basename "$item")"
+        if [ "$name" != "Hub" ]; then
+            sudo cp -R "$item" "$TARGET_PATH/"
+            sudo rm -rf "$item"
         fi
     done
     sudo chmod -R 777 "$TARGET_PATH"
