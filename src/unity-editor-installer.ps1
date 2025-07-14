@@ -24,16 +24,16 @@ if (-not (Test-Path $installerPath)) {
     Write-Host "Error: Failed to download Unity installer."
     exit 1
 }
-Write-Host "[command]pwsh `"$installerPath`" /S /D=$installDir\Unity $version"
+$targetPath = "$installDir\Unity $version"
+Write-Host "[command]pwsh `"$installerPath`" /S /D=$targetPath"
+if (-not (Test-Path $targetPath)) {
+    New-Item -ItemType Directory -Path $targetPath -Force | Out-Null
+}
 try {
-    Start-Process -FilePath $installerPath -ArgumentList "/S /D=$installDir\Unity $version" -Wait -NoNewWindow
-    if (-not (Test-Path "$installDir\Unity $version")) {
+    Start-Process -FilePath $installerPath -ArgumentList "/S /D=$targetPath" -Wait -NoNewWindow
+    if (-not (Test-Path "$targetPath")) {
         Write-Host "Error: Unity installation failed."
         exit 1
-    }
-    Write-Host "Listing installed files in $installDir\Unity $version"
-    Get-ChildItem -Path "$installDir\Unity $version" -Recurse | ForEach-Object {
-        Write-Host $_.FullName
     }
 } catch {
     Write-Host "Error: Failed to start Unity installer."

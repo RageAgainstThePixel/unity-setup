@@ -480,7 +480,7 @@ async function checkInstalledEditors(version: string, architecture: string, fail
         }
     } else {
         if (process.platform == 'win32') {
-            editorPath = path.join(installPath, `Unity ${version}`, 'Unity.exe');
+            editorPath = path.join(installPath, 'Unity.exe');
         } else {
             editorPath = installPath;
         }
