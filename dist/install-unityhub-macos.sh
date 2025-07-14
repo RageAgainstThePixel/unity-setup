@@ -17,14 +17,14 @@ if [ ! -f "${downloadPath}" ]; then
     echo "Failed to download Unity Hub"
     exit 1
 fi
-volumes=$(hdiutil attach "${downloadPath}" -nobrowse | grep -o "/Volumes/.*")
+volumes=$(hdiutil attach "${downloadPath}" -nobrowse | grep -o "/Volumes/.*" | head -n1)
 if [ -z "${volumes}" ]; then
     echo "Failed to mount ${downloadPath}"
     exit 1
 fi
 echo "Mounted volumes:"
 echo "${volumes}"
-volume=$(echo "${volumes}" | grep -o "/Volumes/.*" | head -n1)
+volume=$(echo "${volumes}" | grep -o "/Volumes/Unity Hub.*-${cpuArch}" | head -n1)
 if [ -z "${volume}" ]; then
     echo "Failed to mount ${downloadPath}"
     hdiutil unmount "${volume}" -quiet
