@@ -54,14 +54,13 @@ TARGET_PATH="${INSTALL_DIR}/Unity ${VERSION}"
 if [ -d "$UNITY_APP_PATH" ]; then
     echo "Moving $UNITY_APP_PATH to $TARGET_PATH..."
     mkdir -p "$(dirname "$TARGET_PATH")"
-    sudo cp -R "$UNITY_APP_PATH" "$TARGET_PATH"
-    if [ ! -d "$TARGET_PATH" ]; then
-        echo "Failed to copy Unity to $TARGET_PATH"
-        hdiutil unmount "${volume}" -quiet
-        exit 1
-    fi
-    rm -rf "$UNITY_APP_PATH"
-    chmod -R 777 "$TARGET_PATH"
+    for item in "Documentation" "MonoDevelop.app" "Standard Packages" "Unity Bug Reporter.app" "Unity.app"; do
+        if [ -e "$UNITY_APP_PATH/$item" ]; then
+            sudo cp -R "$UNITY_APP_PATH/$item" "$TARGET_PATH/"
+            sudo rm -rf "$UNITY_APP_PATH/$item"
+        fi
+    done
+    sudo chmod -R 777 "$TARGET_PATH"
 else
     echo "$UNITY_APP_PATH not found after installation."
     hdiutil unmount "${volume}" -quiet
