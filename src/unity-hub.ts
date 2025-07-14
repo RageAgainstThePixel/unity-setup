@@ -462,33 +462,26 @@ function isArmCompatible(version: string): boolean {
     return semver.compare(semVersion, '2021.0.0', true) >= 0;
 }
 
-async function checkInstalledEditors(version: string, architecture: string, failOnEmpty = true): Promise<string> {
-    const output = await ListInstalledEditors();
-    if (!output || output.trim().length === 0) {
-        if (failOnEmpty) {
-            throw new Error('No Unity Editors installed!');
-        }
-        return undefined;
-    }
-    const pattern = new RegExp(/(?<version>\d+\.\d+\.\d+[fab]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?, installed at (?<editorPath>.*)/, 'g');
-    const matches = [...output.matchAll(pattern)];
+async function checkInstalledEditors(version: string, architecture: string, failOnEmpty: boolean = true): Promise<string | undefined> {
     let editorPath = undefined;
-    const versionMatches = matches.filter(match => match.groups.version === version);
-    if (versionMatches.length === 0) {
-        if (failOnEmpty) {
-            throw new Error('No Unity Editors installed!');
+    const output = await ListInstalledEditors();
+    if (output && output.trim().length > 0) {
+        const pattern = new RegExp(/(?<version>\d+\.\d+\.\d+[fab]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?, installed at (?<editorPath>.*)/, 'g');
+        const matches = [...output.matchAll(pattern)];
+        const versionMatches = matches.filter(match => match.groups.version === version);
+        if (versionMatches.length === 0) {
+            return undefined;
         }
-        return undefined;
-    }
-    for (const match of versionMatches) {
-        if (!architecture) {
-            editorPath = match.groups.editorPath;
-        }
-        if (archMap[architecture] === match.groups.arch) {
-            editorPath = match.groups.editorPath;
-        }
-        if (match.groups.editorPath.includes(`-${architecture}`)) {
-            editorPath = match.groups.editorPath;
+        for (const match of versionMatches) {
+            if (!architecture) {
+                editorPath = match.groups.editorPath;
+            }
+            if (archMap[architecture] === match.groups.arch) {
+                editorPath = match.groups.editorPath;
+            }
+            if (match.groups.editorPath.includes(`-${architecture}`)) {
+                editorPath = match.groups.editorPath;
+            }
         }
     }
     for (const editor of installedEditors) {
@@ -498,7 +491,12 @@ async function checkInstalledEditors(version: string, architecture: string, fail
         }
     }
     if (!editorPath) {
-        throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture ?? ''}`);
+        if (failOnEmpty) {
+            throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture ?? ''}`);
+        }
+        else {
+            return undefined;
+        }
     }
     if (process.platform === 'darwin') {
         editorPath = path.join(editorPath, '/Contents/MacOS/Unity');

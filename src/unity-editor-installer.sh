@@ -54,7 +54,12 @@ TARGET_PATH="${INSTALL_DIR}/Unity ${VERSION}"
 if [ -d "$UNITY_APP_PATH" ]; then
     echo "Moving $UNITY_APP_PATH to $TARGET_PATH..."
     mkdir -p "$(dirname "$TARGET_PATH")"
-    cp -R "$UNITY_APP_PATH" "$TARGET_PATH"
+    sudo cp -R "$UNITY_APP_PATH" "$TARGET_PATH"
+    if [ ! -d "$TARGET_PATH" ]; then
+        echo "Failed to copy Unity to $TARGET_PATH"
+        hdiutil unmount "${volume}" -quiet
+        exit 1
+    fi
     rm -rf "$UNITY_APP_PATH"
     chmod -R 777 "$TARGET_PATH"
 else
