@@ -313,6 +313,7 @@ export async function Unity(unityVersion: UnityVersion, architecture: string, mo
             const beeBackend = path.join(dataPath, 'bee_backend');
             const dotBeeBackend = path.join(dataPath, '.bee_backend');
             if (fs.existsSync(beeBackend) && !fs.existsSync(dotBeeBackend)) {
+                core.info(`Patching Unity Linux Editor for Bee Backend...`);
                 await fs.promises.rename(beeBackend, dotBeeBackend);
                 const wrapperSource = path.join(__dirname, 'linux-bee-backend-wrapper.sh');
                 await fs.promises.copyFile(wrapperSource, beeBackend);

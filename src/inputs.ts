@@ -189,15 +189,14 @@ function getUnityVersionsFromInput(): UnityVersion[] {
         return versions;
     }
     if (inputVersions.toLowerCase() === 'none') {
-        core.info('No Unity Versions Specified...')
+        core.debug('No Unity Versions Specified...')
         return versions;
     }
     // Accepts versions like 2020, 2020.x, 2020.*, 2020.3, 2020.3.0, 2020.3.x, 2020.3.*, 2020.3.0f1, 2020.3.0f1 (c7b5465681fb)
     const versionRegEx = /(?<version>\d+(?:\.(?:\d+|x|\*)){0,2}(?:[abcfpx]\d+)?)(?:\s*\((?<changeset>\w+)\))?/g;
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
-    core.info(`Unity Versions from input:`);
+    core.debug(`Regex version matches from input:`);
     for (const match of matches) {
-        core.info(`  > ${JSON.stringify(match)}`);
         if (!match.groups || !match.groups.version) { continue; }
         let version = match.groups.version.replace(/\.$/, '');
         version = version.replace(/(\.(x|\*))+$/, '');
@@ -213,7 +212,7 @@ function getUnityVersionsFromInput(): UnityVersion[] {
         }
         const changeset = match.groups.changeset;
         const unityVersion = new UnityVersion(version, changeset);
-        core.info(`${unityVersion.toString()}`);
+        core.debug(`  > ${unityVersion.toString()}`);
         try {
             versions.push(unityVersion);
         } catch (e) {

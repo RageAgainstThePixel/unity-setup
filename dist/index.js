@@ -34311,14 +34311,13 @@ function getUnityVersionsFromInput() {
         return versions;
     }
     if (inputVersions.toLowerCase() === 'none') {
-        core.info('No Unity Versions Specified...');
+        core.debug('No Unity Versions Specified...');
         return versions;
     }
     const versionRegEx = /(?<version>\d+(?:\.(?:\d+|x|\*)){0,2}(?:[abcfpx]\d+)?)(?:\s*\((?<changeset>\w+)\))?/g;
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
-    core.info(`Unity Versions from input:`);
+    core.debug(`Regex version matches from input:`);
     for (const match of matches) {
-        core.info(`  > ${JSON.stringify(match)}`);
         if (!match.groups || !match.groups.version) {
             continue;
         }
@@ -34335,7 +34334,7 @@ function getUnityVersionsFromInput() {
         }
         const changeset = match.groups.changeset;
         const unityVersion = new unity_version_1.UnityVersion(version, changeset);
-        core.info(`${unityVersion.toString()}`);
+        core.debug(`  > ${unityVersion.toString()}`);
         try {
             versions.push(unityVersion);
         }
@@ -34812,6 +34811,7 @@ async function Unity(unityVersion, architecture, modules) {
             const beeBackend = path.join(dataPath, 'bee_backend');
             const dotBeeBackend = path.join(dataPath, '.bee_backend');
             if (fs.existsSync(beeBackend) && !fs.existsSync(dotBeeBackend)) {
+                core.info(`Patching Unity Linux Editor for Bee Backend...`);
                 await fs.promises.rename(beeBackend, dotBeeBackend);
                 const wrapperSource = __nccwpck_require__.ab + "linux-bee-backend-wrapper.sh";
                 await fs.promises.copyFile(__nccwpck_require__.ab + "linux-bee-backend-wrapper.sh", beeBackend);

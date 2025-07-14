@@ -17,7 +17,7 @@ const main = async () => {
         const editors = [];
         for (const unityVersion of versions) {
             const unityEditorPath = await unityHub.Unity(unityVersion, architecture, modules);
-            core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath);
+            core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath); // always sets the last installed editor path
             if (modules.includes('android') && unityProjectPath !== undefined) {
                 await CheckAndroidSdkInstalled(unityEditorPath, unityProjectPath);
             }
