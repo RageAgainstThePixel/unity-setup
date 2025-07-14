@@ -201,6 +201,16 @@ function getUnityVersionsFromInput(): UnityVersion[] {
         if (!match.groups || !match.groups.version) { continue; }
         let version = match.groups.version.replace(/\.$/, '');
         version = version.replace(/(\.(x|\*))+$/, '');
+        // Normalize version to semver (e.g., 2021 -> 2021.0.0, 2021.3 -> 2021.3.0)
+        const versionParts = version.split('.');
+        switch (versionParts.length) {
+            case 1:
+                version = version + '.0.0';
+                break;
+            case 2:
+                version = version + '.0';
+                break;
+        }
         const changeset = match.groups.changeset;
         const unityVersion = new UnityVersion(version, changeset);
         core.info(`${unityVersion.toString()}`);

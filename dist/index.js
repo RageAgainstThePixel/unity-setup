@@ -34324,6 +34324,15 @@ function getUnityVersionsFromInput() {
         }
         let version = match.groups.version.replace(/\.$/, '');
         version = version.replace(/(\.(x|\*))+$/, '');
+        const versionParts = version.split('.');
+        switch (versionParts.length) {
+            case 1:
+                version = version + '.0.0';
+                break;
+            case 2:
+                version = version + '.0';
+                break;
+        }
         const changeset = match.groups.changeset;
         const unityVersion = new unity_version_1.UnityVersion(version, changeset);
         core.info(`${unityVersion.toString()}`);
