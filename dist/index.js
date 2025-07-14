@@ -34802,7 +34802,7 @@ async function Unity(unityVersion, architecture, modules) {
     }
     catch (error) {
         if (error.message.includes(`No modules found`)) {
-            removePath(editorPath);
+            await removePath(editorPath);
             await Unity(unityVersion, architecture, modules);
         }
     }
@@ -45711,8 +45711,8 @@ const main = async () => {
             }
             editors.push([unityVersion.version, unityEditorPath]);
         }
-        const installedEditors = editors.map(([version, path]) => `\"${version}\":\"${path}\"`).join(',');
-        core.exportVariable('UNITY_EDITORS', `[${installedEditors}]`);
+        const installedEditors = Object.fromEntries(editors);
+        core.exportVariable('UNITY_EDITORS', JSON.stringify(installedEditors));
         core.info('Unity Setup Complete!');
         process.exit(0);
     }
