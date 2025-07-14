@@ -15,17 +15,19 @@ const main = async () => {
             await unityHub.SetInstallPath(installPath);
         }
         const editors = [];
-        core.info(`Installing Unity versions: ${versions.map(v => v.version).join(', ')}`);
         for (const unityVersion of versions) {
             const unityEditorPath = await unityHub.Unity(unityVersion, architecture, modules);
             core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath);
             if (modules.includes('android') && unityProjectPath !== undefined) {
                 await CheckAndroidSdkInstalled(unityEditorPath, unityProjectPath);
             }
+            core.info(`Installed Unity Editor: ${unityVersion.toString()} at ${unityEditorPath}`);
             editors.push([unityVersion.version, unityEditorPath]);
         }
-        const installedEditors = editors.map(([version, path]) => `\"${version}\":\"${path}\"`).join(',');
-        core.exportVariable('UNITY_EDITORS', `[${installedEditors}]`);
+        if (editors.length !== versions.length) {
+            throw new Error(`Expected to install ${versions.length} Unity versions, but installed ${editors.length}.`);
+        }
+        core.exportVariable('UNITY_EDITORS', JSON.stringify(Object.fromEntries(editors)));
         core.info('Unity Setup Complete!');
         process.exit(0);
     } catch (error) {
