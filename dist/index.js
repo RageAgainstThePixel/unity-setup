@@ -34310,9 +34310,13 @@ function getUnityVersionsFromInput() {
     if (!inputVersions || inputVersions.length == 0) {
         return versions;
     }
+    if (inputVersions.toLowerCase() === 'none') {
+        core.info('No Unity Versions Specified...');
+        return versions;
+    }
     const versionRegEx = /(?<version>\d+\.\d+\.\d+(?:[abcfpx]\d+)?)(?:\s*\((?<changeset>\w+)\))?/g;
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
-    core.debug(`Unity Versions from input:`);
+    core.info(`Unity Versions from input:`);
     for (const match of matches) {
         if (!match.groups || !match.groups.version) {
             continue;
@@ -34320,13 +34324,16 @@ function getUnityVersionsFromInput() {
         const version = match.groups.version.replace(/\.$/, '');
         const changeset = match.groups.changeset;
         const unityVersion = new unity_version_1.UnityVersion(version, changeset);
-        core.debug(`${unityVersion.toString()}`);
+        core.info(`${unityVersion.toString()}`);
         try {
             versions.push(unityVersion);
         }
         catch (e) {
             core.error(`Invalid Unity version: ${unityVersion.toString()}\nError: ${e.message}`);
         }
+    }
+    if (versions.length === 0) {
+        throw Error('Failed to parse Unity versions from input!');
     }
     return versions;
 }
