@@ -34748,10 +34748,11 @@ async function Unity(unityVersion, architecture, modules) {
         architecture = 'x86_64';
     }
     if (!unityVersion.changeset && !unityVersion.isLegacy()) {
+        core.info(`Fetching latest release for Unity ${unityVersion.toString()}...`);
         unityVersion = await getLatestRelease(unityVersion.version, architecture === 'arm64');
     }
     if (!unityVersion.changeset && !unityVersion.isLegacy()) {
-        core.debug(`Fetching changeset for Unity ${unityVersion.toString()}...`);
+        core.info(`Fetching changeset for Unity ${unityVersion.toString()}...`);
         unityVersion = await getChangeset(unityVersion);
     }
     let editorPath = await checkInstalledEditors(unityVersion.version, architecture, false);
@@ -34770,7 +34771,7 @@ async function Unity(unityVersion, architecture, modules) {
     }
     await fs.promises.access(editorPath, fs.constants.X_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
-    if (unityVersion.isLegacy()) {
+    if (unityVersion.isLegacy() || modules.length === 0) {
         return editorPath;
     }
     try {
@@ -45703,6 +45704,7 @@ const main = async () => {
             await unityHub.SetInstallPath(installPath);
         }
         const editors = [];
+        core.info(`Installing Unity versions: ${versions.map(v => v.version).join(', ')}`);
         for (const unityVersion of versions) {
             const unityEditorPath = await unityHub.Unity(unityVersion, architecture, modules);
             core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath);

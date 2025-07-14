@@ -15,6 +15,7 @@ const main = async () => {
             await unityHub.SetInstallPath(installPath);
         }
         const editors = [];
+        core.info(`Installing Unity versions: ${versions.map(v => v.version).join(', ')}`);
         for (const unityVersion of versions) {
             const unityEditorPath = await unityHub.Unity(unityVersion, architecture, modules);
             core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath);
