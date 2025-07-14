@@ -34905,7 +34905,6 @@ async function installUnity4x(unityVersion) {
                     }
                 }
                 await fs.promises.access(installPath, fs.constants.R_OK);
-                exec.exec('bash', ['ls', '-R', installPath]);
                 return installPath;
             }
         case 'darwin':
@@ -34920,7 +34919,6 @@ async function installUnity4x(unityVersion) {
                     }
                 }
                 await fs.promises.access(installPath, fs.constants.R_OK);
-                exec.exec('bash', ['ls', '-R', installPath]);
                 return installPath;
             }
     }
@@ -34940,7 +34938,7 @@ async function checkInstalledEditors(version, architecture, failOnEmpty, install
     if (!installPath) {
         const output = await ListInstalledEditors();
         if (output && output.trim().length > 0) {
-            const pattern = new RegExp(/(?<version>\d+\.\d+\.\d+[fab]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?, installed at (?<editorPath>.*)/, 'g');
+            const pattern = new RegExp(/(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?, installed at (?<editorPath>.*)/, 'g');
             const matches = [...output.matchAll(pattern)];
             const versionMatches = matches.filter(match => match.groups.version === version);
             if (versionMatches.length === 0) {
