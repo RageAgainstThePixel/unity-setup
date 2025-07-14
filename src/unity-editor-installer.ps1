@@ -35,6 +35,10 @@ try {
         Write-Host "Error: Unity installation failed."
         exit 1
     }
+    Write-Host "Listing installed files in $targetPath"
+    Get-ChildItem -Path "$targetPath" -Recurse | ForEach-Object {
+        Write-Host $_.FullName
+    }
 } catch {
     Write-Host "Error: Failed to start Unity installer."
     exit 1

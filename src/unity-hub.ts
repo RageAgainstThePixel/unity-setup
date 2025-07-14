@@ -415,7 +415,7 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<string> {
             throw new Error(`Unity ${unityVersion.toString()} is not supported on Linux!`);
         case 'win32':
             {
-                const installPath = path.join(installDir, `Unity ${unityVersion.version}`, 'Editor');
+                const installPath = path.join(installDir, `Unity ${unityVersion.version}`);
                 if (!fs.existsSync(installPath)) {
                     const scriptPath = path.join(__dirname, 'unity-editor-installer.ps1');
                     const exitCode = await exec.exec('pwsh', [scriptPath, unityVersion.version, installDir]);
