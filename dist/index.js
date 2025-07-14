@@ -34318,6 +34318,7 @@ function getUnityVersionsFromInput() {
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
     core.info(`Unity Versions from input:`);
     for (const match of matches) {
+        core.info(`  > ${JSON.stringify(match)}`);
         if (!match.groups || !match.groups.version) {
             continue;
         }

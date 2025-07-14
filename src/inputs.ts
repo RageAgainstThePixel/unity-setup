@@ -192,11 +192,12 @@ function getUnityVersionsFromInput(): UnityVersion[] {
         core.info('No Unity Versions Specified...')
         return versions;
     }
-    // Accepts versions like 2020.3, 2020.3.0, 2020.3.0f1, 2020.3.0b2, etc.
+    // Accepts versions like 6000.x, 2020.3, 2020.3.0, 2020.3.0f1, 2020.3.0b2, etc.
     const versionRegEx = /(?<version>\d+\.\d+(?:\.\d+)?(?:[abcfpx]\d+)?)(?:\s*\((?<changeset>\w+)\))?/g;
     const matches = Array.from(inputVersions.matchAll(versionRegEx));
     core.info(`Unity Versions from input:`);
     for (const match of matches) {
+        core.info(`  > ${JSON.stringify(match)}`);
         if (!match.groups || !match.groups.version) { continue; }
         const version = match.groups.version.replace(/\.$/, '');
         const changeset = match.groups.changeset;
