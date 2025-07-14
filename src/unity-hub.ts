@@ -290,6 +290,7 @@ export async function Unity(unityVersion: UnityVersion, architecture: string, mo
     }
     await fs.promises.access(editorPath, fs.constants.X_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
+    await patchBeeBackend(editorPath);
     if (unityVersion.isLegacy() || modules.length === 0) {
         return editorPath;
     }
@@ -308,18 +309,6 @@ export async function Unity(unityVersion: UnityVersion, architecture: string, mo
                 core.info(`  > ${module}`);
             }
         }
-        if (process.platform === 'linux') {
-            const dataPath = path.join(path.dirname(editorPath), 'Data');
-            const beeBackend = path.join(dataPath, 'bee_backend');
-            const dotBeeBackend = path.join(dataPath, '.bee_backend');
-            if (fs.existsSync(beeBackend) && !fs.existsSync(dotBeeBackend)) {
-                core.info(`Patching Unity Linux Editor for Bee Backend...`);
-                await fs.promises.rename(beeBackend, dotBeeBackend);
-                const wrapperSource = path.join(__dirname, 'linux-bee-backend-wrapper.sh');
-                await fs.promises.copyFile(wrapperSource, beeBackend);
-                await fs.promises.chmod(beeBackend, 0o755);
-            }
-        }
     } catch (error) {
         if (error.message.includes(`No modules found`)) {
             await removePath(editorPath);
@@ -329,6 +318,26 @@ export async function Unity(unityVersion: UnityVersion, architecture: string, mo
         core.endGroup();
     }
     return editorPath;
+}
+
+/**
+ * Patches the Bee Backend for Unity Linux Editor.
+ * https://discussions.unity.com/t/linux-editor-stuck-on-loading-because-of-bee-backend-w-workaround/854480
+ * @param editorPath
+ */
+async function patchBeeBackend(editorPath: string): Promise<void> {
+    if (process.platform === 'linux') {
+        const dataPath = path.join(path.dirname(editorPath), 'Data');
+        const beeBackend = path.join(dataPath, 'bee_backend');
+        const dotBeeBackend = path.join(dataPath, '.bee_backend');
+        if (fs.existsSync(beeBackend) && !fs.existsSync(dotBeeBackend)) {
+            core.info(`Patching Unity Linux Editor for Bee Backend...`);
+            await fs.promises.rename(beeBackend, dotBeeBackend);
+            const wrapperSource = path.join(__dirname, 'linux-bee-backend-wrapper.sh');
+            await fs.promises.copyFile(wrapperSource, beeBackend);
+            await fs.promises.chmod(beeBackend, 0o755);
+        }
+    }
 }
 
 async function getLatestRelease(version: string, isSilicon: boolean): Promise<UnityVersion> {

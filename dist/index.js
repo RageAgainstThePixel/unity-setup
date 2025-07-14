@@ -34788,6 +34788,7 @@ async function Unity(unityVersion, architecture, modules) {
     }
     await fs.promises.access(editorPath, fs.constants.X_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
+    await patchBeeBackend(editorPath);
     if (unityVersion.isLegacy() || modules.length === 0) {
         return editorPath;
     }
@@ -34806,18 +34807,6 @@ async function Unity(unityVersion, architecture, modules) {
                 core.info(`  > ${module}`);
             }
         }
-        if (process.platform === 'linux') {
-            const dataPath = path.join(path.dirname(editorPath), 'Data');
-            const beeBackend = path.join(dataPath, 'bee_backend');
-            const dotBeeBackend = path.join(dataPath, '.bee_backend');
-            if (fs.existsSync(beeBackend) && !fs.existsSync(dotBeeBackend)) {
-                core.info(`Patching Unity Linux Editor for Bee Backend...`);
-                await fs.promises.rename(beeBackend, dotBeeBackend);
-                const wrapperSource = __nccwpck_require__.ab + "linux-bee-backend-wrapper.sh";
-                await fs.promises.copyFile(__nccwpck_require__.ab + "linux-bee-backend-wrapper.sh", beeBackend);
-                await fs.promises.chmod(beeBackend, 0o755);
-            }
-        }
     }
     catch (error) {
         if (error.message.includes(`No modules found`)) {
@@ -34829,6 +34818,20 @@ async function Unity(unityVersion, architecture, modules) {
         core.endGroup();
     }
     return editorPath;
+}
+async function patchBeeBackend(editorPath) {
+    if (process.platform === 'linux') {
+        const dataPath = path.join(path.dirname(editorPath), 'Data');
+        const beeBackend = path.join(dataPath, 'bee_backend');
+        const dotBeeBackend = path.join(dataPath, '.bee_backend');
+        if (fs.existsSync(beeBackend) && !fs.existsSync(dotBeeBackend)) {
+            core.info(`Patching Unity Linux Editor for Bee Backend...`);
+            await fs.promises.rename(beeBackend, dotBeeBackend);
+            const wrapperSource = __nccwpck_require__.ab + "linux-bee-backend-wrapper.sh";
+            await fs.promises.copyFile(__nccwpck_require__.ab + "linux-bee-backend-wrapper.sh", beeBackend);
+            await fs.promises.chmod(beeBackend, 0o755);
+        }
+    }
 }
 async function getLatestRelease(version, isSilicon) {
     const releases = (await execUnityHub([`editors`, `--releases`])).split('\n');
