@@ -34956,23 +34956,21 @@ async function checkInstalledEditors(version, architecture, failOnEmpty, install
                 }
             }
         }
-        if (!editorPath) {
-            if (failOnEmpty) {
-                throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture !== null && architecture !== void 0 ? architecture : ''}`);
-            }
-            else {
-                return undefined;
-            }
-        }
     }
     else {
-        switch (process.platform) {
-            case 'win32':
-                editorPath = path.join(installPath, `Unity ${version}`, 'Editor', 'Unity.exe');
-                break;
-            case 'linux':
-                editorPath = path.join(installPath, `Unity ${version}`, 'Editor', 'Unity');
-                break;
+        if (process.platform == 'win32') {
+            editorPath = path.join(installPath, `Unity ${version}`, 'Editor', 'Unity.exe');
+        }
+        else {
+            editorPath = installPath;
+        }
+    }
+    if (!editorPath) {
+        if (failOnEmpty) {
+            throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture !== null && architecture !== void 0 ? architecture : ''}`);
+        }
+        else {
+            return undefined;
         }
     }
     if (process.platform === 'darwin') {
