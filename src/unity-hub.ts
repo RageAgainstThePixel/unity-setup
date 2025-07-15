@@ -349,7 +349,7 @@ async function getLatestRelease(version: string, isSilicon: boolean): Promise<Un
         .sort((a, b) => semver.compare(b, a));
     for (const release of validReleases) {
         const originalRelease = releases.find(r => r.includes(release.version));
-        const match = originalRelease.match(/(?<version>\d+\.\d+\.\d+[fab]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?/);
+        const match = originalRelease.match(/(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?/);
         if (!(match && match.groups && match.groups.version)) { continue; }
         if ((version.includes('a') && match.groups.version.includes('a')) ||
             (version.includes('b') && match.groups.version.includes('b')) ||
