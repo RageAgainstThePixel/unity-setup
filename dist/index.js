@@ -34182,7 +34182,7 @@ async function ValidateInputs() {
     }
     let installPath = core.getInput('install-path');
     if (installPath) {
-        installPath = installPath.trim();
+        installPath = path.normalize(installPath.trim());
         if (installPath.length === 0) {
             installPath = undefined;
         }

@@ -62,7 +62,7 @@ export async function ValidateInputs(): Promise<[UnityVersion[], string | undefi
     }
     let installPath = core.getInput('install-path');
     if (installPath) {
-        installPath = installPath.trim();
+        installPath = path.normalize(installPath.trim());
         if (installPath.length === 0) {
             installPath = undefined;
         } else {
