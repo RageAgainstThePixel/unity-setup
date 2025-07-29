@@ -5,7 +5,7 @@ import core = require('@actions/core');
 
 const main = async () => {
     try {
-        const [versions, architecture, modules, unityProjectPath, installPath] = await ValidateInputs();
+        const [versions, modules, unityProjectPath, installPath] = await ValidateInputs();
         if (unityProjectPath) {
             core.exportVariable('UNITY_PROJECT_PATH', unityProjectPath);
         }
@@ -16,7 +16,7 @@ const main = async () => {
         }
         const editors = [];
         for (const unityVersion of versions) {
-            const unityEditorPath = await unityHub.Unity(unityVersion, architecture, modules);
+            const unityEditorPath = await unityHub.UnityEditor(unityVersion, modules);
             core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath); // always sets the last installed editor path
             if (modules.includes('android') && unityProjectPath !== undefined) {
                 await CheckAndroidSdkInstalled(unityEditorPath, unityProjectPath);

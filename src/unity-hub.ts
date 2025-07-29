@@ -1,14 +1,28 @@
-import { GetHubRootPath, GetEditorRootPath, ReadFileContents } from './utility';
-import { UnityReleasesClient } from '@rage-against-the-pixel/unity-releases-api'
-import { UnityVersion } from './unity-version';
+
 import asar = require('@electron/asar');
 import core = require('@actions/core');
 import exec = require('@actions/exec');
 import semver = require('semver');
 import yaml = require('yaml');
 import path = require('path');
-import os = require('os');
 import fs = require('fs');
+import {
+    GetHubRootPath,
+    GetEditorRootPath,
+    ReadFileContents,
+    RemovePath,
+    GetCurrentPlatform
+} from './utility';
+import {
+    UnityVersion
+} from './unity-version';
+import {
+    UnityReleasesClient,
+} from '@rage-against-the-pixel/unity-releases-api'
+import {
+    GetUnityReleasesData,
+    UnityRelease
+} from '@rage-against-the-pixel/unity-releases-api/dist/unity-releases-api';
 
 const unityHub = init();
 let hubPath = unityHub.hubPath;
@@ -42,14 +56,14 @@ export async function Get(): Promise<string> {
     } catch (error) {
         hubPath = await installUnityHub();
     }
-    const hubVersion = await getInstalledHubVersion();
+    const hubVersion: semver.SemVer | undefined = await getInstalledHubVersion();
     if (!semver.valid(hubVersion)) {
         throw new Error(`Failed to get installed Unity Hub version ${hubVersion}!`);
     }
     core.info(`Unity Hub Version:\n  > ${hubVersion}`);
-    const latestHubVersion = await getLatestHubVersion();
+    const latestHubVersion: semver.SemVer | undefined = await getLatestHubVersion();
     if (!semver.valid(latestHubVersion)) {
-        throw new Error(`Failed to get latest Unity Hub version ${latestHubVersion}!`);
+        throw new Error(`Failed to get latest Unity Hub version!`);
     }
     core.debug(`Latest Unity Hub Version:\n  > ${latestHubVersion}`);
     core.debug(`Comparing versions:\n  > ${hubVersion} < ${latestHubVersion} => ${semver.compare(hubVersion, latestHubVersion)}`);
@@ -57,7 +71,7 @@ export async function Get(): Promise<string> {
         core.info(`Installing Latest Unity Hub Version:\n  > ${latestHubVersion}`);
         if (process.platform !== 'linux') {
             core.info(`Removing previous Unity Hub version:\n  > ${hubVersion}`);
-            await removePath(hubPath);
+            await RemovePath(hubPath);
             hubPath = await installUnityHub();
         } else {
             const scriptPath = path.join(__dirname, 'update-unityhub-linux.sh');
@@ -140,7 +154,7 @@ async function installUnityHub(): Promise<string> {
     }
 }
 
-async function getInstalledHubVersion(): Promise<semver.SemVer> {
+async function getInstalledHubVersion(): Promise<semver.SemVer | undefined> {
     try {
         let asarPath = undefined;
         const baseHubPath = await GetHubRootPath(hubPath);
@@ -162,7 +176,7 @@ async function getInstalledHubVersion(): Promise<semver.SemVer> {
     }
 }
 
-async function getLatestHubVersion(): Promise<semver.SemVer> {
+async function getLatestHubVersion(): Promise<semver.SemVer | undefined> {
     try {
         let url = undefined;
         switch (process.platform) {
@@ -262,31 +276,27 @@ const retryErrorMessages = [
     'failed to download. Error given: Request timeout'
 ];
 
-export async function Unity(unityVersion: UnityVersion, architecture: string, modules: string[]): Promise<string> {
-    if (os.arch() == 'arm64' && !isArmCompatible(unityVersion.version)) {
-        core.info(`Unity ${unityVersion.toString()} does not support arm64 architecture, falling back to x86_64`);
-        architecture = 'x86_64';
-    }
-    if (!unityVersion.changeset && !unityVersion.isLegacy()) {
-        core.info(`Fetching latest release for Unity ${unityVersion.toString()}...`);
-        unityVersion = await getLatestRelease(unityVersion.version, architecture === 'arm64');
-    }
-    if (!unityVersion.changeset && !unityVersion.isLegacy()) {
-        core.info(`Fetching changeset for Unity ${unityVersion.toString()}...`);
-        unityVersion = await getChangeset(unityVersion);
-    }
-    let editorPath = await checkInstalledEditors(unityVersion.version, architecture, false);
-    let installPath = undefined;
+export async function UnityEditor(unityVersion: UnityVersion, modules: string[]): Promise<string> {
+    core.info(`Getting release info for Unity ${unityVersion.toString()}...`);
+    const releases = await getLatestHubReleases();
+    unityVersion = unityVersion.findMatch(releases);
+    const unityReleaseInfo: UnityRelease = await getEditorReleaseInfo(unityVersion);
+    unityVersion = new UnityVersion(unityReleaseInfo.version, unityReleaseInfo.shortRevision, unityVersion.architecture);
+    let editorPath: string = await checkInstalledEditors(unityVersion, false);
+    let installPath: string | null = null;
     if (!editorPath) {
         try {
-            installPath = await installUnity(unityVersion, architecture, modules);
+            installPath = await installUnity(unityVersion, modules);
         } catch (error) {
             if (retryErrorMessages.some(msg => error.message.includes(msg))) {
-                await removePath(editorPath);
-                installPath = await installUnity(unityVersion, architecture, modules);
+                await RemovePath(editorPath);
+                installPath = await installUnity(unityVersion, modules);
             }
         }
-        editorPath = await checkInstalledEditors(unityVersion.version, architecture, true, installPath);
+        if (!installPath) {
+            throw new Error(`Failed to install Unity ${unityVersion.toString()}`);
+        }
+        editorPath = await checkInstalledEditors(unityVersion, true, installPath);
     }
     await fs.promises.access(editorPath, fs.constants.X_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
@@ -296,7 +306,7 @@ export async function Unity(unityVersion: UnityVersion, architecture: string, mo
     }
     try {
         core.startGroup(`Checking installed modules for Unity ${unityVersion.toString()}...`);
-        const [installedModules, additionalModules] = await checkEditorModules(editorPath, unityVersion.version, architecture, modules);
+        const [installedModules, additionalModules] = await checkEditorModules(editorPath, unityVersion, modules);
         if (installedModules && installedModules.length > 0) {
             core.info(`Installed Modules:`);
             for (const module of installedModules) {
@@ -311,8 +321,8 @@ export async function Unity(unityVersion: UnityVersion, architecture: string, mo
         }
     } catch (error) {
         if (error.message.includes(`No modules found`)) {
-            await removePath(editorPath);
-            await Unity(unityVersion, architecture, modules);
+            await RemovePath(editorPath);
+            await UnityEditor(unityVersion, modules);
         }
     } finally {
         core.endGroup();
@@ -340,56 +350,11 @@ async function patchBeeBackend(editorPath: string): Promise<void> {
     }
 }
 
-async function getLatestRelease(version: string, isSilicon: boolean): Promise<UnityVersion> {
-    const releases = (await execUnityHub([`editors`, `--releases`])).split('\n');
-    const semVersion = semver.coerce(version);
-    const validReleases = releases
-        .map(release => semver.coerce(release))
-        .filter(release => release && semver.satisfies(release, `^${semVersion}`))
-        .sort((a, b) => semver.compare(b, a));
-    for (const release of validReleases) {
-        const originalRelease = releases.find(r => r.includes(release.version));
-        const match = originalRelease.match(/(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?/);
-        if (!(match && match.groups && match.groups.version)) { continue; }
-        if ((version.includes('a') && match.groups.version.includes('a')) ||
-            (version.includes('b') && match.groups.version.includes('b')) ||
-            match.groups.version.includes('f')) {
-            core.info(`Found Unity ${match.groups.version}`);
-            return new UnityVersion(match.groups.version);
-        }
-    }
-    core.debug(`Searching for Unity ${version} release from online releases list...`);
-    const baseUrl = `https://public-cdn.cloud.unity3d.com/hub/prod`;
-    const url = isSilicon
-        ? `${baseUrl}/releases-silicon.json`
-        : `${baseUrl}/releases-${process.platform}.json`;
-    const response = await fetch(url);
-    const data = await response.text();
-    return await parseReleases(version, data);
+async function getLatestHubReleases(): Promise<string[]> {
+    return (await execUnityHub([`editors`, `--releases`])).split('\n').map(line => line.trim()).filter(line => line.length > 0);
 }
 
-async function parseReleases(version: string, data: string): Promise<UnityVersion> {
-    const releases = JSON.parse(data);
-    core.debug(`Found ${releases.official.length} official releases...`);
-    releases.official.sort((a: any, b: any) => semver.compare(a.version, b.version, true));
-    for (const release of releases.official) {
-        const semVersion = semver.coerce(version);
-        const semVerRelease = semver.coerce(release.version);
-        core.debug(`Checking ${semVersion} against ${semVerRelease}`);
-        if (semver.satisfies(semVerRelease, `^${semVersion}`)) {
-            core.debug(`Found Unity ${release.version} release.`);
-            const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
-            if (match && match.groups && match.groups.changeset) {
-                const changeset = match.groups.changeset;
-                core.debug(`Found Unity ${release.version} (${changeset})`);
-                return new UnityVersion(release.version, changeset);
-            }
-        }
-    }
-    throw new Error(`Failed to find Unity ${version} release. Please provide a valid changeset.`);
-}
-
-async function installUnity(unityVersion: UnityVersion, architecture: string, modules: string[]): Promise<string | undefined> {
+async function installUnity(unityVersion: UnityVersion, modules: string[]): Promise<string | undefined> {
     if (unityVersion.isLegacy()) {
         return await installUnity4x(unityVersion);
     }
@@ -398,8 +363,8 @@ async function installUnity(unityVersion: UnityVersion, architecture: string, mo
     if (unityVersion.changeset) {
         args.push('--changeset', unityVersion.changeset);
     }
-    if (architecture) {
-        args.push('-a', architecture);
+    if (unityVersion.architecture) {
+        args.push('-a', unityVersion.architecture);
     }
     if (modules.length > 0) {
         for (const module of modules) {
@@ -454,35 +419,34 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<string> {
     }
 }
 
-export async function ListInstalledEditors(): Promise<string> {
-    return await execUnityHub(['editors', '-i']);
+export async function ListInstalledEditors(): Promise<string[]> {
+    return (await execUnityHub(['editors', '-i'])).split('\n').map(line => line.trim()).filter(line => line.length > 0);
 }
 
-function isArmCompatible(version: string): boolean {
-    const semVersion = semver.coerce(version);
-    if (semVersion.major < 2021) { return false; }
-    return semver.compare(semVersion, '2021.0.0', true) >= 0;
+const archMap = {
+    'ARM64': 'Apple silicon',
+    'X86_64': 'Intel',
 }
 
-async function checkInstalledEditors(version: string, architecture: string, failOnEmpty: boolean, installPath: string | undefined = undefined): Promise<string | undefined> {
+async function checkInstalledEditors(unityVersion: UnityVersion, failOnEmpty: boolean, installPath: string | undefined = undefined): Promise<string | undefined> {
     let editorPath = undefined;
     if (!installPath) {
-        const output = await ListInstalledEditors();
-        if (output && output.trim().length > 0) {
-            const pattern = new RegExp(/(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?, installed at (?<editorPath>.*)/, 'g');
-            const matches = [...output.matchAll(pattern)];
-            const versionMatches = matches.filter(match => match.groups.version === version);
+        const paths = await ListInstalledEditors();
+        if (paths && paths.length > 0) {
+            const pattern = new RegExp(/(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?, installed at (?<editorPath>.*)/);
+            const matches = paths.map(path => path.match(pattern)).filter(match => match && match.groups);
+            const versionMatches = matches.filter(match => match.groups.version === unityVersion.version);
             if (versionMatches.length === 0) {
                 return undefined;
             }
             for (const match of versionMatches) {
-                if (!architecture) {
+                if (!unityVersion.architecture) {
                     editorPath = match.groups.editorPath;
                 }
-                if (archMap[architecture] === match.groups.arch) {
+                if (archMap[unityVersion.architecture] === match.groups.arch) {
                     editorPath = match.groups.editorPath;
                 }
-                if (match.groups.editorPath.includes(`-${architecture}`)) {
+                if (match.groups.editorPath.includes(`-${unityVersion.architecture}`)) {
                     editorPath = match.groups.editorPath;
                 }
             }
@@ -496,7 +460,7 @@ async function checkInstalledEditors(version: string, architecture: string, fail
     }
     if (!editorPath) {
         if (failOnEmpty) {
-            throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture ?? ''}`);
+            throw new Error(`Failed to find installed Unity Editor: ${unityVersion.toString()}`);
         }
         else {
             return undefined;
@@ -508,21 +472,16 @@ async function checkInstalledEditors(version: string, architecture: string, fail
     try {
         await fs.promises.access(editorPath, fs.constants.R_OK);
     } catch (error) {
-        throw new Error(`Failed to find installed Unity Editor: ${version} ${architecture ?? ''}\n  > ${error.message}`);
+        throw new Error(`Failed to find installed Unity Editor: ${unityVersion.toString()}\n  > ${error.message}`);
     }
     core.debug(`Found installed Unity Editor: ${editorPath}`);
     return editorPath;
 }
 
-const archMap = {
-    'arm64': 'Apple silicon',
-    'x86_64': 'Intel',
-}
-
-async function checkEditorModules(editorPath: string, version: string, architecture: string, modules: string[]): Promise<[string[], string[]]> {
-    let args = ['install-modules', '--version', version];
-    if (architecture) {
-        args.push('-a', architecture);
+async function checkEditorModules(editorPath: string, version: UnityVersion, modules: string[]): Promise<[string[], string[]]> {
+    let args = ['install-modules', '--version', version.version];
+    if (version.architecture) {
+        args.push('-a', version.architecture);
     }
     for (const module of modules) {
         args.push('-m', module);
@@ -560,29 +519,22 @@ async function getModulesContent(modulesPath: string): Promise<any> {
     return JSON.parse(modulesContent);
 }
 
-async function getChangeset(unityVersion: UnityVersion): Promise<UnityVersion> {
-    const splitVersion = unityVersion.version.split(/[abf]/)[0];
-    const url = `https://unity.com/releases/editor/whats-new/${splitVersion}`;
-    const response = await fetch(url);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch changeset [${response.status}] "${url}"`);
-    }
-    const data = await response.text();
-    const match = data.match(/unityhub:\/\/(?<version>\d+\.\d+\.\d+[fab]?\d*)\/(?<changeset>[a-zA-Z0-9]+)/);
-    if (match && match.groups && match.groups.changeset) {
-        return new UnityVersion(match.groups.version, match.groups.changeset);
-    }
-    core.error(`Failed to find changeset for Unity ${unityVersion.toString()}`);
-    return unityVersion;
-}
-
-async function removePath(targetPath: string | undefined): Promise<void> {
-    if (targetPath && targetPath.length > 0) {
-        core.startGroup(`deleting ${targetPath}...`);
-        try {
-            await fs.promises.rm(targetPath, { recursive: true, force: true });
-        } finally {
-            core.endGroup();
+async function getEditorReleaseInfo(version: UnityVersion): Promise<UnityRelease> {
+    const releasesClient = new UnityReleasesClient();
+    const request: GetUnityReleasesData = {
+        query: {
+            limit: 1,
+            version: version.version,
+            architecture: [version.architecture],
+            platform: GetCurrentPlatform(),
         }
+    };
+    const { data, error } = await releasesClient.api.ReleaseService.getUnityReleases(request);
+    if (error) {
+        throw new Error(`Failed to get Unity releases: ${error}`);
     }
+    if (!data || !data.results || data.results.length === 0) {
+        throw new Error(`No Unity releases found for version: ${version}`);
+    }
+    return data.results[0];
 }
