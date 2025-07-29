@@ -13,6 +13,9 @@ export class UnityVersion {
       throw new Error(`Invalid Unity version: ${version}`);
     }
     this.semVer = coercedVersion;
+    if (architecture && architecture.includes('ARM64') && !this.isArmCompatible()) {
+      architecture = null;
+    }
   }
 
   static compare(a: UnityVersion, b: UnityVersion): number {

@@ -208,6 +208,12 @@ const ignoredLines = [
     `Failed to connect to the bus:`
 ];
 
+const excludeLines = [
+    "Checking for beta autoupdate feature for deb/rpm distributions",
+    "Found package-type: deb",
+    "XPC error for connection com.apple.backupd.sandbox.xpc: Connection invalid"
+]
+
 async function execUnityHub(args: string[]): Promise<string> {
     if (!hubPath) {
         throw new Error('Unity Hub Path is not set!');
@@ -253,6 +259,10 @@ async function execUnityHub(args: string[]): Promise<string> {
             });
             break;
     }
+    // remove any lines that are excluded.
+    output = output.split('\n')
+        .filter(line => !excludeLines.some(excluded => line.includes(excluded)))
+        .join('\n');
     const match = output.match(/Assertion (?<assert>.+) failed/g);
     if (match ||
         output.includes('async hook stack has become corrupted')) {
@@ -431,7 +441,7 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<string> {
 }
 
 export async function ListInstalledEditors(): Promise<string[]> {
-    return (await execUnityHub(['editors', '-i'])).split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    return (await execUnityHub(['editors', '-i'])).split('\n').filter(line => line.trim().length > 0 && !excludeLines.some(msg => line.includes(msg))).map(line => line.trim());
 }
 
 const archMap = {
