@@ -278,10 +278,19 @@ const retryErrorMessages = [
 
 export async function UnityEditor(unityVersion: UnityVersion, modules: string[]): Promise<string> {
     core.info(`Getting release info for Unity ${unityVersion.toString()}...`);
-    const releases = await getLatestHubReleases();
-    unityVersion = unityVersion.findMatch(releases);
-    const unityReleaseInfo: UnityRelease = await getEditorReleaseInfo(unityVersion);
-    unityVersion = new UnityVersion(unityReleaseInfo.version, unityReleaseInfo.shortRevision, unityVersion.architecture);
+    if (!unityVersion.isLegacy()) {
+        try {
+            const releases = await getLatestHubReleases();
+            unityVersion = unityVersion.findMatch(releases);
+            const unityReleaseInfo: UnityRelease = await getEditorReleaseInfo(unityVersion);
+            unityVersion = new UnityVersion(unityReleaseInfo.version, unityReleaseInfo.shortRevision, unityVersion.architecture);
+        } catch (error) {
+            core.warning(`Failed to get Unity release info! falling back to legacy search...\n${error}`);
+            unityVersion = await fallbackUnityVersionSearch(unityVersion);
+        }
+    } else {
+        unityVersion = await fallbackUnityVersionSearch(unityVersion);
+    }
     let editorPath: string = await checkInstalledEditors(unityVersion, false);
     let installPath: string | null = null;
     if (!editorPath) {
@@ -289,12 +298,16 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
             installPath = await installUnity(unityVersion, modules);
         } catch (error) {
             if (retryErrorMessages.some(msg => error.message.includes(msg))) {
-                await RemovePath(editorPath);
+                if (editorPath) {
+                    await RemovePath(editorPath);
+                }
+                if (installPath) {
+                    await RemovePath(installPath);
+                }
                 installPath = await installUnity(unityVersion, modules);
+            } else {
+                throw error;
             }
-        }
-        if (!installPath) {
-            throw new Error(`Failed to install Unity ${unityVersion.toString()}`);
         }
         editorPath = await checkInstalledEditors(unityVersion, true, installPath);
     }
@@ -431,7 +444,7 @@ const archMap = {
 async function checkInstalledEditors(unityVersion: UnityVersion, failOnEmpty: boolean, installPath: string | undefined = undefined): Promise<string | undefined> {
     let editorPath = undefined;
     if (!installPath) {
-        const paths = await ListInstalledEditors();
+        const paths: string[] = await ListInstalledEditors();
         if (paths && paths.length > 0) {
             const pattern = new RegExp(/(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?, installed at (?<editorPath>.*)/);
             const matches = paths.map(path => path.match(pattern)).filter(match => match && match.groups);
@@ -537,4 +550,31 @@ async function getEditorReleaseInfo(version: UnityVersion): Promise<UnityRelease
         throw new Error(`No Unity releases found for version: ${version}`);
     }
     return data.results[0];
+}
+
+async function fallbackUnityVersionSearch(unityVersion: UnityVersion): Promise<UnityVersion> {
+    const baseUrl = `https://public-cdn.cloud.unity3d.com/hub/prod`;
+    const url = unityVersion.architecture === 'ARM64'
+        ? `${baseUrl}/releases-silicon.json`
+        : `${baseUrl}/releases-${process.platform}.json`;
+    const response = await fetch(url);
+    const data = await response.text();
+    const releases = JSON.parse(data);
+    core.debug(`Found ${releases.official.length} official releases...`);
+    releases.official.sort((a: any, b: any) => semver.compare(a.version, b.version, true));
+    for (const release of releases.official) {
+        const semVersion = semver.coerce(unityVersion.version);
+        const semVerRelease = semver.coerce(release.version);
+        core.debug(`Checking ${semVersion} against ${semVerRelease}`);
+        if (semver.satisfies(semVerRelease, `^${semVersion}`)) {
+            core.debug(`Found Unity ${release.version} release.`);
+            const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
+            if (match && match.groups && match.groups.changeset) {
+                const changeset = match.groups.changeset;
+                core.debug(`Found Unity ${release.version} (${changeset})`);
+                return new UnityVersion(release.version, changeset, unityVersion.architecture);
+            }
+        }
+    }
+    throw new Error(`Failed to find Unity ${unityVersion} release!`);
 }

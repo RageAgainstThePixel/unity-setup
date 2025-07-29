@@ -8,7 +8,11 @@ export class UnityVersion {
     public changeset?: string | null | undefined,
     public architecture?: 'X86_64' | 'ARM64' | null | undefined,
   ) {
-    this.semVer = semver.coerce(version);
+    const coercedVersion = semver.coerce(version);
+    if (!coercedVersion) {
+      throw new Error(`Invalid Unity version: ${version}`);
+    }
+    this.semVer = coercedVersion;
   }
 
   static compare(a: UnityVersion, b: UnityVersion): number {
@@ -36,6 +40,7 @@ export class UnityVersion {
       .filter(release => release && semver.satisfies(release, `^${this.semVer}`))
       .sort((a, b) => semver.compare(b, a));
     for (const release of validReleases) {
+      if (!release) { continue; }
       const originalRelease = versions.find(r => r.includes(release.version));
       const match = originalRelease.match(/(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?/);
       if (!(match && match.groups && match.groups.version)) { continue; }
