@@ -35940,8 +35940,11 @@ async function SetInstallPath(installPath) {
     await execUnityHub(["install-path", "--set", installPath]);
 }
 async function getInstallPath() {
-    const result = await execUnityHub(["install-path", "--get"]);
-    return result.trim();
+    const result = (await execUnityHub(["install-path", "--get"])).trim();
+    if (!result || result.length === 0) {
+        throw new Error(`Failed to get Unity Hub install path!`);
+    }
+    return result;
 }
 async function addEditorPathToHub(editorPath) {
     await fs.promises.access(editorPath, fs.constants.R_OK);
@@ -36057,10 +36060,11 @@ async function execUnityHub(args) {
     switch (process.platform) {
         case 'win32':
         case 'darwin':
+            core.info(`[command]"${hubPath}" -- --headless ${args.join(' ')}`);
             await exec.exec(`"${hubPath}"`, ['--', '--headless', ...args], {
                 listeners: {
-                    stdline: appendOutput,
-                    errline: appendOutput
+                    stdout: (data) => { appendOutput(data.toString()); },
+                    stderr: (data) => { appendOutput(data.toString()); },
                 },
                 ignoreReturnCode: true,
                 silent: true
@@ -36070,8 +36074,8 @@ async function execUnityHub(args) {
             core.info(`[command]unity-hub --headless ${args.join(' ')}`);
             await exec.exec('unity-hub', ['--headless', ...args], {
                 listeners: {
-                    stdline: appendOutput,
-                    errline: appendOutput
+                    stdout: (data) => { appendOutput(data.toString()); },
+                    stderr: (data) => { appendOutput(data.toString()); },
                 },
                 ignoreReturnCode: true,
                 silent: true
@@ -36372,12 +36376,13 @@ async function getEditorReleaseInfo(unityVersion) {
     const releasesClient = new unity_releases_api_1.UnityReleasesClient();
     const request = {
         query: {
-            limit: 1,
             version: version,
             architecture: [unityVersion.architecture],
             platform: (0, utility_1.GetCurrentPlatform)(),
+            limit: 1,
         }
     };
+    core.info(`Get Unity Release: ${JSON.stringify(request)}`);
     const { data, error } = await releasesClient.api.ReleaseService.getUnityReleases(request);
     if (error) {
         throw new Error(`Failed to get Unity releases: ${error}`);
@@ -36388,8 +36393,9 @@ async function getEditorReleaseInfo(unityVersion) {
     return data.results[0];
 }
 async function fallbackVersionLookup(unityVersion) {
-    const splitVersion = unityVersion.version.split(/[abf]/)[0];
+    const splitVersion = unityVersion.version.split(/[fab]/)[0];
     const url = `https://unity.com/releases/editor/whats-new/${splitVersion}`;
+    core.info(`Fetching release page: "${url}"`);
     const response = await fetch(url);
     if (!response.ok) {
         throw new Error(`Failed to fetch changeset [${response.status}] "${url}"`);

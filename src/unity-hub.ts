@@ -98,8 +98,11 @@ export async function SetInstallPath(installPath: string): Promise<void> {
 }
 
 async function getInstallPath(): Promise<string> {
-    const result = await execUnityHub(["install-path", "--get"]);
-    return result.trim();
+    const result = (await execUnityHub(["install-path", "--get"])).trim();
+    if (!result || result.length === 0) {
+        throw new Error(`Failed to get Unity Hub install path!`);
+    }
+    return result;
 }
 
 async function addEditorPathToHub(editorPath: string): Promise<void> {
@@ -219,10 +222,11 @@ async function execUnityHub(args: string[]): Promise<string> {
     switch (process.platform) {
         case 'win32': // "C:/Program Files/Unity Hub/Unity Hub.exe" -- --headless help
         case 'darwin': // "/Applications/Unity Hub.app/Contents/MacOS/Unity Hub" -- --headless help
+            core.info(`[command]"${hubPath}" -- --headless ${args.join(' ')}`);
             await exec.exec(`"${hubPath}"`, ['--', '--headless', ...args], {
                 listeners: {
-                    stdline: appendOutput,
-                    errline: appendOutput
+                    stdout: (data) => { appendOutput(data.toString()); },
+                    stderr: (data) => { appendOutput(data.toString()); },
                 },
                 ignoreReturnCode: true,
                 silent: true
@@ -232,8 +236,8 @@ async function execUnityHub(args: string[]): Promise<string> {
             core.info(`[command]unity-hub --headless ${args.join(' ')}`);
             await exec.exec('unity-hub', ['--headless', ...args], {
                 listeners: {
-                    stdline: appendOutput,
-                    errline: appendOutput
+                    stdout: (data) => { appendOutput(data.toString()); },
+                    stderr: (data) => { appendOutput(data.toString()); },
                 },
                 ignoreReturnCode: true,
                 silent: true
@@ -541,19 +545,20 @@ async function getEditorReleaseInfo(unityVersion: UnityVersion): Promise<UnityRe
     if (unityVersion.version.endsWith('.0')) {
         version = unityVersion.version.slice(0, -2);
     }
-    // if there are only two parts and the last part is 0, then drop it.
+    // if there are only two parts and the last part is .0, then drop it.
     else if (version.split('.').length === 2 && version.endsWith('.0')) {
         version = version.slice(0, -2);
     }
     const releasesClient = new UnityReleasesClient();
     const request: GetUnityReleasesData = {
         query: {
-            limit: 1,
             version: version,
             architecture: [unityVersion.architecture],
             platform: GetCurrentPlatform(),
+            limit: 1,
         }
     };
+    core.info(`Get Unity Release: ${JSON.stringify(request)}`);
     const { data, error } = await releasesClient.api.ReleaseService.getUnityReleases(request);
     if (error) {
         throw new Error(`Failed to get Unity releases: ${error}`);
@@ -565,8 +570,9 @@ async function getEditorReleaseInfo(unityVersion: UnityVersion): Promise<UnityRe
 }
 
 async function fallbackVersionLookup(unityVersion: UnityVersion): Promise<UnityVersion> {
-    const splitVersion = unityVersion.version.split(/[abf]/)[0];
+    const splitVersion = unityVersion.version.split(/[fab]/)[0];
     const url = `https://unity.com/releases/editor/whats-new/${splitVersion}`;
+    core.info(`Fetching release page: "${url}"`)
     const response = await fetch(url);
     if (!response.ok) {
         throw new Error(`Failed to fetch changeset [${response.status}] "${url}"`);
