@@ -288,8 +288,6 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
             core.warning(`Failed to get Unity release info! falling back to legacy search...\n${error}`);
             unityVersion = await fallbackUnityVersionSearch(unityVersion);
         }
-    } else {
-        unityVersion = await fallbackUnityVersionSearch(unityVersion);
     }
     let editorPath: string = await checkInstalledEditors(unityVersion, false);
     let installPath: string | null = null;
@@ -446,7 +444,7 @@ async function checkInstalledEditors(unityVersion: UnityVersion, failOnEmpty: bo
     if (!installPath) {
         const paths: string[] = await ListInstalledEditors();
         if (paths && paths.length > 0) {
-            const pattern = new RegExp(/(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?, installed at (?<editorPath>.*)/);
+            const pattern = /(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?\s*, installed at (?<editorPath>.*)/;
             const matches = paths.map(path => path.match(pattern)).filter(match => match && match.groups);
             const versionMatches = matches.filter(match => match.groups.version === unityVersion.version);
             if (versionMatches.length === 0) {

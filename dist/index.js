@@ -36126,9 +36126,6 @@ async function UnityEditor(unityVersion, modules) {
             unityVersion = await fallbackUnityVersionSearch(unityVersion);
         }
     }
-    else {
-        unityVersion = await fallbackUnityVersionSearch(unityVersion);
-    }
     let editorPath = await checkInstalledEditors(unityVersion, false);
     let installPath = null;
     if (!editorPath) {
@@ -36276,7 +36273,7 @@ async function checkInstalledEditors(unityVersion, failOnEmpty, installPath = un
     if (!installPath) {
         const paths = await ListInstalledEditors();
         if (paths && paths.length > 0) {
-            const pattern = new RegExp(/(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?, installed at (?<editorPath>.*)/);
+            const pattern = /(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?\s*, installed at (?<editorPath>.*)/;
             const matches = paths.map(path => path.match(pattern)).filter(match => match && match.groups);
             const versionMatches = matches.filter(match => match.groups.version === unityVersion.version);
             if (versionMatches.length === 0) {
