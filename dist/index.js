@@ -36080,21 +36080,8 @@ async function execUnityHub(args) {
                                 return;
                             }
                             core.info(line);
+                            output += `${line}\n`;
                         }
-                    },
-                    stdout: (data) => {
-                        const line = data.toString();
-                        if (ignoredLines.some(ignored => line.includes(ignored))) {
-                            return;
-                        }
-                        output += line;
-                    },
-                    stderr: (data) => {
-                        const line = data.toString();
-                        if (ignoredLines.some(ignored => line.includes(ignored))) {
-                            return;
-                        }
-                        output += line;
                     }
                 },
                 ignoreReturnCode: true,

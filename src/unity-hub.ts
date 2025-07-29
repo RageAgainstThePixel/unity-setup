@@ -242,22 +242,9 @@ async function execUnityHub(args: string[]): Promise<string> {
                                 return;
                             }
                             core.info(line);
+                            output += `${line}\n`;
                         }
                     },
-                    stdout: (data) => {
-                        const line = data.toString();
-                        if (ignoredLines.some(ignored => line.includes(ignored))) {
-                            return;
-                        }
-                        output += line;
-                    },
-                    stderr: (data) => {
-                        const line = data.toString();
-                        if (ignoredLines.some(ignored => line.includes(ignored))) {
-                            return;
-                        }
-                        output += line;
-                    }
                 },
                 ignoreReturnCode: true,
                 silent: true
