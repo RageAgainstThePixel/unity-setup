@@ -9,10 +9,12 @@ export async function ValidateInputs(): Promise<[UnityVersion[], string[], strin
     const modules: string[] = [];
     const architectureInput = core.getInput('architecture') || getInstallationArch();
     let architecture: 'X86_64' | 'ARM64' | null = null;
-    switch (architectureInput.toUpperCase()) {
+    switch (architectureInput) {
+        case 'arm64':
         case 'ARM64':
             architecture = 'ARM64';
             break;
+        case 'x86_64':
         case 'X86_64':
             architecture = 'X86_64';
             break;
@@ -100,10 +102,10 @@ function getArrayInput(key: string): string[] {
 }
 
 function getInstallationArch(): 'ARM64' | null {
-    switch (os.arch().toUpperCase()) {
-        case 'ARM64':
+    switch (os.arch()) {
+        case 'arm64':
             return 'ARM64';
-        case 'X64':
+        case 'x64':
             return null;
         default:
             throw Error(`${os.arch()} not supported`);

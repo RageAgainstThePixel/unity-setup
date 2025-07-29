@@ -35472,10 +35472,12 @@ async function ValidateInputs() {
     const modules = [];
     const architectureInput = core.getInput('architecture') || getInstallationArch();
     let architecture = null;
-    switch (architectureInput.toUpperCase()) {
+    switch (architectureInput) {
+        case 'arm64':
         case 'ARM64':
             architecture = 'ARM64';
             break;
+        case 'x86_64':
         case 'X86_64':
             architecture = 'X86_64';
             break;
@@ -35564,10 +35566,10 @@ function getArrayInput(key) {
     return array;
 }
 function getInstallationArch() {
-    switch (os.arch().toUpperCase()) {
-        case 'ARM64':
+    switch (os.arch()) {
+        case 'arm64':
             return 'ARM64';
-        case 'X64':
+        case 'x64':
             return null;
         default:
             throw Error(`${os.arch()} not supported`);
