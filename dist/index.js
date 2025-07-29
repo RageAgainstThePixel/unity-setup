@@ -36272,10 +36272,16 @@ async function checkInstalledEditors(unityVersion, failOnEmpty, installPath = un
     let editorPath = undefined;
     if (!installPath) {
         const paths = await ListInstalledEditors();
+        core.info(`Paths: ${JSON.stringify(paths)}`);
         if (paths && paths.length > 0) {
             const pattern = /(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?\s*, installed at (?<editorPath>.*)/;
             const matches = paths.map(path => path.match(pattern)).filter(match => match && match.groups);
+            core.info(`Matches: ${JSON.stringify(matches)}`);
+            if (paths.length !== matches.length) {
+                throw new Error(`Failed to parse all installed Unity Editors!`);
+            }
             const versionMatches = matches.filter(match => unityVersion.satisfies(match.groups.version));
+            core.info(`Version Matches: ${JSON.stringify(versionMatches)}`);
             if (versionMatches.length === 0) {
                 return undefined;
             }
@@ -36449,6 +36455,10 @@ class UnityVersion {
             .map(release => semver.coerce(release))
             .filter(release => release && semver.satisfies(release, `^${this.semVer}`))
             .sort((a, b) => semver.compare(b, a));
+        core.info(`Searching for ${this.version}:`);
+        validReleases.forEach(release => {
+            core.info(`  > ${release}`);
+        });
         for (const release of validReleases) {
             if (!release) {
                 continue;
@@ -36461,11 +36471,11 @@ class UnityVersion {
             if ((this.version.includes('a') && match.groups.version.includes('a')) ||
                 (this.version.includes('b') && match.groups.version.includes('b')) ||
                 match.groups.version.includes('f')) {
-                core.debug(`Found Unity ${match.groups.version}`);
+                core.info(`Found Unity ${match.groups.version}`);
                 return new UnityVersion(match.groups.version, null, this.architecture);
             }
         }
-        core.debug(`No matching Unity version found for ${this.version}`);
+        core.info(`No matching Unity version found for ${this.version}`);
         return this;
     }
     satisfies(version) {

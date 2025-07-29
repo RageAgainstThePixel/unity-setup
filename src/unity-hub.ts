@@ -443,10 +443,16 @@ async function checkInstalledEditors(unityVersion: UnityVersion, failOnEmpty: bo
     let editorPath = undefined;
     if (!installPath) {
         const paths: string[] = await ListInstalledEditors();
+        core.info(`Paths: ${JSON.stringify(paths)}`);
         if (paths && paths.length > 0) {
             const pattern = /(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?\s*, installed at (?<editorPath>.*)/;
             const matches = paths.map(path => path.match(pattern)).filter(match => match && match.groups);
+            core.info(`Matches: ${JSON.stringify(matches)}`);
+            if (paths.length !== matches.length) {
+                throw new Error(`Failed to parse all installed Unity Editors!`);
+            }
             const versionMatches = matches.filter(match => unityVersion.satisfies(match.groups.version));
+            core.info(`Version Matches: ${JSON.stringify(versionMatches)}`);
             if (versionMatches.length === 0) {
                 return undefined;
             }

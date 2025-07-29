@@ -39,6 +39,10 @@ export class UnityVersion {
       .map(release => semver.coerce(release))
       .filter(release => release && semver.satisfies(release, `^${this.semVer}`))
       .sort((a, b) => semver.compare(b, a));
+    core.info(`Searching for ${this.version}:`);
+    validReleases.forEach(release => {
+      core.info(`  > ${release}`);
+    });
     for (const release of validReleases) {
       if (!release) { continue; }
       const originalRelease = versions.find(r => r.includes(release.version));
@@ -47,11 +51,11 @@ export class UnityVersion {
       if ((this.version.includes('a') && match.groups.version.includes('a')) ||
         (this.version.includes('b') && match.groups.version.includes('b')) ||
         match.groups.version.includes('f')) {
-        core.debug(`Found Unity ${match.groups.version}`);
+        core.info(`Found Unity ${match.groups.version}`);
         return new UnityVersion(match.groups.version, null, this.architecture);
       }
     }
-    core.debug(`No matching Unity version found for ${this.version}`);
+    core.info(`No matching Unity version found for ${this.version}`);
     return this;
   }
 
