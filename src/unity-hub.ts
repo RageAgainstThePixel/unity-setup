@@ -241,14 +241,22 @@ async function execUnityHub(args: string[]): Promise<string> {
                             if (ignoredLines.some(ignored => line.includes(ignored))) {
                                 return;
                             }
-                            core.info(data);
+                            core.info(line);
                         }
                     },
                     stdout: (data) => {
-                        output += data.toString();
+                        const line = data.toString();
+                        if (ignoredLines.some(ignored => line.includes(ignored))) {
+                            return;
+                        }
+                        output += line;
                     },
                     stderr: (data) => {
-                        output += data.toString();
+                        const line = data.toString();
+                        if (ignoredLines.some(ignored => line.includes(ignored))) {
+                            return;
+                        }
+                        output += line;
                     }
                 },
                 ignoreReturnCode: true,
