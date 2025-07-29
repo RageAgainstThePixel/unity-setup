@@ -36282,13 +36282,13 @@ async function checkInstalledEditors(unityVersion, failOnEmpty, installPath = un
                 return undefined;
             }
             for (const match of versionMatches) {
-                if (!unityVersion.architecture) {
+                if (!unityVersion.architecture || !match.groups.arch) {
                     editorPath = match.groups.editorPath;
                 }
-                if (archMap[unityVersion.architecture] === match.groups.arch) {
+                else if (archMap[unityVersion.architecture] === match.groups.arch) {
                     editorPath = match.groups.editorPath;
                 }
-                if (match.groups.editorPath.includes(`-${unityVersion.architecture.toLowerCase()}`)) {
+                else if (unityVersion.architecture && match.groups.editorPath.toLowerCase().includes(`-${unityVersion.architecture.toLowerCase()}`)) {
                     editorPath = match.groups.editorPath;
                 }
             }

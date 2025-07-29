@@ -453,13 +453,16 @@ async function checkInstalledEditors(unityVersion: UnityVersion, failOnEmpty: bo
                 return undefined;
             }
             for (const match of versionMatches) {
-                if (!unityVersion.architecture) {
+                // If no architecture is set, or no arch in match, accept the version match
+                if (!unityVersion.architecture || !match.groups.arch) {
                     editorPath = match.groups.editorPath;
                 }
-                if (archMap[unityVersion.architecture] === match.groups.arch) {
+                // If architecture is set and present in match, check for match
+                else if (archMap[unityVersion.architecture] === match.groups.arch) {
                     editorPath = match.groups.editorPath;
                 }
-                if (match.groups.editorPath.includes(`-${unityVersion.architecture.toLowerCase()}`)) {
+                // Fallback: check if editorPath includes architecture string (case-insensitive)
+                else if (unityVersion.architecture && match.groups.editorPath.toLowerCase().includes(`-${unityVersion.architecture.toLowerCase()}`)) {
                     editorPath = match.groups.editorPath;
                 }
             }
