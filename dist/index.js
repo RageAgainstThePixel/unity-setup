@@ -35477,12 +35477,8 @@ async function ValidateInputs() {
         case 'ARM64':
             architecture = 'ARM64';
             break;
-        case 'x86_64':
-        case 'X86_64':
-            architecture = 'X86_64';
-            break;
         default:
-            architecture = null;
+            architecture = 'X86_64';
             break;
     }
     if (architecture) {
