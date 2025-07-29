@@ -30,7 +30,7 @@ export class UnityVersion {
     return semver.compare(this.semVer, '2021.0.0', true) >= 0;
   }
 
-  findMatch(versions: string[]): UnityVersion | null {
+  findMatch(versions: string[]): UnityVersion {
     const validReleases = versions
       .map(release => semver.coerce(release))
       .filter(release => release && semver.satisfies(release, `^${this.semVer}`))
@@ -43,7 +43,7 @@ export class UnityVersion {
         (this.version.includes('b') && match.groups.version.includes('b')) ||
         match.groups.version.includes('f')) {
         core.info(`Found Unity ${match.groups.version}`);
-        return new UnityVersion(match.groups.version);
+        return new UnityVersion(match.groups.version, null, this.architecture);
       }
     }
     core.info(`No matching Unity version found for ${this.version}`);

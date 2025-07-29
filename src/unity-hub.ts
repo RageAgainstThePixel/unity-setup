@@ -364,7 +364,7 @@ async function installUnity(unityVersion: UnityVersion, modules: string[]): Prom
         args.push('--changeset', unityVersion.changeset);
     }
     if (unityVersion.architecture) {
-        args.push('-a', unityVersion.architecture);
+        args.push('-a', unityVersion.architecture.toLocaleLowerCase());
     }
     if (modules.length > 0) {
         for (const module of modules) {

@@ -35482,7 +35482,7 @@ async function ValidateInputs() {
             break;
     }
     if (architecture) {
-        core.info(`architecture:\n  > ${architecture}`);
+        core.info(`architecture:\n  > ${architecture.toLocaleLowerCase()}`);
     }
     const buildTargets = getArrayInput('build-targets');
     core.info(`modules:`);
@@ -36195,7 +36195,7 @@ async function installUnity(unityVersion, modules) {
         args.push('--changeset', unityVersion.changeset);
     }
     if (unityVersion.architecture) {
-        args.push('-a', unityVersion.architecture);
+        args.push('-a', unityVersion.architecture.toLocaleLowerCase());
     }
     if (modules.length > 0) {
         for (const module of modules) {
@@ -36417,7 +36417,7 @@ class UnityVersion {
                 (this.version.includes('b') && match.groups.version.includes('b')) ||
                 match.groups.version.includes('f')) {
                 core.info(`Found Unity ${match.groups.version}`);
-                return new UnityVersion(match.groups.version);
+                return new UnityVersion(match.groups.version, null, this.architecture);
             }
         }
         core.info(`No matching Unity version found for ${this.version}`);
