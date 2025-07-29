@@ -36059,11 +36059,25 @@ async function execUnityHub(args) {
         case 'darwin':
             await exec.exec(`"${hubPath}"`, ['--', '--headless', ...args], {
                 listeners: {
-                    stdout: (data) => {
-                        output += data.toString();
+                    stdline: (data) => {
+                        const line = data.toString();
+                        if (line && line.trim().length > 0) {
+                            if (ignoredLines.some(ignored => line.includes(ignored))) {
+                                return;
+                            }
+                            core.info(line);
+                            output += `${line}\n`;
+                        }
                     },
-                    stderr: (data) => {
-                        output += data.toString();
+                    errline: (data) => {
+                        const line = data.toString();
+                        if (line && line.trim().length > 0) {
+                            if (ignoredLines.some(ignored => line.includes(ignored))) {
+                                return;
+                            }
+                            core.info(line);
+                            output += `${line}\n`;
+                        }
                     }
                 },
                 ignoreReturnCode: true
@@ -36074,6 +36088,16 @@ async function execUnityHub(args) {
             await exec.exec('unity-hub', ['--headless', ...args], {
                 listeners: {
                     stdline: (data) => {
+                        const line = data.toString();
+                        if (line && line.trim().length > 0) {
+                            if (ignoredLines.some(ignored => line.includes(ignored))) {
+                                return;
+                            }
+                            core.info(line);
+                            output += `${line}\n`;
+                        }
+                    },
+                    errline: (data) => {
                         const line = data.toString();
                         if (line && line.trim().length > 0) {
                             if (ignoredLines.some(ignored => line.includes(ignored))) {

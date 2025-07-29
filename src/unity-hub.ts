@@ -221,11 +221,25 @@ async function execUnityHub(args: string[]): Promise<string> {
         case 'darwin': // "/Applications/Unity Hub.app/Contents/MacOS/Unity Hub" -- --headless help
             await exec.exec(`"${hubPath}"`, ['--', '--headless', ...args], {
                 listeners: {
-                    stdout: (data) => {
-                        output += data.toString();
+                    stdline: (data) => {
+                        const line = data.toString();
+                        if (line && line.trim().length > 0) {
+                            if (ignoredLines.some(ignored => line.includes(ignored))) {
+                                return;
+                            }
+                            core.info(line);
+                            output += `${line}\n`;
+                        }
                     },
-                    stderr: (data) => {
-                        output += data.toString();
+                    errline: (data) => {
+                        const line = data.toString();
+                        if (line && line.trim().length > 0) {
+                            if (ignoredLines.some(ignored => line.includes(ignored))) {
+                                return;
+                            }
+                            core.info(line);
+                            output += `${line}\n`;
+                        }
                     }
                 },
                 ignoreReturnCode: true
@@ -245,6 +259,16 @@ async function execUnityHub(args: string[]): Promise<string> {
                             output += `${line}\n`;
                         }
                     },
+                    errline: (data) => {
+                        const line = data.toString();
+                        if (line && line.trim().length > 0) {
+                            if (ignoredLines.some(ignored => line.includes(ignored))) {
+                                return;
+                            }
+                            core.info(line);
+                            output += `${line}\n`;
+                        }
+                    }
                 },
                 ignoreReturnCode: true,
                 silent: true
