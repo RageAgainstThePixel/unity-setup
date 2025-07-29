@@ -36122,8 +36122,8 @@ async function UnityEditor(unityVersion, modules) {
             unityVersion = new unity_version_1.UnityVersion(unityReleaseInfo.version, unityReleaseInfo.shortRevision, unityVersion.architecture);
         }
         catch (error) {
-            core.warning(`Failed to get Unity release info! falling back to legacy search...\n${error}`);
-            unityVersion = await fallbackUnityVersionSearch(unityVersion);
+            core.warning(`Failed to get Unity release info for ${unityVersion.toString()}! falling back to legacy search...\n${error}`);
+            unityVersion = await fallbackVersionLookup(unityVersion);
         }
     }
     let editorPath = await checkInstalledEditors(unityVersion, false);
@@ -36275,7 +36275,7 @@ async function checkInstalledEditors(unityVersion, failOnEmpty, installPath = un
         if (paths && paths.length > 0) {
             const pattern = /(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?\s*, installed at (?<editorPath>.*)/;
             const matches = paths.map(path => path.match(pattern)).filter(match => match && match.groups);
-            const versionMatches = matches.filter(match => match.groups.version === unityVersion.version);
+            const versionMatches = matches.filter(match => unityVersion.satisfies(match.groups.version));
             if (versionMatches.length === 0) {
                 return undefined;
             }
@@ -36286,7 +36286,7 @@ async function checkInstalledEditors(unityVersion, failOnEmpty, installPath = un
                 if (archMap[unityVersion.architecture] === match.groups.arch) {
                     editorPath = match.groups.editorPath;
                 }
-                if (match.groups.editorPath.includes(`-${unityVersion.architecture}`)) {
+                if (match.groups.editorPath.includes(`-${unityVersion.architecture.toLowerCase()}`)) {
                     editorPath = match.groups.editorPath;
                 }
             }
@@ -36359,13 +36359,23 @@ async function getModulesContent(modulesPath) {
     const modulesContent = await (0, utility_1.ReadFileContents)(modulesPath);
     return JSON.parse(modulesContent);
 }
-async function getEditorReleaseInfo(version) {
+async function getEditorReleaseInfo(unityVersion) {
+    let version;
+    if (unityVersion.version.endsWith('.0')) {
+        version = unityVersion.version.slice(0, -2);
+    }
+    else if (unityVersion.version.split('.').length === 2 && unityVersion.version.endsWith('.0')) {
+        version = unityVersion.version.slice(0, -2);
+    }
+    else {
+        version = unityVersion.version;
+    }
     const releasesClient = new unity_releases_api_1.UnityReleasesClient();
     const request = {
         query: {
             limit: 1,
-            version: version.version,
-            architecture: [version.architecture],
+            version: version,
+            architecture: [unityVersion.architecture],
             platform: (0, utility_1.GetCurrentPlatform)(),
         }
     };
@@ -36378,31 +36388,20 @@ async function getEditorReleaseInfo(version) {
     }
     return data.results[0];
 }
-async function fallbackUnityVersionSearch(unityVersion) {
-    const baseUrl = `https://public-cdn.cloud.unity3d.com/hub/prod`;
-    const url = unityVersion.architecture === 'ARM64'
-        ? `${baseUrl}/releases-silicon.json`
-        : `${baseUrl}/releases-${process.platform}.json`;
+async function fallbackVersionLookup(unityVersion) {
+    const splitVersion = unityVersion.version.split(/[abf]/)[0];
+    const url = `https://unity.com/releases/editor/whats-new/${splitVersion}`;
     const response = await fetch(url);
-    const data = await response.text();
-    const releases = JSON.parse(data);
-    core.debug(`Found ${releases.official.length} official releases...`);
-    releases.official.sort((a, b) => semver.compare(a.version, b.version, true));
-    for (const release of releases.official) {
-        const semVersion = semver.coerce(unityVersion.version);
-        const semVerRelease = semver.coerce(release.version);
-        core.debug(`Checking ${semVersion} against ${semVerRelease}`);
-        if (semver.satisfies(semVerRelease, `^${semVersion}`)) {
-            core.debug(`Found Unity ${release.version} release.`);
-            const match = release.downloadUrl.match(/download_unity\/(?<changeset>[a-zA-Z0-9]+)\//);
-            if (match && match.groups && match.groups.changeset) {
-                const changeset = match.groups.changeset;
-                core.debug(`Found Unity ${release.version} (${changeset})`);
-                return new unity_version_1.UnityVersion(release.version, changeset, unityVersion.architecture);
-            }
-        }
+    if (!response.ok) {
+        throw new Error(`Failed to fetch changeset [${response.status}] "${url}"`);
     }
-    throw new Error(`Failed to find Unity ${unityVersion} release!`);
+    const data = await response.text();
+    const match = data.match(/unityhub:\/\/(?<version>\d+\.\d+\.\d+[fab]?\d*)\/(?<changeset>[a-zA-Z0-9]+)/);
+    if (match && match.groups && match.groups.changeset) {
+        return new unity_version_1.UnityVersion(match.groups.version, match.groups.changeset, unityVersion.architecture);
+    }
+    core.error(`Failed to find changeset for Unity ${unityVersion.toString()}`);
+    return unityVersion;
 }
 
 
@@ -36462,12 +36461,19 @@ class UnityVersion {
             if ((this.version.includes('a') && match.groups.version.includes('a')) ||
                 (this.version.includes('b') && match.groups.version.includes('b')) ||
                 match.groups.version.includes('f')) {
-                core.info(`Found Unity ${match.groups.version}`);
+                core.debug(`Found Unity ${match.groups.version}`);
                 return new UnityVersion(match.groups.version, null, this.architecture);
             }
         }
-        core.info(`No matching Unity version found for ${this.version}`);
+        core.debug(`No matching Unity version found for ${this.version}`);
         return this;
+    }
+    satisfies(version) {
+        const coercedVersion = semver.coerce(version);
+        if (!coercedVersion) {
+            throw new Error(`Invalid version to check against: ${version}`);
+        }
+        return semver.satisfies(coercedVersion, `^${this.semVer}`);
     }
 }
 exports.UnityVersion = UnityVersion;

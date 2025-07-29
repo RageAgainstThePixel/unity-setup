@@ -47,11 +47,19 @@ export class UnityVersion {
       if ((this.version.includes('a') && match.groups.version.includes('a')) ||
         (this.version.includes('b') && match.groups.version.includes('b')) ||
         match.groups.version.includes('f')) {
-        core.info(`Found Unity ${match.groups.version}`);
+        core.debug(`Found Unity ${match.groups.version}`);
         return new UnityVersion(match.groups.version, null, this.architecture);
       }
     }
-    core.info(`No matching Unity version found for ${this.version}`);
+    core.debug(`No matching Unity version found for ${this.version}`);
     return this;
+  }
+
+  satisfies(version: string): boolean {
+    const coercedVersion = semver.coerce(version);
+    if (!coercedVersion) {
+      throw new Error(`Invalid version to check against: ${version}`);
+    }
+    return semver.satisfies(coercedVersion, `^${this.semVer}`);
   }
 }
