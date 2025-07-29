@@ -36059,59 +36059,33 @@ async function execUnityHub(args) {
         case 'darwin':
             await exec.exec(`"${hubPath}"`, ['--', '--headless', ...args], {
                 listeners: {
-                    stdline: (data) => {
-                        const line = data.toString();
-                        if (line && line.trim().length > 0) {
-                            if (ignoredLines.some(ignored => line.includes(ignored))) {
-                                return;
-                            }
-                            core.info(line);
-                            output += `${line}\n`;
-                        }
-                    },
-                    errline: (data) => {
-                        const line = data.toString();
-                        if (line && line.trim().length > 0) {
-                            if (ignoredLines.some(ignored => line.includes(ignored))) {
-                                return;
-                            }
-                            core.info(line);
-                            output += `${line}\n`;
-                        }
-                    }
+                    stdline: appendOutput,
+                    errline: appendOutput
                 },
-                ignoreReturnCode: true
+                ignoreReturnCode: true,
+                silent: true
             });
             break;
         case 'linux':
             core.info(`[command]unity-hub --headless ${args.join(' ')}`);
             await exec.exec('unity-hub', ['--headless', ...args], {
                 listeners: {
-                    stdline: (data) => {
-                        const line = data.toString();
-                        if (line && line.trim().length > 0) {
-                            if (ignoredLines.some(ignored => line.includes(ignored))) {
-                                return;
-                            }
-                            core.info(line);
-                            output += `${line}\n`;
-                        }
-                    },
-                    errline: (data) => {
-                        const line = data.toString();
-                        if (line && line.trim().length > 0) {
-                            if (ignoredLines.some(ignored => line.includes(ignored))) {
-                                return;
-                            }
-                            core.info(line);
-                            output += `${line}\n`;
-                        }
-                    }
+                    stdline: appendOutput,
+                    errline: appendOutput
                 },
                 ignoreReturnCode: true,
                 silent: true
             });
             break;
+    }
+    function appendOutput(line) {
+        if (line && line.trim().length > 0) {
+            if (ignoredLines.some(ignored => line.includes(ignored))) {
+                return;
+            }
+            core.info(line);
+            output += `${line}\n`;
+        }
     }
     const match = output.match(/Assertion (?<assert>.+) failed/g);
     if (match ||
@@ -36392,11 +36366,8 @@ async function getEditorReleaseInfo(unityVersion) {
     if (unityVersion.version.endsWith('.0')) {
         version = unityVersion.version.slice(0, -2);
     }
-    else if (unityVersion.version.split('.').length === 2 && unityVersion.version.endsWith('.0')) {
-        version = unityVersion.version.slice(0, -2);
-    }
-    else {
-        version = unityVersion.version;
+    else if (version.split('.').length === 2 && version.endsWith('.0')) {
+        version = version.slice(0, -2);
     }
     const releasesClient = new unity_releases_api_1.UnityReleasesClient();
     const request = {

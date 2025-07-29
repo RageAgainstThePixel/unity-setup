@@ -221,59 +221,33 @@ async function execUnityHub(args: string[]): Promise<string> {
         case 'darwin': // "/Applications/Unity Hub.app/Contents/MacOS/Unity Hub" -- --headless help
             await exec.exec(`"${hubPath}"`, ['--', '--headless', ...args], {
                 listeners: {
-                    stdline: (data) => {
-                        const line = data.toString();
-                        if (line && line.trim().length > 0) {
-                            if (ignoredLines.some(ignored => line.includes(ignored))) {
-                                return;
-                            }
-                            core.info(line);
-                            output += `${line}\n`;
-                        }
-                    },
-                    errline: (data) => {
-                        const line = data.toString();
-                        if (line && line.trim().length > 0) {
-                            if (ignoredLines.some(ignored => line.includes(ignored))) {
-                                return;
-                            }
-                            core.info(line);
-                            output += `${line}\n`;
-                        }
-                    }
+                    stdline: appendOutput,
+                    errline: appendOutput
                 },
-                ignoreReturnCode: true
+                ignoreReturnCode: true,
+                silent: true
             });
             break;
         case 'linux': // unity-hub --headless help
             core.info(`[command]unity-hub --headless ${args.join(' ')}`);
             await exec.exec('unity-hub', ['--headless', ...args], {
                 listeners: {
-                    stdline: (data) => {
-                        const line = data.toString();
-                        if (line && line.trim().length > 0) {
-                            if (ignoredLines.some(ignored => line.includes(ignored))) {
-                                return;
-                            }
-                            core.info(line);
-                            output += `${line}\n`;
-                        }
-                    },
-                    errline: (data) => {
-                        const line = data.toString();
-                        if (line && line.trim().length > 0) {
-                            if (ignoredLines.some(ignored => line.includes(ignored))) {
-                                return;
-                            }
-                            core.info(line);
-                            output += `${line}\n`;
-                        }
-                    }
+                    stdline: appendOutput,
+                    errline: appendOutput
                 },
                 ignoreReturnCode: true,
                 silent: true
             });
             break;
+    }
+    function appendOutput(line: string) {
+        if (line && line.trim().length > 0) {
+            if (ignoredLines.some(ignored => line.includes(ignored))) {
+                return;
+            }
+            core.info(line);
+            output += `${line}\n`;
+        }
     }
     const match = output.match(/Assertion (?<assert>.+) failed/g);
     if (match ||
@@ -565,10 +539,8 @@ async function getEditorReleaseInfo(unityVersion: UnityVersion): Promise<UnityRe
         version = unityVersion.version.slice(0, -2);
     }
     // if there are only two parts and the last part is 0, then drop it.
-    else if (unityVersion.version.split('.').length === 2 && unityVersion.version.endsWith('.0')) {
-        version = unityVersion.version.slice(0, -2);
-    } else {
-        version = unityVersion.version;
+    else if (version.split('.').length === 2 && version.endsWith('.0')) {
+        version = version.slice(0, -2);
     }
     const releasesClient = new UnityReleasesClient();
     const request: GetUnityReleasesData = {
