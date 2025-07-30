@@ -352,7 +352,7 @@ async function patchBeeBackend(editorPath: string): Promise<void> {
         const beeBackend = path.join(dataPath, 'bee_backend');
         const dotBeeBackend = path.join(dataPath, '.bee_backend');
         if (fs.existsSync(beeBackend) && !fs.existsSync(dotBeeBackend)) {
-            core.info(`Patching Unity Linux Editor for Bee Backend...`);
+            core.debug(`Patching Unity Linux Editor for Bee Backend...`);
             await fs.promises.rename(beeBackend, dotBeeBackend);
             const wrapperSource = path.join(__dirname, 'linux-bee-backend-wrapper.sh');
             await fs.promises.copyFile(wrapperSource, beeBackend);
@@ -443,16 +443,16 @@ async function checkInstalledEditors(unityVersion: UnityVersion, failOnEmpty: bo
     let editorPath = undefined;
     if (!installPath) {
         const paths: string[] = await ListInstalledEditors();
-        core.info(`Paths: ${JSON.stringify(paths)}`);
+        core.debug(`Paths: ${JSON.stringify(paths, null, 2)}`);
         if (paths && paths.length > 0) {
             const pattern = /(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?\s*, installed at (?<editorPath>.*)/;
             const matches = paths.map(path => path.match(pattern)).filter(match => match && match.groups);
-            core.info(`Matches: ${JSON.stringify(matches)}`);
+            core.debug(`Matches: ${JSON.stringify(matches, null, 2)}`);
             if (paths.length !== matches.length) {
                 throw new Error(`Failed to parse all installed Unity Editors!`);
             }
             const versionMatches = matches.filter(match => unityVersion.satisfies(match.groups.version));
-            core.info(`Version Matches: ${JSON.stringify(versionMatches)}`);
+            core.debug(`Version Matches: ${JSON.stringify(versionMatches, null, 2)}`);
             if (versionMatches.length === 0) {
                 return undefined;
             }
@@ -557,7 +557,7 @@ async function getEditorReleaseInfo(unityVersion: UnityVersion): Promise<UnityRe
             limit: 1,
         }
     };
-    core.info(`Get Unity Release: ${JSON.stringify(request)}`);
+    core.debug(`Get Unity Release: ${JSON.stringify(request, null, 2)}`);
     const { data, error } = await releasesClient.api.ReleaseService.getUnityReleases(request);
     if (error) {
         throw new Error(`Failed to get Unity releases: ${error}`);
@@ -565,19 +565,20 @@ async function getEditorReleaseInfo(unityVersion: UnityVersion): Promise<UnityRe
     if (!data || !data.results || data.results.length === 0) {
         throw new Error(`No Unity releases found for version: ${version}`);
     }
-    core.info(`Found Unity Release: ${JSON.stringify(data)}`);
+    core.debug(`Found Unity Release: ${JSON.stringify(data, null, 2)}`);
     return data.results[0];
 }
 
 async function fallbackVersionLookup(unityVersion: UnityVersion): Promise<UnityVersion> {
     const splitVersion = unityVersion.version.split(/[fab]/)[0];
     const url = `https://unity.com/releases/editor/whats-new/${splitVersion}`;
-    core.info(`Fetching release page: "${url}"`)
+    core.debug(`Fetching release page: "${url}"`)
     const response = await fetch(url);
     if (!response.ok) {
         throw new Error(`Failed to fetch changeset [${response.status}] "${url}"`);
     }
     const data = await response.text();
+    core.debug(`Release page content:\n${data}`);
     const match = data.match(/unityhub:\/\/(?<version>\d+\.\d+\.\d+[fab]?\d*)\/(?<changeset>[a-zA-Z0-9]+)/);
     if (match && match.groups && match.groups.changeset) {
         return new UnityVersion(match.groups.version, match.groups.changeset, unityVersion.architecture);

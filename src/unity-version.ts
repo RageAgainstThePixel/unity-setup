@@ -13,7 +13,7 @@ export class UnityVersion {
       throw new Error(`Invalid Unity version: ${version}`);
     }
     this.semVer = coercedVersion;
-    if (architecture && architecture.toUpperCase().includes('ARM64') && !this.isArmCompatible()) {
+    if (architecture === 'ARM64' && !this.isArmCompatible()) {
       this.architecture = 'X86_64';
     }
   }
@@ -42,9 +42,9 @@ export class UnityVersion {
       .map(release => semver.coerce(release))
       .filter(release => release && semver.satisfies(release, `^${this.semVer}`))
       .sort((a, b) => semver.compare(b, a));
-    core.info(`Searching for ${this.version}:`);
+    core.debug(`Searching for ${this.version}:`);
     validReleases.forEach(release => {
-      core.info(`  > ${release}`);
+      core.debug(`  > ${release}`);
     });
     for (const release of validReleases) {
       if (!release) { continue; }
@@ -54,11 +54,11 @@ export class UnityVersion {
       if ((this.version.includes('a') && match.groups.version.includes('a')) ||
         (this.version.includes('b') && match.groups.version.includes('b')) ||
         match.groups.version.includes('f')) {
-        core.info(`Found Unity ${match.groups.version}`);
+        core.debug(`Found Unity ${match.groups.version}`);
         return new UnityVersion(match.groups.version, null, this.architecture);
       }
     }
-    core.info(`No matching Unity version found for ${this.version}`);
+    core.debug(`No matching Unity version found for ${this.version}`);
     return this;
   }
 
