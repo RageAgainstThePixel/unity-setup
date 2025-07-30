@@ -498,10 +498,10 @@ async function checkInstalledEditors(unityVersion: UnityVersion, failOnEmpty: bo
     return editorPath;
 }
 
-async function checkEditorModules(editorPath: string, version: UnityVersion, modules: string[]): Promise<[string[], string[]]> {
-    let args = ['install-modules', '--version', version.version];
-    if (version.architecture) {
-        args.push('-a', version.architecture);
+async function checkEditorModules(editorPath: string, unityVersion: UnityVersion, modules: string[]): Promise<[string[], string[]]> {
+    let args = ['install-modules', '--version', unityVersion.version];
+    if (unityVersion.architecture) {
+        args.push('-a', unityVersion.architecture);
     }
     for (const module of modules) {
         args.push('-m', module);

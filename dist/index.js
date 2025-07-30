@@ -36326,10 +36326,10 @@ async function checkInstalledEditors(unityVersion, failOnEmpty, installPath = un
     core.debug(`Found installed Unity Editor: ${editorPath}`);
     return editorPath;
 }
-async function checkEditorModules(editorPath, version, modules) {
-    let args = ['install-modules', '--version', version.version];
-    if (version.architecture) {
-        args.push('-a', version.architecture);
+async function checkEditorModules(editorPath, unityVersion, modules) {
+    let args = ['install-modules', '--version', unityVersion.version];
+    if (unityVersion.architecture) {
+        args.push('-a', unityVersion.architecture);
     }
     for (const module of modules) {
         args.push('-m', module);
