@@ -18,11 +18,9 @@ import {
 } from './unity-version';
 import {
     UnityReleasesClient,
-} from '@rage-against-the-pixel/unity-releases-api'
-import {
     GetUnityReleasesData,
     UnityRelease
-} from '@rage-against-the-pixel/unity-releases-api/dist/unity-releases-api';
+} from '@rage-against-the-pixel/unity-releases-api'
 
 const unityHub = init();
 let hubPath = unityHub.hubPath;
