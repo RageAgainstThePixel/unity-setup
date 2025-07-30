@@ -5,11 +5,21 @@ import path = require('path');
 import os = require('os');
 import fs = require('fs');
 
-export async function ValidateInputs(): Promise<[UnityVersion[], string | undefined, string[], string | undefined, string]> {
+export async function ValidateInputs(): Promise<[UnityVersion[], string[], string | null, string]> {
     const modules: string[] = [];
-    const architecture = core.getInput('architecture') || getInstallationArch();
+    const architectureInput = core.getInput('architecture') || getInstallationArch();
+    let architecture: 'X86_64' | 'ARM64' | null = null;
+    switch (architectureInput) {
+        case 'arm64':
+        case 'ARM64':
+            architecture = 'ARM64';
+            break;
+        default:
+            architecture = 'X86_64';
+            break;
+    }
     if (architecture) {
-        core.info(`architecture:\n  > ${architecture}`);
+        core.info(`architecture:\n  > ${architecture.toLocaleLowerCase()}`);
     }
     const buildTargets = getArrayInput('build-targets');
     core.info(`modules:`);
@@ -42,13 +52,13 @@ export async function ValidateInputs(): Promise<[UnityVersion[], string | undefi
             core.info(`  > ${target} -> ${module}`);
         }
     }
-    const versions = getUnityVersionsFromInput();
+    const versions = getUnityVersionsFromInput(architecture);
     const versionFilePath = await getVersionFilePath();
     const unityProjectPath = versionFilePath !== undefined ? path.join(versionFilePath, '..', '..') : undefined;
     if (versionFilePath) {
         core.info(`versionFilePath:\n  > "${versionFilePath}"`);
         core.info(`Unity Project Path:\n  > "${unityProjectPath}"`);
-        const unityVersion = await getUnityVersionFromFile(versionFilePath);
+        const unityVersion = await getUnityVersionFromFile(versionFilePath, architecture);
         if (versions.length === 0) {
             versions.push(unityVersion);
         }
@@ -72,7 +82,7 @@ export async function ValidateInputs(): Promise<[UnityVersion[], string | undefi
     if (!installPath) {
         core.debug('No install path specified, using default Unity Hub install path.');
     }
-    return [versions, architecture, modules, unityProjectPath, installPath];
+    return [versions, modules, unityProjectPath, installPath];
 }
 
 function getArrayInput(key: string): string[] {
@@ -87,12 +97,12 @@ function getArrayInput(key: string): string[] {
     return array;
 }
 
-function getInstallationArch(): string | undefined {
+function getInstallationArch(): 'ARM64' | null {
     switch (os.arch()) {
         case 'arm64':
-            return 'arm64';
+            return 'ARM64';
         case 'x64':
-            return undefined;
+            return null;
         default:
             throw Error(`${os.arch()} not supported`);
     }
@@ -182,7 +192,7 @@ async function getVersionFilePath(): Promise<string | undefined> {
     return undefined;
 }
 
-function getUnityVersionsFromInput(): UnityVersion[] {
+function getUnityVersionsFromInput(architecture: 'X86_64' | 'ARM64' | null): UnityVersion[] {
     const versions: UnityVersion[] = [];
     const inputVersions = core.getInput('unity-version');
     if (!inputVersions || inputVersions.length == 0) {
@@ -211,7 +221,7 @@ function getUnityVersionsFromInput(): UnityVersion[] {
                 break;
         }
         const changeset = match.groups.changeset;
-        const unityVersion = new UnityVersion(version, changeset);
+        const unityVersion = new UnityVersion(version, changeset, architecture);
         core.debug(`  > ${unityVersion.toString()}`);
         try {
             versions.push(unityVersion);
@@ -225,7 +235,7 @@ function getUnityVersionsFromInput(): UnityVersion[] {
     return versions;
 }
 
-async function getUnityVersionFromFile(versionFilePath: string): Promise<UnityVersion> {
+async function getUnityVersionFromFile(versionFilePath: string, architecture: 'X86_64' | 'ARM64' | null): Promise<UnityVersion> {
     const versionString = await fs.promises.readFile(versionFilePath, 'utf8');
     core.debug(`ProjectSettings.txt:\n${versionString}`);
     const match = versionString.match(/m_EditorVersionWithRevision: (?<version>(?:(?<major>\d+)\.)?(?:(?<minor>\d+)\.)?(?:(?<patch>\d+[abcfpx]\d+)\b))\s?(?:\((?<changeset>\w+)\))?/);
@@ -238,5 +248,5 @@ async function getUnityVersionFromFile(versionFilePath: string): Promise<UnityVe
     if (!match.groups.changeset) {
         throw Error(`No changeset group found!`);
     }
-    return new UnityVersion(match.groups.version, match.groups.changeset);
+    return new UnityVersion(match.groups.version, match.groups.changeset, architecture);
 }
