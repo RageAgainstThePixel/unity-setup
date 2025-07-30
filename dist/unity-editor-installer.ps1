@@ -25,12 +25,12 @@ if (-not (Test-Path $installerPath)) {
     exit 1
 }
 $targetPath = "$installDir\Unity $version"
-Write-Host "[command]pwsh `"$installerPath`" /S /D=$targetPath"
-if (-not (Test-Path $targetPath)) {
-    New-Item -ItemType Directory -Path $targetPath -Force | Out-Null
+Write-Host "[command]Start-Process `"$installerPath`" -ArgumentList `"/S /D=$targetPath`" -Wait -NoNewWindow"
+if (-not (Test-Path "$targetPath")) {
+    New-Item -ItemType Directory -Path "$targetPath" -Force | Out-Null
 }
 try {
-    Start-Process -FilePath $installerPath -ArgumentList "/S /D=$targetPath" -Wait -NoNewWindow
+    Start-Process -FilePath "$installerPath" -ArgumentList "/S /D=$targetPath" -Wait -NoNewWindow
     if (-not (Test-Path "$targetPath")) {
         Write-Host "Error: Unity installation failed."
         exit 1
@@ -43,6 +43,6 @@ try {
     Write-Host "Error: Failed to start Unity installer."
     exit 1
 } finally {
-    Remove-Item -Path $installerPath -Force
+    Remove-Item -Path "$installerPath" -Force
     Write-Host "::endgroup::"
 }

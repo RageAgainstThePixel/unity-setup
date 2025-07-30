@@ -36468,6 +36468,9 @@ class UnityVersion {
                 continue;
             }
             const originalRelease = versions.find(r => r.includes(release.version));
+            if (!originalRelease) {
+                continue;
+            }
             const match = originalRelease.match(/(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?/);
             if (!(match && match.groups && match.groups.version)) {
                 continue;

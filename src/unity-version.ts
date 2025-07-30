@@ -49,6 +49,7 @@ export class UnityVersion {
     for (const release of validReleases) {
       if (!release) { continue; }
       const originalRelease = versions.find(r => r.includes(release.version));
+      if (!originalRelease) { continue; }
       const match = originalRelease.match(/(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?/);
       if (!(match && match.groups && match.groups.version)) { continue; }
       if ((this.version.includes('a') && match.groups.version.includes('a')) ||

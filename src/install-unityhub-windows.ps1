@@ -8,7 +8,7 @@ if (-not (Test-Path $tempPath)) {
     Write-Host "Error: Failed to download Unity Hub installer."
     exit 1
 }
-Write-Host "[command]pwsh `"$tempPath`" /S"
-$process = Start-Process -FilePath $tempPath -ArgumentList '/S' -PassThru -Wait
+Write-Host "[command]Start-Process -FilePath `"$tempPath`" -ArgumentList '/S' -Wait -NoNewWindow"
+$process = Start-Process -FilePath "$tempPath" -ArgumentList '/S' -PassThru -Wait
 Write-Host "::endgroup::"
 exit [int]$process.ExitCode
