@@ -1,4 +1,9 @@
 {
+  "os": [
+    "ubuntu-latest",
+    "windows-latest",
+    "macos-latest"
+  ],
   "unity-version": [
     "None",
     "4.7.2",
