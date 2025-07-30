@@ -36390,6 +36390,7 @@ async function getEditorReleaseInfo(unityVersion) {
     if (!data || !data.results || data.results.length === 0) {
         throw new Error(`No Unity releases found for version: ${version}`);
     }
+    core.info(`Found Unity Release: ${JSON.stringify(data)}`);
     return data.results[0];
 }
 async function fallbackVersionLookup(unityVersion) {
@@ -36431,11 +36432,8 @@ class UnityVersion {
             throw new Error(`Invalid Unity version: ${version}`);
         }
         this.semVer = coercedVersion;
-        if (architecture &&
-            architecture.toUpperCase().includes('ARM64') &&
-            !this.isArmCompatible()) {
-            core.warning(`Unity version ${this.toString()} is not compatible with ARM64 architecture! falling back to X86_64.`);
-            architecture = 'X86_64';
+        if (architecture && architecture.toUpperCase().includes('ARM64') && !this.isArmCompatible()) {
+            this.architecture = 'X86_64';
         }
     }
     static compare(a, b) {

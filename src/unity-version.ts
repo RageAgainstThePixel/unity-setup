@@ -5,19 +5,16 @@ export class UnityVersion {
   private semVer: semver.SemVer;
   constructor(
     public version: string,
-    public changeset?: string | null | undefined,
-    public architecture?: 'X86_64' | 'ARM64' | null | undefined,
+    public changeset: string | null | undefined,
+    public architecture: 'X86_64' | 'ARM64',
   ) {
     const coercedVersion = semver.coerce(version);
     if (!coercedVersion) {
       throw new Error(`Invalid Unity version: ${version}`);
     }
     this.semVer = coercedVersion;
-    if (architecture &&
-      architecture.toUpperCase().includes('ARM64') &&
-      !this.isArmCompatible()) {
-      core.warning(`Unity version ${this.toString()} is not compatible with ARM64 architecture! falling back to X86_64.`);
-      architecture = 'X86_64';
+    if (architecture && architecture.toUpperCase().includes('ARM64') && !this.isArmCompatible()) {
+      this.architecture = 'X86_64';
     }
   }
 

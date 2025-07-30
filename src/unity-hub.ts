@@ -565,6 +565,7 @@ async function getEditorReleaseInfo(unityVersion: UnityVersion): Promise<UnityRe
     if (!data || !data.results || data.results.length === 0) {
         throw new Error(`No Unity releases found for version: ${version}`);
     }
+    core.info(`Found Unity Release: ${JSON.stringify(data)}`);
     return data.results[0];
 }
 
