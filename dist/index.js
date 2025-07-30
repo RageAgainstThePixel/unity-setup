@@ -36366,11 +36366,11 @@ async function getModulesContent(modulesPath) {
     return JSON.parse(modulesContent);
 }
 async function getEditorReleaseInfo(unityVersion) {
-    let version;
-    if (unityVersion.version.endsWith('.0')) {
-        version = unityVersion.version.slice(0, -2);
+    let version = unityVersion.version;
+    if (version.endsWith('.0')) {
+        version = version.slice(0, -2);
     }
-    else if (version.split('.').length === 2 && version.endsWith('.0')) {
+    if (version.endsWith('.0')) {
         version = version.slice(0, -2);
     }
     const releasesClient = new unity_releases_api_1.UnityReleasesClient();
@@ -36431,8 +36431,11 @@ class UnityVersion {
             throw new Error(`Invalid Unity version: ${version}`);
         }
         this.semVer = coercedVersion;
-        if (architecture && architecture.includes('ARM64') && !this.isArmCompatible()) {
-            architecture = null;
+        if (architecture &&
+            architecture.toUpperCase().includes('ARM64') &&
+            !this.isArmCompatible()) {
+            core.warning(`Unity version ${this.toString()} is not compatible with ARM64 architecture! falling back to X86_64.`);
+            architecture = 'X86_64';
         }
     }
     static compare(a, b) {

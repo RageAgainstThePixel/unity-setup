@@ -13,8 +13,11 @@ export class UnityVersion {
       throw new Error(`Invalid Unity version: ${version}`);
     }
     this.semVer = coercedVersion;
-    if (architecture && architecture.includes('ARM64') && !this.isArmCompatible()) {
-      architecture = null;
+    if (architecture &&
+      architecture.toUpperCase().includes('ARM64') &&
+      !this.isArmCompatible()) {
+      core.warning(`Unity version ${this.toString()} is not compatible with ARM64 architecture! falling back to X86_64.`);
+      architecture = 'X86_64';
     }
   }
 

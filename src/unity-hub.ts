@@ -540,13 +540,12 @@ async function getModulesContent(modulesPath: string): Promise<any> {
 }
 
 async function getEditorReleaseInfo(unityVersion: UnityVersion): Promise<UnityRelease> {
-    let version: string;
-    // if minor is .0, then drop it.
-    if (unityVersion.version.endsWith('.0')) {
-        version = unityVersion.version.slice(0, -2);
+    let version: string = unityVersion.version;
+    // trim trailing .0 from version minor and patch if present
+    if (version.endsWith('.0')) {
+        version = version.slice(0, -2);
     }
-    // if there are only two parts and the last part is .0, then drop it.
-    else if (version.split('.').length === 2 && version.endsWith('.0')) {
+    if (version.endsWith('.0')) {
         version = version.slice(0, -2);
     }
     const releasesClient = new UnityReleasesClient();
