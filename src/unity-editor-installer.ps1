@@ -39,10 +39,12 @@ try {
     Get-ChildItem -Path "$targetPath" -Recurse | ForEach-Object {
         Write-Host $_.FullName
     }
-} catch {
+}
+catch {
     Write-Host "Error: Failed to start Unity installer."
     exit 1
-} finally {
+}
+finally {
     Remove-Item -Path "$installerPath" -Force
     Write-Host "::endgroup::"
 }
