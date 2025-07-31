@@ -276,7 +276,8 @@ const retryErrorMessages = [
 
 export async function UnityEditor(unityVersion: UnityVersion, modules: string[]): Promise<string> {
     core.info(`Getting release info for Unity ${unityVersion.toString()}...`);
-    if (!unityVersion.isLegacy()) {
+    let editorPath = await checkInstalledEditors(unityVersion, false);
+    if (!unityVersion.isLegacy() && !editorPath) {
         try {
             const releases = await getLatestHubReleases();
             unityVersion = unityVersion.findMatch(releases);
@@ -287,7 +288,6 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
             unityVersion = await fallbackVersionLookup(unityVersion);
         }
     }
-    let editorPath: string = await checkInstalledEditors(unityVersion, false);
     let installPath: string | null = null;
     if (!editorPath) {
         try {
@@ -373,7 +373,7 @@ async function installUnity(unityVersion: UnityVersion, modules: string[]): Prom
         args.push('--changeset', unityVersion.changeset);
     }
     if (unityVersion.architecture) {
-        args.push('-a', unityVersion.architecture.toLocaleLowerCase());
+        args.push('-a', unityVersion.architecture.toLowerCase());
     }
     if (modules.length > 0) {
         for (const module of modules) {
@@ -449,23 +449,30 @@ async function checkInstalledEditors(unityVersion: UnityVersion, failOnEmpty: bo
             if (paths.length !== matches.length) {
                 throw new Error(`Failed to parse all installed Unity Editors!`);
             }
-            const versionMatches = matches.filter(match => unityVersion.satisfies(match.groups.version));
-            core.debug(`Version Matches: ${JSON.stringify(versionMatches, null, 2)}`);
-            if (versionMatches.length === 0) {
-                return undefined;
-            }
-            for (const match of versionMatches) {
-                // If no architecture is set, or no arch in match, accept the version match
-                if (!unityVersion.architecture || !match.groups.arch) {
-                    editorPath = match.groups.editorPath;
+            // Prefer exact version match first
+            const exactMatch = matches.find(match => match.groups.version === unityVersion.version);
+            if (exactMatch) {
+                editorPath = exactMatch.groups.editorPath;
+            } else {
+                // Fallback: semver satisfies
+                const versionMatches = matches.filter(match => unityVersion.satisfies(match.groups.version));
+                core.debug(`Version Matches: ${JSON.stringify(versionMatches, null, 2)}`);
+                if (versionMatches.length === 0) {
+                    return undefined;
                 }
-                // If architecture is set and present in match, check for match
-                else if (archMap[unityVersion.architecture] === match.groups.arch) {
-                    editorPath = match.groups.editorPath;
-                }
-                // Fallback: check if editorPath includes architecture string (case-insensitive)
-                else if (unityVersion.architecture && match.groups.editorPath.toLowerCase().includes(`-${unityVersion.architecture.toLowerCase()}`)) {
-                    editorPath = match.groups.editorPath;
+                for (const match of versionMatches) {
+                    // If no architecture is set, or no arch in match, accept the version match
+                    if (!unityVersion.architecture || !match.groups.arch) {
+                        editorPath = match.groups.editorPath;
+                    }
+                    // If architecture is set and present in match, check for match
+                    else if (archMap[unityVersion.architecture] === match.groups.arch) {
+                        editorPath = match.groups.editorPath;
+                    }
+                    // Fallback: check if editorPath includes architecture string (case-insensitive)
+                    else if (unityVersion.architecture && match.groups.editorPath.toLowerCase().includes(`-${unityVersion.architecture.toLowerCase()}`)) {
+                        editorPath = match.groups.editorPath;
+                    }
                 }
             }
         }
@@ -499,7 +506,7 @@ async function checkInstalledEditors(unityVersion: UnityVersion, failOnEmpty: bo
 async function checkEditorModules(editorPath: string, unityVersion: UnityVersion, modules: string[]): Promise<[string[], string[]]> {
     let args = ['install-modules', '--version', unityVersion.version];
     if (unityVersion.architecture) {
-        args.push('-a', unityVersion.architecture);
+        args.push('-a', unityVersion.architecture.toLowerCase());
     }
     for (const module of modules) {
         args.push('-m', module);
