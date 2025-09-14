@@ -3,7 +3,7 @@
 ## usage: install-linux-dependencies.sh <unity-version>
 set -e
 
-unityVersion=$1
+unityVersion="$1"
 
 if [ -z "$unityVersion" ]; then
     echo "Usage: $0 <unity-version>"
