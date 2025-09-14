@@ -75,7 +75,7 @@
       "unity-version": "4.7.2"
     },
     {
-      "os": "linux-latest",
+      "os": "ubuntu-latest",
       "unity-version": "None",
       "build-targets": "StandaloneLinux64, Android, iOS",
       "modules": "linux-server"
