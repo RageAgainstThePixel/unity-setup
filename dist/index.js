@@ -35503,18 +35503,26 @@ async function ValidateInputs() {
             core.info(`  > ${module}`);
         }
     }
+    if (modules.length === 0) {
+        core.info(`  > None`);
+    }
     core.info(`buildTargets:`);
     const moduleMap = getPlatformTargetModuleMap();
     for (const target of buildTargets) {
         const module = moduleMap[target];
-        if (module === undefined && target.toLowerCase() !== 'none') {
-            core.warning(`${target} is not a valid build target for ${os.type()}`);
+        if (module === undefined) {
+            if (target.toLowerCase() !== 'none') {
+                core.warning(`${target} is not a valid build target for ${os.type()}`);
+            }
             continue;
         }
         if (!modules.includes(module)) {
             modules.push(module);
             core.info(`  > ${target} -> ${module}`);
         }
+    }
+    if (buildTargets.length == 0) {
+        core.info(`  > None`);
     }
     const versions = getUnityVersionsFromInput(architecture);
     const versionFilePath = await getVersionFilePath();
@@ -35533,6 +35541,9 @@ async function ValidateInputs() {
     core.info(`Unity Versions:`);
     for (const unityVersion of versions) {
         core.info(`  > ${unityVersion.toString()}`);
+    }
+    if (versions.length === 0) {
+        core.info(`  > None`);
     }
     let installPath = core.getInput('install-path');
     if (installPath) {
@@ -35574,40 +35585,41 @@ function getInstallationArch() {
 }
 function getPlatformTargetModuleMap() {
     const osType = os.type();
-    let moduleMap = undefined;
-    if (osType == 'Linux') {
-        moduleMap = {
-            "StandaloneLinux64": "linux-il2cpp",
-            "Android": "android",
-            "WebGL": "webgl",
-            "iOS": "ios",
-        };
-    }
-    else if (osType == 'Darwin') {
-        moduleMap = {
-            "StandaloneOSX": "mac-il2cpp",
-            "iOS": "ios",
-            "Android": "android",
-            "tvOS": "appletv",
-            "StandaloneLinux64": "linux-il2cpp",
-            "WebGL": "webgl",
-            "VisionOS": "visionos"
-        };
-    }
-    else if (osType == 'Windows_NT') {
-        moduleMap = {
-            "StandaloneWindows64": "windows-il2cpp",
-            "WSAPlayer": "universal-windows-platform",
-            "Android": "android",
-            "iOS": "ios",
-            "tvOS": "appletv",
-            "StandaloneLinux64": "linux-il2cpp",
-            "Lumin": "lumin",
-            "WebGL": "webgl",
-        };
-    }
-    else {
-        throw Error(`${osType} not supported`);
+    let moduleMap;
+    switch (osType) {
+        case 'Linux':
+            moduleMap = {
+                "StandaloneLinux64": "linux-il2cpp",
+                "Android": "android",
+                "WebGL": "webgl",
+                "iOS": "ios",
+            };
+            break;
+        case 'Darwin':
+            moduleMap = {
+                "StandaloneOSX": "mac-il2cpp",
+                "iOS": "ios",
+                "Android": "android",
+                "tvOS": "appletv",
+                "StandaloneLinux64": "linux-il2cpp",
+                "WebGL": "webgl",
+                "VisionOS": "visionos"
+            };
+            break;
+        case 'Windows_NT':
+            moduleMap = {
+                "StandaloneWindows64": "windows-il2cpp",
+                "WSAPlayer": "universal-windows-platform",
+                "Android": "android",
+                "iOS": "ios",
+                "tvOS": "appletv",
+                "StandaloneLinux64": "linux-il2cpp",
+                "Lumin": "lumin",
+                "WebGL": "webgl",
+            };
+            break;
+        default:
+            throw Error(`${osType} not supported`);
     }
     return moduleMap;
 }
