@@ -25,3 +25,5 @@ if [[ "$unityVersion" =~ ^2019\.[34]\. ]] || [[ "$unityVersion" =~ ^2020\. ]]; t
     sudo dpkg -i libssl1.1_1.1.0g-2ubuntu4_amd64.deb
     rm libssl1.1_1.1.0g-2ubuntu4_amd64.deb
 fi
+
+echo "::endgroup::"
