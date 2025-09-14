@@ -68,14 +68,6 @@
   "exclude": [
     {
       "os": "ubuntu-latest",
-      "unity-version": "5.6.7f1 (e80cc3114ac1)"
-    },
-    {
-      "os": "ubuntu-latest",
-      "unity-version": "4.7.2"
-    },
-    {
-      "os": "ubuntu-latest",
       "unity-version": "None",
       "build-targets": "StandaloneLinux64, Android, iOS",
       "modules": "linux-server"
@@ -89,6 +81,26 @@
     {
       "os": "macos-latest",
       "unity-version": "None",
+      "build-targets": "StandaloneOSX Android iOS VisionOS",
+      "modules": "mac-server"
+    },
+    {
+      "os": "ubuntu-latest",
+      "unity-version": "5.6.7f1 (e80cc3114ac1)"
+    },
+    {
+      "os": "ubuntu-latest",
+      "unity-version": "4.7.2"
+    },
+    {
+      "os": "windows-latest",
+      "unity-version": "4.7.2",
+      "build-targets": "StandaloneWindows64, Android, WSAPlayer",
+      "modules": "windows-server"
+    },
+    {
+      "os": "macos-latest",
+      "unity-version": "4.7.2",
       "build-targets": "StandaloneOSX Android iOS VisionOS",
       "modules": "mac-server"
     }
