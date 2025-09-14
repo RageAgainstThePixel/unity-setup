@@ -49,15 +49,15 @@ function init(): { hubPath: string, editorRootPath: string, editorFileExtension:
 }
 
 export async function Get(): Promise<string> {
-    let cleanInstall: boolean = false;
+    let isCleanInstall: boolean = false;
     try {
         await fs.promises.access(hubPath, fs.constants.X_OK);
     } catch (error) {
         hubPath = await installUnityHub();
-        cleanInstall = true;
+        isCleanInstall = true;
     }
 
-    if (!cleanInstall) {
+    if (!isCleanInstall) {
         const hubVersion: semver.SemVer | undefined = await getInstalledHubVersion();
 
         if (!semver.valid(hubVersion)) {

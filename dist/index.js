@@ -35894,15 +35894,15 @@ function init() {
     }
 }
 async function Get() {
-    let cleanInstall = false;
+    let isCleanInstall = false;
     try {
         await fs.promises.access(hubPath, fs.constants.X_OK);
     }
     catch (error) {
         hubPath = await installUnityHub();
-        cleanInstall = true;
+        isCleanInstall = true;
     }
-    if (!cleanInstall) {
+    if (!isCleanInstall) {
         const hubVersion = await getInstalledHubVersion();
         if (!semver.valid(hubVersion)) {
             throw new Error(`Failed to get installed Unity Hub version ${hubVersion}!`);
