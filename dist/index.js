@@ -35507,8 +35507,8 @@ async function ValidateInputs() {
     const moduleMap = getPlatformTargetModuleMap();
     for (const target of buildTargets) {
         const module = moduleMap[target];
-        if (module === undefined) {
-            core.warning(`${target} not a valid build target!`);
+        if (module === undefined && target.toLowerCase() !== 'none') {
+            core.warning(`${target} is not a valid build target for ${os.type()}`);
             continue;
         }
         if (!modules.includes(module)) {
