@@ -137,7 +137,8 @@ async function installUnityHub(): Promise<string> {
         case 'darwin':
             {
                 const scriptPath = path.join(__dirname, 'install-unityhub-macos.sh');
-                exitCode = await exec.exec('sh', [scriptPath]);
+                // Use bash to respect script shebang and any bash-specific features
+                exitCode = await exec.exec('bash', [scriptPath]);
                 if (exitCode !== 0) {
                     throw new Error(`Failed to install Unity Hub: ${exitCode}`);
                 }
@@ -148,7 +149,8 @@ async function installUnityHub(): Promise<string> {
             {
                 const scriptPath = path.join(__dirname, 'install-unityhub-linux.sh');
                 let output = '';
-                exitCode = await exec.exec('sh', [scriptPath], {
+                // Use bash to respect script shebang and any bash-specific features
+                exitCode = await exec.exec('bash', [scriptPath], {
                     listeners: {
                         stdout: (data) => {
                             output += data.toString();
@@ -417,7 +419,7 @@ async function installUnity(unityVersion: UnityVersion, modules: string[]): Prom
 
     if (process.platform === 'linux') {
         const installLinuxDepsScript = path.join(__dirname, 'install-linux-dependencies.sh');
-        const exitCode = await exec.exec('sh', [installLinuxDepsScript, unityVersion.version], {
+        const exitCode = await exec.exec('bash', [installLinuxDepsScript, unityVersion.version], {
             ignoreReturnCode: true
         });
 
@@ -484,7 +486,8 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<string> {
 
                 if (!fs.existsSync(installPath)) {
                     const scriptPath = path.join(__dirname, 'unity-editor-installer.sh');
-                    const exitCode = await exec.exec('sh', [scriptPath, unityVersion.version, installDir], {
+                    // Use bash to respect script shebang and any bash-specific features
+                    const exitCode = await exec.exec('bash', [scriptPath, unityVersion.version, installDir], {
                         ignoreReturnCode: true
                     });
 

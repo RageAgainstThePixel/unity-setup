@@ -35984,7 +35984,7 @@ async function installUnityHub() {
         case 'darwin':
             {
                 const scriptPath = __nccwpck_require__.ab + "install-unityhub-macos.sh";
-                exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "install-unityhub-macos.sh"]);
+                exitCode = await exec.exec('bash', [__nccwpck_require__.ab + "install-unityhub-macos.sh"]);
                 if (exitCode !== 0) {
                     throw new Error(`Failed to install Unity Hub: ${exitCode}`);
                 }
@@ -35995,7 +35995,7 @@ async function installUnityHub() {
             {
                 const scriptPath = __nccwpck_require__.ab + "install-unityhub-linux.sh";
                 let output = '';
-                exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "install-unityhub-linux.sh"], {
+                exitCode = await exec.exec('bash', [__nccwpck_require__.ab + "install-unityhub-linux.sh"], {
                     listeners: {
                         stdout: (data) => {
                             output += data.toString();
@@ -36237,7 +36237,7 @@ async function installUnity(unityVersion, modules) {
     core.startGroup(`Installing Unity ${unityVersion.toString()}...`);
     if (process.platform === 'linux') {
         const installLinuxDepsScript = __nccwpck_require__.ab + "install-linux-dependencies.sh";
-        const exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "install-linux-dependencies.sh", unityVersion.version], {
+        const exitCode = await exec.exec('bash', [__nccwpck_require__.ab + "install-linux-dependencies.sh", unityVersion.version], {
             ignoreReturnCode: true
         });
         if (exitCode !== 0) {
@@ -36293,7 +36293,7 @@ async function installUnity4x(unityVersion) {
                 const installPath = path.join(installDir, `Unity ${unityVersion.version}`, 'Unity.app');
                 if (!fs.existsSync(installPath)) {
                     const scriptPath = __nccwpck_require__.ab + "unity-editor-installer.sh";
-                    const exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "unity-editor-installer.sh", unityVersion.version, installDir], {
+                    const exitCode = await exec.exec('bash', [__nccwpck_require__.ab + "unity-editor-installer.sh", unityVersion.version, installDir], {
                         ignoreReturnCode: true
                     });
                     if (exitCode !== 0) {
