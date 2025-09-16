@@ -36142,7 +36142,12 @@ async function UnityEditor(unityVersion, modules) {
         }
         catch (error) {
             core.warning(`Failed to get Unity release info for ${unityVersion.toString()}! falling back to legacy search...\n${error}`);
-            unityVersion = await fallbackVersionLookup(unityVersion);
+            try {
+                unityVersion = await fallbackVersionLookup(unityVersion);
+            }
+            catch (fallbackError) {
+                core.warning(`Failed to lookup changeset for Unity ${unityVersion.toString()}!\n${fallbackError}`);
+            }
         }
     }
     let installPath = null;
@@ -47277,7 +47282,7 @@ const main = async () => {
         if (installPath && installPath.length > 0) {
             await unityHub.SetInstallPath(installPath);
         }
-        const editors = [];
+        const installedEditors = [];
         for (const unityVersion of versions) {
             const unityEditorPath = await unityHub.UnityEditor(unityVersion, modules);
             core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath);
@@ -47285,12 +47290,12 @@ const main = async () => {
                 await (0, install_android_sdk_1.CheckAndroidSdkInstalled)(unityEditorPath, unityProjectPath);
             }
             core.info(`Installed Unity Editor: ${unityVersion.toString()} at ${unityEditorPath}`);
-            editors.push([unityVersion.version, unityEditorPath]);
+            installedEditors.push({ version: unityVersion.version, path: unityEditorPath });
         }
-        if (editors.length !== versions.length) {
-            throw new Error(`Expected to install ${versions.length} Unity versions, but installed ${editors.length}.`);
+        if (installedEditors.length !== versions.length) {
+            throw new Error(`Expected to install ${versions.length} Unity versions, but installed ${installedEditors.length}.`);
         }
-        core.exportVariable('UNITY_EDITORS', JSON.stringify(Object.fromEntries(editors)));
+        core.exportVariable('UNITY_EDITORS', JSON.stringify(Object.fromEntries(installedEditors.map(e => [e.version, e.path]))));
         core.info('Unity Setup Complete!');
         process.exit(0);
     }

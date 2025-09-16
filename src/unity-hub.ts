@@ -300,7 +300,11 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
             unityVersion = new UnityVersion(unityReleaseInfo.version, unityReleaseInfo.shortRevision, unityVersion.architecture);
         } catch (error) {
             core.warning(`Failed to get Unity release info for ${unityVersion.toString()}! falling back to legacy search...\n${error}`);
-            unityVersion = await fallbackVersionLookup(unityVersion);
+            try {
+                unityVersion = await fallbackVersionLookup(unityVersion);
+            } catch (fallbackError) {
+                core.warning(`Failed to lookup changeset for Unity ${unityVersion.toString()}!\n${fallbackError}`);
+            }
         }
     }
 
@@ -314,6 +318,7 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
                 if (editorPath) {
                     await RemovePath(editorPath);
                 }
+
                 if (installPath) {
                     await RemovePath(installPath);
                 }
@@ -322,6 +327,7 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
                 throw error;
             }
         }
+
         editorPath = await checkInstalledEditors(unityVersion, true, installPath);
     }
 
@@ -336,14 +342,17 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
     try {
         core.startGroup(`Checking installed modules for Unity ${unityVersion.toString()}...`);
         const [installedModules, additionalModules] = await checkEditorModules(editorPath, unityVersion, modules);
+
         if (installedModules && installedModules.length > 0) {
             core.info(`Installed Modules:`);
+
             for (const module of installedModules) {
                 core.info(`  > ${module}`);
             }
         }
         if (additionalModules && additionalModules.length > 0) {
             core.info(`Additional Modules:`);
+
             for (const module of additionalModules) {
                 core.info(`  > ${module}`);
             }
@@ -356,6 +365,7 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
     } finally {
         core.endGroup();
     }
+
     return editorPath;
 }
 
