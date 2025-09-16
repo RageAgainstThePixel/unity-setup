@@ -36437,7 +36437,7 @@ async function getEditorReleaseInfo(unityVersion) {
     core.debug(`Get Unity Release: ${JSON.stringify(request, null, 2)}`);
     const { data, error } = await releasesClient.api.ReleaseService.getUnityReleases(request);
     if (error) {
-        throw new Error(`Failed to get Unity releases: ${error}`);
+        throw new Error(`Failed to get Unity releases: ${JSON.stringify(error, null, 2)}`);
     }
     if (!data || !data.results || data.results.length === 0) {
         throw new Error(`No Unity releases found for version: ${version}`);

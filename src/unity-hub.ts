@@ -630,7 +630,7 @@ export async function getEditorReleaseInfo(unityVersion: UnityVersion): Promise<
     const { data, error } = await releasesClient.api.ReleaseService.getUnityReleases(request);
 
     if (error) {
-        throw new Error(`Failed to get Unity releases: ${error}`);
+        throw new Error(`Failed to get Unity releases: ${JSON.stringify(error, null, 2)}`);
     }
 
     if (!data || !data.results || data.results.length === 0) {
