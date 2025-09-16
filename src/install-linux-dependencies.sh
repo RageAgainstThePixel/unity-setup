@@ -10,8 +10,6 @@ if [ -z "$unityVersion" ]; then
     exit 1
 fi
 
-echo "::group::Installing additional dependencies for Unity $unityVersion..."
-
 # Unity 2019.{1,2}
 case "$unityVersion" in
     2019.1.*|2019.2.*)
@@ -29,5 +27,3 @@ case "$unityVersion" in
     rm libssl1.1_1.1.0g-2ubuntu4_amd64.deb
     ;;
 esac
-
-echo "::endgroup::"
