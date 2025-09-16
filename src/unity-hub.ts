@@ -290,7 +290,9 @@ const retryErrorMessages = [
 export async function UnityEditor(unityVersion: UnityVersion, modules: string[]): Promise<string> {
     core.info(`Getting release info for Unity ${unityVersion.toString()}...`);
     let editorPath = await checkInstalledEditors(unityVersion, false);
-    if (!unityVersion.isLegacy() && !editorPath) {
+
+    // attempt to resolve the full version with the changeset if we don't have one already
+    if (!unityVersion.isLegacy() && !editorPath && !unityVersion.changeset) {
         try {
             const releases = await getLatestHubReleases();
             unityVersion = unityVersion.findMatch(releases);
@@ -301,7 +303,9 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
             unityVersion = await fallbackVersionLookup(unityVersion);
         }
     }
+
     let installPath: string | null = null;
+
     if (!editorPath) {
         try {
             installPath = await installUnity(unityVersion, modules);
@@ -320,12 +324,15 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
         }
         editorPath = await checkInstalledEditors(unityVersion, true, installPath);
     }
+
     await fs.promises.access(editorPath, fs.constants.X_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
     await patchBeeBackend(editorPath);
+
     if (unityVersion.isLegacy() || modules.length === 0) {
         return editorPath;
     }
+
     try {
         core.startGroup(`Checking installed modules for Unity ${unityVersion.toString()}...`);
         const [installedModules, additionalModules] = await checkEditorModules(editorPath, unityVersion, modules);
@@ -681,7 +688,7 @@ async function fallbackVersionLookup(unityVersion: UnityVersion): Promise<UnityV
 
     const responseText = await response.text();
 
-    if (core.isDebug()) {
+    if (core.isDebug() || !response.ok) {
         core.info(responseText);
     }
 

@@ -36133,7 +36133,7 @@ const retryErrorMessages = [
 async function UnityEditor(unityVersion, modules) {
     core.info(`Getting release info for Unity ${unityVersion.toString()}...`);
     let editorPath = await checkInstalledEditors(unityVersion, false);
-    if (!unityVersion.isLegacy() && !editorPath) {
+    if (!unityVersion.isLegacy() && !editorPath && !unityVersion.changeset) {
         try {
             const releases = await getLatestHubReleases();
             unityVersion = unityVersion.findMatch(releases);
@@ -36480,7 +36480,7 @@ async function fallbackVersionLookup(unityVersion) {
         return unityVersion;
     }
     const responseText = await response.text();
-    if (core.isDebug()) {
+    if (core.isDebug() || !response.ok) {
         core.info(responseText);
     }
     if (!response.ok) {
