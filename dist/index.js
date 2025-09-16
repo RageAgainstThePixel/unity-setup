@@ -35984,7 +35984,7 @@ async function installUnityHub() {
         case 'darwin':
             {
                 const scriptPath = __nccwpck_require__.ab + "install-unityhub-macos.sh";
-                exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "install-unityhub-macos.sh"]);
+                exitCode = await exec.exec('bash', [__nccwpck_require__.ab + "install-unityhub-macos.sh"]);
                 if (exitCode !== 0) {
                     throw new Error(`Failed to install Unity Hub: ${exitCode}`);
                 }
@@ -35995,7 +35995,7 @@ async function installUnityHub() {
             {
                 const scriptPath = __nccwpck_require__.ab + "install-unityhub-linux.sh";
                 let output = '';
-                exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "install-unityhub-linux.sh"], {
+                exitCode = await exec.exec('bash', [__nccwpck_require__.ab + "install-unityhub-linux.sh"], {
                     listeners: {
                         stdout: (data) => {
                             output += data.toString();
@@ -36133,7 +36133,7 @@ const retryErrorMessages = [
 async function UnityEditor(unityVersion, modules) {
     core.info(`Getting release info for Unity ${unityVersion.toString()}...`);
     let editorPath = await checkInstalledEditors(unityVersion, false);
-    if (!unityVersion.isLegacy() && !editorPath) {
+    if (!unityVersion.isLegacy() && !editorPath && !unityVersion.changeset) {
         try {
             const releases = await getLatestHubReleases();
             unityVersion = unityVersion.findMatch(releases);
@@ -36142,7 +36142,12 @@ async function UnityEditor(unityVersion, modules) {
         }
         catch (error) {
             core.warning(`Failed to get Unity release info for ${unityVersion.toString()}! falling back to legacy search...\n${error}`);
-            unityVersion = await fallbackVersionLookup(unityVersion);
+            try {
+                unityVersion = await fallbackVersionLookup(unityVersion);
+            }
+            catch (fallbackError) {
+                core.warning(`Failed to lookup changeset for Unity ${unityVersion.toString()}!\n${fallbackError}`);
+            }
         }
     }
     let installPath = null;
@@ -36232,7 +36237,7 @@ async function installUnity(unityVersion, modules) {
     core.startGroup(`Installing Unity ${unityVersion.toString()}...`);
     if (process.platform === 'linux') {
         const installLinuxDepsScript = __nccwpck_require__.ab + "install-linux-dependencies.sh";
-        const exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "install-linux-dependencies.sh", unityVersion.version], {
+        const exitCode = await exec.exec('bash', [__nccwpck_require__.ab + "install-linux-dependencies.sh", unityVersion.version], {
             ignoreReturnCode: true
         });
         if (exitCode !== 0) {
@@ -36288,7 +36293,7 @@ async function installUnity4x(unityVersion) {
                 const installPath = path.join(installDir, `Unity ${unityVersion.version}`, 'Unity.app');
                 if (!fs.existsSync(installPath)) {
                     const scriptPath = __nccwpck_require__.ab + "unity-editor-installer.sh";
-                    const exitCode = await exec.exec('sh', [__nccwpck_require__.ab + "unity-editor-installer.sh", unityVersion.version, installDir], {
+                    const exitCode = await exec.exec('bash', [__nccwpck_require__.ab + "unity-editor-installer.sh", unityVersion.version, installDir], {
                         ignoreReturnCode: true
                     });
                     if (exitCode !== 0) {
@@ -36437,7 +36442,7 @@ async function getEditorReleaseInfo(unityVersion) {
     core.debug(`Get Unity Release: ${JSON.stringify(request, null, 2)}`);
     const { data, error } = await releasesClient.api.ReleaseService.getUnityReleases(request);
     if (error) {
-        throw new Error(`Failed to get Unity releases: ${error}`);
+        throw new Error(`Failed to get Unity releases: ${JSON.stringify(error, null, 2)}`);
     }
     if (!data || !data.results || data.results.length === 0) {
         throw new Error(`No Unity releases found for version: ${version}`);
@@ -36480,7 +36485,7 @@ async function fallbackVersionLookup(unityVersion) {
         return unityVersion;
     }
     const responseText = await response.text();
-    if (core.isDebug()) {
+    if (core.isDebug() || !response.ok) {
         core.info(responseText);
     }
     if (!response.ok) {
@@ -47277,7 +47282,7 @@ const main = async () => {
         if (installPath && installPath.length > 0) {
             await unityHub.SetInstallPath(installPath);
         }
-        const editors = [];
+        const installedEditors = [];
         for (const unityVersion of versions) {
             const unityEditorPath = await unityHub.UnityEditor(unityVersion, modules);
             core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath);
@@ -47285,12 +47290,12 @@ const main = async () => {
                 await (0, install_android_sdk_1.CheckAndroidSdkInstalled)(unityEditorPath, unityProjectPath);
             }
             core.info(`Installed Unity Editor: ${unityVersion.toString()} at ${unityEditorPath}`);
-            editors.push([unityVersion.version, unityEditorPath]);
+            installedEditors.push({ version: unityVersion.version, path: unityEditorPath });
         }
-        if (editors.length !== versions.length) {
-            throw new Error(`Expected to install ${versions.length} Unity versions, but installed ${editors.length}.`);
+        if (installedEditors.length !== versions.length) {
+            throw new Error(`Expected to install ${versions.length} Unity versions, but installed ${installedEditors.length}.`);
         }
-        core.exportVariable('UNITY_EDITORS', JSON.stringify(Object.fromEntries(editors)));
+        core.exportVariable('UNITY_EDITORS', JSON.stringify(Object.fromEntries(installedEditors.map(e => [e.version, e.path]))));
         core.info('Unity Setup Complete!');
         process.exit(0);
     }

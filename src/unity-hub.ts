@@ -137,7 +137,8 @@ async function installUnityHub(): Promise<string> {
         case 'darwin':
             {
                 const scriptPath = path.join(__dirname, 'install-unityhub-macos.sh');
-                exitCode = await exec.exec('sh', [scriptPath]);
+                // Use bash to respect script shebang and any bash-specific features
+                exitCode = await exec.exec('bash', [scriptPath]);
                 if (exitCode !== 0) {
                     throw new Error(`Failed to install Unity Hub: ${exitCode}`);
                 }
@@ -148,7 +149,8 @@ async function installUnityHub(): Promise<string> {
             {
                 const scriptPath = path.join(__dirname, 'install-unityhub-linux.sh');
                 let output = '';
-                exitCode = await exec.exec('sh', [scriptPath], {
+                // Use bash to respect script shebang and any bash-specific features
+                exitCode = await exec.exec('bash', [scriptPath], {
                     listeners: {
                         stdout: (data) => {
                             output += data.toString();
@@ -290,7 +292,9 @@ const retryErrorMessages = [
 export async function UnityEditor(unityVersion: UnityVersion, modules: string[]): Promise<string> {
     core.info(`Getting release info for Unity ${unityVersion.toString()}...`);
     let editorPath = await checkInstalledEditors(unityVersion, false);
-    if (!unityVersion.isLegacy() && !editorPath) {
+
+    // attempt to resolve the full version with the changeset if we don't have one already
+    if (!unityVersion.isLegacy() && !editorPath && !unityVersion.changeset) {
         try {
             const releases = await getLatestHubReleases();
             unityVersion = unityVersion.findMatch(releases);
@@ -298,10 +302,16 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
             unityVersion = new UnityVersion(unityReleaseInfo.version, unityReleaseInfo.shortRevision, unityVersion.architecture);
         } catch (error) {
             core.warning(`Failed to get Unity release info for ${unityVersion.toString()}! falling back to legacy search...\n${error}`);
-            unityVersion = await fallbackVersionLookup(unityVersion);
+            try {
+                unityVersion = await fallbackVersionLookup(unityVersion);
+            } catch (fallbackError) {
+                core.warning(`Failed to lookup changeset for Unity ${unityVersion.toString()}!\n${fallbackError}`);
+            }
         }
     }
+
     let installPath: string | null = null;
+
     if (!editorPath) {
         try {
             installPath = await installUnity(unityVersion, modules);
@@ -310,6 +320,7 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
                 if (editorPath) {
                     await RemovePath(editorPath);
                 }
+
                 if (installPath) {
                     await RemovePath(installPath);
                 }
@@ -318,25 +329,32 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
                 throw error;
             }
         }
+
         editorPath = await checkInstalledEditors(unityVersion, true, installPath);
     }
+
     await fs.promises.access(editorPath, fs.constants.X_OK);
     core.info(`Unity Editor Path:\n  > "${editorPath}"`);
     await patchBeeBackend(editorPath);
+
     if (unityVersion.isLegacy() || modules.length === 0) {
         return editorPath;
     }
+
     try {
         core.startGroup(`Checking installed modules for Unity ${unityVersion.toString()}...`);
         const [installedModules, additionalModules] = await checkEditorModules(editorPath, unityVersion, modules);
+
         if (installedModules && installedModules.length > 0) {
             core.info(`Installed Modules:`);
+
             for (const module of installedModules) {
                 core.info(`  > ${module}`);
             }
         }
         if (additionalModules && additionalModules.length > 0) {
             core.info(`Additional Modules:`);
+
             for (const module of additionalModules) {
                 core.info(`  > ${module}`);
             }
@@ -349,6 +367,7 @@ export async function UnityEditor(unityVersion: UnityVersion, modules: string[])
     } finally {
         core.endGroup();
     }
+
     return editorPath;
 }
 
@@ -400,7 +419,7 @@ async function installUnity(unityVersion: UnityVersion, modules: string[]): Prom
 
     if (process.platform === 'linux') {
         const installLinuxDepsScript = path.join(__dirname, 'install-linux-dependencies.sh');
-        const exitCode = await exec.exec('sh', [installLinuxDepsScript, unityVersion.version], {
+        const exitCode = await exec.exec('bash', [installLinuxDepsScript, unityVersion.version], {
             ignoreReturnCode: true
         });
 
@@ -467,7 +486,8 @@ async function installUnity4x(unityVersion: UnityVersion): Promise<string> {
 
                 if (!fs.existsSync(installPath)) {
                     const scriptPath = path.join(__dirname, 'unity-editor-installer.sh');
-                    const exitCode = await exec.exec('sh', [scriptPath, unityVersion.version, installDir], {
+                    // Use bash to respect script shebang and any bash-specific features
+                    const exitCode = await exec.exec('bash', [scriptPath, unityVersion.version, installDir], {
                         ignoreReturnCode: true
                     });
 
@@ -630,7 +650,7 @@ export async function getEditorReleaseInfo(unityVersion: UnityVersion): Promise<
     const { data, error } = await releasesClient.api.ReleaseService.getUnityReleases(request);
 
     if (error) {
-        throw new Error(`Failed to get Unity releases: ${error}`);
+        throw new Error(`Failed to get Unity releases: ${JSON.stringify(error, null, 2)}`);
     }
 
     if (!data || !data.results || data.results.length === 0) {
@@ -681,7 +701,7 @@ async function fallbackVersionLookup(unityVersion: UnityVersion): Promise<UnityV
 
     const responseText = await response.text();
 
-    if (core.isDebug()) {
+    if (core.isDebug() || !response.ok) {
         core.info(responseText);
     }
 
