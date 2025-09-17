@@ -36,7 +36,7 @@ const main = async () => {
             throw new Error(`Expected to install ${versions.length} Unity versions, but installed ${installedEditors.length}.`);
         }
 
-        core.exportVariable('UNITY_EDITORS', JSON.stringify(Object.fromEntries(installedEditors.map(e => [e.version, e.path]))));
+        core.exportVariable('UNITY_EDITORS', Object.fromEntries(installedEditors.map(e => [e.version, e.path])));
         core.info('Unity Setup Complete!');
         process.exit(0);
     } catch (error) {

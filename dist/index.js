@@ -36234,7 +36234,6 @@ async function installUnity(unityVersion, modules) {
     if (unityVersion.isLegacy()) {
         return await installUnity4x(unityVersion);
     }
-    core.startGroup(`Installing Unity ${unityVersion.toString()}...`);
     if (process.platform === 'linux') {
         const installLinuxDepsScript = __nccwpck_require__.ab + "install-linux-dependencies.sh";
         const exitCode = await exec.exec('bash', [__nccwpck_require__.ab + "install-linux-dependencies.sh", unityVersion.version], {
@@ -36258,6 +36257,7 @@ async function installUnity(unityVersion, modules) {
         }
         args.push('--cm');
     }
+    core.startGroup(`Installing Unity ${unityVersion.toString()}...`);
     try {
         const output = await execUnityHub(args);
         if (output.includes(`Error while installing an editor or a module from changeset`)) {
@@ -47295,7 +47295,7 @@ const main = async () => {
         if (installedEditors.length !== versions.length) {
             throw new Error(`Expected to install ${versions.length} Unity versions, but installed ${installedEditors.length}.`);
         }
-        core.exportVariable('UNITY_EDITORS', JSON.stringify(Object.fromEntries(installedEditors.map(e => [e.version, e.path]))));
+        core.exportVariable('UNITY_EDITORS', Object.fromEntries(installedEditors.map(e => [e.version, e.path])));
         core.info('Unity Setup Complete!');
         process.exit(0);
     }

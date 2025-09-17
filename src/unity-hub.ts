@@ -415,8 +415,6 @@ async function installUnity(unityVersion: UnityVersion, modules: string[]): Prom
         return await installUnity4x(unityVersion);
     }
 
-    core.startGroup(`Installing Unity ${unityVersion.toString()}...`);
-
     if (process.platform === 'linux') {
         const installLinuxDepsScript = path.join(__dirname, 'install-linux-dependencies.sh');
         const exitCode = await exec.exec('bash', [installLinuxDepsScript, unityVersion.version], {
@@ -446,6 +444,8 @@ async function installUnity(unityVersion: UnityVersion, modules: string[]): Prom
 
         args.push('--cm');
     }
+
+    core.startGroup(`Installing Unity ${unityVersion.toString()}...`);
 
     try {
         const output = await execUnityHub(args);
