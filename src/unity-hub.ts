@@ -438,7 +438,6 @@ async function installUnity(unityVersion: UnityVersion, modules: string[]): Prom
 
     if (modules.length > 0) {
         for (const module of modules) {
-            core.info(`  > with module: ${module}`);
             args.push('-m', module);
         }
 
