@@ -1,7 +1,7 @@
 #!/bin/bash
 ## installs additional dependencies required for Unity on Linux
 ## usage: install-linux-dependencies.sh <unity-version>
-set -xe
+set -e
 
 unityVersion="$1"
 arch="$(dpkg --print-architecture)"
