@@ -36252,7 +36252,6 @@ async function installUnity(unityVersion, modules) {
     }
     if (modules.length > 0) {
         for (const module of modules) {
-            core.info(`  > with module: ${module}`);
             args.push('-m', module);
         }
         args.push('--cm');
