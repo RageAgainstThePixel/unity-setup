@@ -1,6 +1,6 @@
-import { CheckAndroidSdkInstalled } from './install-android-sdk';
+import { CheckAndroidSdkInstalled } from '@rage-against-the-pixel/unity-cli/dist/android-sdk';
 import { ValidateInputs } from './inputs';
-import unityHub = require('./unity-hub');
+import { UnityHub } from '@rage-against-the-pixel/unity-cli/dist/unity-hub';
 import core = require('@actions/core');
 
 const main = async () => {
@@ -11,7 +11,8 @@ const main = async () => {
             core.exportVariable('UNITY_PROJECT_PATH', unityProjectPath);
         }
 
-        const unityHubPath = await unityHub.Get();
+        const unityHub = new UnityHub();
+        const unityHubPath = unityHub.Install();
         core.exportVariable('UNITY_HUB_PATH', unityHubPath);
 
         if (installPath && installPath.length > 0) {
@@ -21,7 +22,7 @@ const main = async () => {
         const installedEditors: { version: string; path: string }[] = [];
 
         for (const unityVersion of versions) {
-            const unityEditorPath = await unityHub.UnityEditor(unityVersion, modules);
+            const unityEditorPath = await unityHub.GetEditor(unityVersion, modules);
             core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath); // always sets to the latest installed editor path
 
             if (modules.includes('android') && unityProjectPath !== undefined) {
