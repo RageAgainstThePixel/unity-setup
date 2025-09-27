@@ -1,9 +1,10 @@
-import { UnityVersion } from './unity-version';
-import { FindGlobPattern } from './utility';
-import core = require('@actions/core');
-import path = require('path');
-import os = require('os');
 import fs = require('fs');
+import os = require('os');
+import path = require('path');
+import core = require('@actions/core');
+import { UnityHub } from '@rage-against-the-pixel/unity-cli/dist/unity-hub';
+import { UnityVersion } from '@rage-against-the-pixel/unity-cli/dist/unity-version';
+import { ResolveGlobToPath } from '@rage-against-the-pixel/unity-cli/dist/utilities';
 
 export async function ValidateInputs(): Promise<[UnityVersion[], string[], string | null, string]> {
     const modules: string[] = [];
@@ -52,7 +53,8 @@ export async function ValidateInputs(): Promise<[UnityVersion[], string[], strin
     }
 
     core.info(`buildTargets:`);
-    const moduleMap = getPlatformTargetModuleMap();
+
+    const moduleMap = UnityHub.GetPlatformTargetModuleMap();
 
     for (const target of buildTargets) {
         const module = moduleMap[target];
@@ -147,49 +149,6 @@ function getInstallationArch(): 'ARM64' | null {
     }
 }
 
-function getPlatformTargetModuleMap(): { [key: string]: string } {
-    const osType = os.type();
-    let moduleMap: { [key: string]: string };
-
-    switch (osType) {
-        case 'Linux':
-            moduleMap = {
-                "StandaloneLinux64": "linux-il2cpp",
-                "Android": "android",
-                "WebGL": "webgl",
-                "iOS": "ios",
-            };
-            break;
-        case 'Darwin':
-            moduleMap = {
-                "StandaloneOSX": "mac-il2cpp",
-                "iOS": "ios",
-                "Android": "android",
-                "tvOS": "appletv",
-                "StandaloneLinux64": "linux-il2cpp",
-                "WebGL": "webgl",
-                "VisionOS": "visionos"
-            };
-            break;
-        case 'Windows_NT':
-            moduleMap = {
-                "StandaloneWindows64": "windows-il2cpp",
-                "WSAPlayer": "universal-windows-platform",
-                "Android": "android",
-                "iOS": "ios",
-                "tvOS": "appletv",
-                "StandaloneLinux64": "linux-il2cpp",
-                "Lumin": "lumin",
-                "WebGL": "webgl",
-            };
-            break;
-        default:
-            throw Error(`${osType} not supported`);
-    }
-
-    return moduleMap;
-}
-
 function getDefaultModules(): string[] {
     switch (process.platform) {
         case 'linux':
@@ -211,7 +170,7 @@ async function getVersionFilePath(): Promise<string | undefined> {
     }
 
     if (!projectVersionPath) {
-        projectVersionPath = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt'));
+        projectVersionPath = await ResolveGlobToPath([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
     }
 
     if (projectVersionPath) {
@@ -227,7 +186,7 @@ async function getVersionFilePath(): Promise<string | undefined> {
             } catch (error) {
                 core.error(error);
                 try {
-                    projectVersionPath = await FindGlobPattern(path.join(process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt'));
+                    projectVersionPath = await ResolveGlobToPath([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
                     await fs.promises.access(projectVersionPath, fs.constants.R_OK);
                     return projectVersionPath;
                 } catch (error) {
