@@ -59685,10 +59685,15 @@ const main = async () => {
     try {
         const [versions, modules, unityProjectPath, installPath] = await (0, inputs_1.ValidateInputs)();
         if (unityProjectPath) {
+            core.info(`UNITY_PROJECT_PATH: ${unityProjectPath}`);
             core.exportVariable('UNITY_PROJECT_PATH', unityProjectPath);
         }
         const unityHub = new unity_hub_1.UnityHub();
-        const unityHubPath = unityHub.Install();
+        const unityHubPath = await unityHub.Install();
+        if (!unityHubPath || unityHubPath.length === 0) {
+            throw new Error('Failed to install or locate Unity Hub!');
+        }
+        core.info(`UNITY_HUB_PATH: ${unityHubPath}`);
         core.exportVariable('UNITY_HUB_PATH', unityHubPath);
         if (installPath && installPath.length > 0) {
             await unityHub.SetInstallPath(installPath);
@@ -59696,11 +59701,11 @@ const main = async () => {
         const installedEditors = [];
         for (const unityVersion of versions) {
             const unityEditorPath = await unityHub.GetEditor(unityVersion, modules);
+            core.info(`Installed Unity Editor: ${unityVersion.toString()} at ${unityEditorPath}`);
             core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath);
             if (modules.includes('android') && unityProjectPath !== undefined) {
                 await (0, android_sdk_1.CheckAndroidSdkInstalled)(unityEditorPath, unityProjectPath);
             }
-            core.info(`Installed Unity Editor: ${unityVersion.toString()} at ${unityEditorPath}`);
             installedEditors.push({ version: unityVersion.version, path: unityEditorPath });
         }
         if (installedEditors.length !== versions.length) {
