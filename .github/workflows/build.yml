@@ -30,6 +30,7 @@ jobs:
           unity-version: ${{ matrix.unity-version }}
           build-targets: ${{ matrix.build-targets }}
           modules: ${{ matrix.modules }}
+          auto-update-hub: false
       - run: |
           echo 'UNITY_HUB_PATH: ${{ env.UNITY_HUB_PATH }}'
           echo 'UNITY_EDITORS: ${{ env.UNITY_EDITORS }}'
