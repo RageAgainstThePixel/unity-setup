@@ -3331,13 +3331,11 @@ async function execSdkManager(sdkManagerPath, javaPath, args) {
                 process.stderr.write(chunk);
             });
             child.on('error', (error) => {
-                process.stdout.write('\n');
                 process.removeListener('SIGINT', sigintHandler);
                 process.removeListener('SIGTERM', sigtermHandler);
                 reject(error);
             });
             child.on('close', (code) => {
-                process.stdout.write('\n');
                 process.removeListener('SIGINT', sigintHandler);
                 process.removeListener('SIGTERM', sigtermHandler);
                 resolve(code === null ? 0 : code);
@@ -3655,13 +3653,11 @@ class LicensingClient {
                 child.stdout.on('data', processOutput);
                 child.stderr.on('data', processOutput);
                 child.on('error', (error) => {
-                    process.stdout.write('\n');
                     process.removeListener('SIGINT', sigintHandler);
                     process.removeListener('SIGTERM', sigtermHandler);
                     reject(error);
                 });
                 child.on('close', (code) => {
-                    process.stdout.write('\n');
                     process.removeListener('SIGINT', sigintHandler);
                     process.removeListener('SIGTERM', sigtermHandler);
                     resolve(code === null ? 0 : code);
@@ -4440,13 +4436,11 @@ class UnityHub {
                 child.stdout.on('data', processOutput);
                 child.stderr.on('data', processOutput);
                 child.on('error', (error) => {
-                    process.stdout.write('\n');
                     process.removeListener('SIGINT', sigintHandler);
                     process.removeListener('SIGTERM', sigtermHandler);
                     reject(error);
                 });
                 child.on('close', (code) => {
-                    process.stdout.write('\n');
                     process.removeListener('SIGINT', sigintHandler);
                     process.removeListener('SIGTERM', sigtermHandler);
                     resolve(code === null ? 0 : code);
@@ -5685,13 +5679,11 @@ async function Exec(command, args, options = { silent: false, showCommand: true 
             child.stdout.on('data', processOutput);
             child.stderr.on('data', processOutput);
             child.on('error', (error) => {
-                process.stdout.write('\n');
                 process.removeListener('SIGINT', sigintHandler);
                 process.removeListener('SIGTERM', sigtermHandler);
                 reject(error);
             });
             child.on('close', (code) => {
-                process.stdout.write('\n');
                 process.removeListener('SIGINT', sigintHandler);
                 process.removeListener('SIGTERM', sigtermHandler);
                 resolve(code === null ? 0 : code);
