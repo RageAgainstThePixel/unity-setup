@@ -1,10 +1,11 @@
-import { CheckAndroidSdkInstalled } from '@rage-against-the-pixel/unity-cli';
+import { CheckAndroidSdkInstalled, Logger, LogLevel } from '@rage-against-the-pixel/unity-cli';
 import { ValidateInputs } from './inputs';
 import { UnityHub } from '@rage-against-the-pixel/unity-cli';
 import core = require('@actions/core');
 
 const main = async () => {
     try {
+        Logger.instance.logLevel = LogLevel.CI;
         const [versions, modules, unityProjectPath, installPath] = await ValidateInputs();
 
         if (unityProjectPath) {
