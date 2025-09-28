@@ -32,15 +32,15 @@ const main = async () => {
         const installedEditors: { version: string; path: string }[] = [];
 
         for (const unityVersion of versions) {
-            const unityEditorPath = await unityHub.GetEditor(unityVersion, modules);
-            core.info(`Installed Unity Editor: ${unityVersion.toString()} at ${unityEditorPath}`);
-            core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath); // always sets to the latest installed editor path
+            const unityEditor = await unityHub.GetEditor(unityVersion, modules);
+            core.info(`Installed Unity Editor: ${unityEditor.version.toString()} at "${unityEditor.editorPath}"`);
+            core.exportVariable('UNITY_EDITOR_PATH', unityEditor.editorPath); // always sets to the latest installed editor path
 
             if (modules.includes('android') && unityProjectPath !== undefined) {
-                await CheckAndroidSdkInstalled(unityEditorPath, unityProjectPath);
+                await CheckAndroidSdkInstalled(unityEditor.editorPath, unityProjectPath);
             }
 
-            installedEditors.push({ version: unityVersion.version, path: unityEditorPath });
+            installedEditors.push({ version: unityVersion.version, path: unityEditor.editorPath });
         }
 
         if (installedEditors.length !== versions.length) {

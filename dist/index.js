@@ -4035,8 +4035,10 @@ const path = __importStar(__nccwpck_require__(1017));
 const logging_1 = __nccwpck_require__(4486);
 const utilities_1 = __nccwpck_require__(9746);
 const child_process_1 = __nccwpck_require__(2081);
+const unity_version_1 = __nccwpck_require__(3331);
 class UnityEditor {
     editorPath;
+    version;
     editorRootPath;
     logger = logging_1.Logger.instance;
     autoAddNoGraphics;
@@ -4046,22 +4048,29 @@ class UnityEditor {
      * @param editorPath The path to the Unity Editor installation.
      * @throws Will throw an error if the editor path is invalid or not executable.
      */
-    constructor(editorPath) {
+    constructor(editorPath, version = undefined) {
         this.editorPath = editorPath;
+        this.version = version;
         if (!fs.existsSync(editorPath)) {
             throw new Error(`The Unity Editor path does not exist: ${editorPath}`);
         }
         fs.accessSync(editorPath, fs.constants.X_OK);
         this.editorRootPath = UnityEditor.GetEditorRootPath(editorPath);
-        const match = editorPath.match(/(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)/);
-        if (!match) {
-            throw Error(`Invalid Unity Editor Path: ${editorPath}`);
+        if (!version) {
+            const match = editorPath.match(/(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\w+)/);
+            if (!match || !match.groups) {
+                throw Error(`Invalid Unity Editor Path: ${editorPath}`);
+            }
+            const unityMajorVersion = match.groups.major;
+            if (!unityMajorVersion) {
+                throw Error(`Invalid Unity Major Version: ${editorPath}`);
+            }
+            this.version = new unity_version_1.UnityVersion(`${match.groups.major}.${match.groups.minor}.${match.groups.patch}`);
         }
-        const unityMajorVersion = match.groups?.major;
-        if (!unityMajorVersion) {
-            throw Error(`Invalid Unity Major Version: ${editorPath}`);
+        else {
+            this.version = version;
         }
-        this.autoAddNoGraphics = parseInt(unityMajorVersion, 10) > 2018;
+        this.autoAddNoGraphics = this.version.satisfies('>2018.0.0');
     }
     /**
      * Get the full path to a Unity project template based on the provided template name or regex pattern.
@@ -4754,7 +4763,7 @@ chmod -R 777 "$hubPath"`]);
         await fs.promises.access(editorPath, fs.constants.X_OK);
         await this.patchBeeBackend(editorPath);
         if (unityVersion.isLegacy() || modules.length === 0) {
-            return editorPath;
+            return new unity_editor_1.UnityEditor(path.normalize(editorPath), unityVersion);
         }
         try {
             this.logger.ci(`Checking installed modules for Unity ${unityVersion.toString()}...`);
@@ -4778,7 +4787,7 @@ chmod -R 777 "$hubPath"`]);
                 await this.GetEditor(unityVersion, modules);
             }
         }
-        return path.normalize(editorPath);
+        return new unity_editor_1.UnityEditor(path.normalize(editorPath), unityVersion);
     }
     /**
      * Lists the installed Unity Editors.
@@ -4860,7 +4869,7 @@ chmod -R 777 "$hubPath"`]);
         catch (error) {
             throw new Error(`Failed to find installed Unity Editor: ${unityVersion.toString()}\n  > ${error}`);
         }
-        this.logger.ci(`Found installed Unity Editor: ${editorPath}`);
+        this.logger.debug(`Found installed editor: "${editorPath}"`);
         return editorPath;
     }
     async getLatestHubReleases() {
@@ -5056,6 +5065,7 @@ done
         return JSON.parse(modulesContent);
     }
     async installUnity(unityVersion, modules) {
+        this.logger.ci(`Installing Unity ${unityVersion.toString()}...`);
         if (unityVersion.isLegacy()) {
             return await this.installUnity4x(unityVersion);
         }
@@ -5098,7 +5108,6 @@ done
             }
             args.push('--cm');
         }
-        this.logger.info(`Installing Unity ${unityVersion.toString()}...`);
         const output = await this.Exec(args, { showCommand: true, silent: false });
         if (output.includes(`Error while installing an editor or a module from changeset`)) {
             throw new Error(`Failed to install Unity ${unityVersion.toString()}`);
@@ -5115,7 +5124,7 @@ done
                     await (0, utilities_1.DownloadFile)(url, installerPath);
                     this.logger.info(`Running Unity ${unityVersion.toString()} installer...`);
                     try {
-                        await (0, utilities_1.Exec)(installerPath, ['/S', `/D=${installPath}`, '-Wait', '-NoNewWindow'], { silent: true, showCommand: true });
+                        await (0, utilities_1.Exec)('powershell', ['-Command', `Start-Process -FilePath \"${installerPath}\" -ArgumentList \"/S /D=${installPath}\" -Wait -NoNewWindow`], { silent: true, showCommand: true });
                     }
                     catch (error) {
                         this.logger.error(`Failed to install Unity ${unityVersion.toString()}: ${error}`);
@@ -5796,7 +5805,7 @@ async function TryKillProcess(procInfo) {
     let pid;
     try {
         pid = procInfo.pid;
-        logger.ci(`Killing process '${procInfo.name}' with pid: ${pid}`);
+        logger.ci(`Killing process "${procInfo.name}" with pid: ${pid}`);
         process.kill(pid);
     }
     catch (error) {
@@ -5851,11 +5860,11 @@ async function KillChildProcesses(procInfo) {
     logger.debug(`Killing child processes of ${procInfo.name} with pid: ${procInfo.pid}...`);
     try {
         if (process.platform === 'win32') {
-            const pwshCommand = 'powershell -Command "Get-CimInstance Win32_Process -Filter \'ParentProcessId=' + procInfo.pid + '\' | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"';
-            await Exec('cmd', ['/c', pwshCommand], { silent: true });
+            const command = `Get-CimInstance Win32_Process -Filter "ParentProcessId=${procInfo.pid}" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`;
+            await Exec('powershell', ['-Command', command], { silent: true, showCommand: true });
         }
         else { // linux and macos
-            const psOutput = await Exec('ps', ['-eo', 'pid,ppid,comm'], { silent: true });
+            const psOutput = await Exec('ps', ['-eo', 'pid,ppid,comm'], { silent: true, showCommand: false });
             const lines = psOutput.split('\n').slice(1); // Skip header line
             for (const line of lines) {
                 const parts = line.trim().split(/\s+/, 3);
@@ -62123,13 +62132,13 @@ const main = async () => {
         }
         const installedEditors = [];
         for (const unityVersion of versions) {
-            const unityEditorPath = await unityHub.GetEditor(unityVersion, modules);
-            core.info(`Installed Unity Editor: ${unityVersion.toString()} at ${unityEditorPath}`);
-            core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath);
+            const unityEditor = await unityHub.GetEditor(unityVersion, modules);
+            core.info(`Installed Unity Editor: ${unityEditor.version.toString()} at "${unityEditor.editorPath}"`);
+            core.exportVariable('UNITY_EDITOR_PATH', unityEditor.editorPath);
             if (modules.includes('android') && unityProjectPath !== undefined) {
-                await (0, unity_cli_1.CheckAndroidSdkInstalled)(unityEditorPath, unityProjectPath);
+                await (0, unity_cli_1.CheckAndroidSdkInstalled)(unityEditor.editorPath, unityProjectPath);
             }
-            installedEditors.push({ version: unityVersion.version, path: unityEditorPath });
+            installedEditors.push({ version: unityVersion.version, path: unityEditor.editorPath });
         }
         if (installedEditors.length !== versions.length) {
             throw new Error(`Expected to install ${versions.length} Unity versions, but installed ${installedEditors.length}.`);
