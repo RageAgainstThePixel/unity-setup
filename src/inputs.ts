@@ -48,12 +48,6 @@ export async function ValidateInputs(): Promise<[UnityVersion[], string[], strin
         }
     }
 
-    if (modules.length === 0) {
-        core.info(`  > None`);
-    }
-
-    core.info(`buildTargets:`);
-
     const moduleMap = UnityHub.GetPlatformTargetModuleMap();
 
     for (const target of buildTargets) {
@@ -72,7 +66,7 @@ export async function ValidateInputs(): Promise<[UnityVersion[], string[], strin
         }
     }
 
-    if (buildTargets.length == 0) {
+    if (modules.length === 0) {
         core.info(`  > None`);
     }
 

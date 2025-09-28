@@ -3209,9 +3209,9 @@ const fs_1 = __importDefault(__nccwpck_require__(7147));
 const os_1 = __importDefault(__nccwpck_require__(2037));
 const path_1 = __importDefault(__nccwpck_require__(1017));
 const child_process_1 = __nccwpck_require__(2081);
+const logging_1 = __nccwpck_require__(4486);
 const unity_editor_1 = __nccwpck_require__(8944);
 const utilities_1 = __nccwpck_require__(9746);
-const logging_1 = __nccwpck_require__(4486);
 const logger = logging_1.Logger.instance;
 /**
  * Checks if the required Android SDK is installed for the given Unity Editor and Project.
@@ -3312,8 +3312,10 @@ async function execSdkManager(sdkManagerPath, javaPath, args) {
                 stdio: ['pipe', 'pipe', 'pipe'],
                 env: { ...process.env, JAVA_HOME: javaPath }
             });
-            process.once('SIGINT', () => child.kill('SIGINT'));
-            process.once('SIGTERM', () => child.kill('SIGTERM'));
+            const sigintHandler = () => child.kill('SIGINT');
+            const sigtermHandler = () => child.kill('SIGTERM');
+            process.once('SIGINT', sigintHandler);
+            process.once('SIGTERM', sigtermHandler);
             child.stdout.on('data', (data) => {
                 const chunk = data.toString();
                 output += chunk;
@@ -3328,9 +3330,16 @@ async function execSdkManager(sdkManagerPath, javaPath, args) {
                 output += chunk;
                 process.stderr.write(chunk);
             });
-            child.on('error', (error) => reject(error));
+            child.on('error', (error) => {
+                process.stdout.write('\n');
+                process.removeListener('SIGINT', sigintHandler);
+                process.removeListener('SIGTERM', sigtermHandler);
+                reject(error);
+            });
             child.on('close', (code) => {
                 process.stdout.write('\n');
+                process.removeListener('SIGINT', sigintHandler);
+                process.removeListener('SIGTERM', sigtermHandler);
                 resolve(code === null ? 0 : code);
             });
         });
@@ -3343,6 +3352,771 @@ async function execSdkManager(sdkManagerPath, javaPath, args) {
     }
 }
 //# sourceMappingURL=android-sdk.js.map
+
+/***/ }),
+
+/***/ 4858:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+__nccwpck_require__(8224);
+const fs = __importStar(__nccwpck_require__(7147));
+const os = __importStar(__nccwpck_require__(2037));
+const commander_1 = __nccwpck_require__(4379);
+const path_1 = __importStar(__nccwpck_require__(1017));
+const license_client_1 = __nccwpck_require__(4115);
+const utilities_1 = __nccwpck_require__(9746);
+const unity_hub_1 = __nccwpck_require__(1723);
+const logging_1 = __nccwpck_require__(4486);
+const unity_version_1 = __nccwpck_require__(7474);
+const unity_project_1 = __nccwpck_require__(8468);
+const android_sdk_1 = __nccwpck_require__(2774);
+const unity_editor_1 = __nccwpck_require__(8944);
+// export public API
+__exportStar(__nccwpck_require__(4115), exports);
+__exportStar(__nccwpck_require__(9746), exports);
+__exportStar(__nccwpck_require__(1723), exports);
+__exportStar(__nccwpck_require__(4486), exports);
+__exportStar(__nccwpck_require__(7474), exports);
+__exportStar(__nccwpck_require__(8468), exports);
+__exportStar(__nccwpck_require__(2774), exports);
+__exportStar(__nccwpck_require__(8944), exports);
+const pkgPath = (0, path_1.join)(__dirname, '..', 'package.json');
+const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+const program = new commander_1.Command();
+program.name('unity-cli')
+    .description('A command line utility for the Unity Game Engine.')
+    .version(pkg.version);
+program.command('license-version')
+    .description('Print the version of the Unity License Client.')
+    .action(async () => {
+    const client = new license_client_1.LicensingClient();
+    await client.Version();
+});
+program.command('activate-license')
+    .description('Activate a Unity license.')
+    .option('-e, --email <email>', 'Email associated with the Unity account. Required when activating a personal or professional license.')
+    .option('-p, --password <password>', 'Password for the Unity account. Required when activating a personal or professional license.')
+    .option('-s, --serial <serial>', 'License serial number. Required when activating a professional license.')
+    .option('-l, --license <license>', 'License type (personal, professional, floating).')
+    .option('-c, --config <config>', 'Path to the configuration file. Required when activating a floating license.')
+    .option('--verbose', 'Enable verbose logging.')
+    .action(async (options) => {
+    if (options.verbose) {
+        logging_1.Logger.instance.logLevel = logging_1.LogLevel.DEBUG;
+    }
+    logging_1.Logger.instance.debug(JSON.stringify(options));
+    const client = new license_client_1.LicensingClient();
+    const licenseStr = options.license?.toString()?.trim();
+    if (!licenseStr || licenseStr.length === 0) {
+        throw new Error('License type is required. Use -l or --license to specify it.');
+    }
+    const licenseType = options.license.toLowerCase();
+    if (![license_client_1.LicenseType.personal, license_client_1.LicenseType.professional, license_client_1.LicenseType.floating].includes(licenseType)) {
+        throw new Error(`Invalid license type: ${licenseType}`);
+    }
+    if (licenseType !== license_client_1.LicenseType.floating) {
+        if (!options.email) {
+            options.email = await (0, utilities_1.PromptForSecretInput)('Email: ');
+        }
+        if (!options.password) {
+            options.password = await (0, utilities_1.PromptForSecretInput)('Password: ');
+        }
+        if (licenseType === license_client_1.LicenseType.professional && !options.serial) {
+            options.serial = await (0, utilities_1.PromptForSecretInput)('Serial: ');
+        }
+    }
+    await client.Activate(licenseType, options.config, options.serial, options.email, options.password);
+});
+program.command('return-license')
+    .description('Return a Unity license.')
+    .option('-l, --license <license>', 'License type (personal, professional, floating)')
+    .option('--verbose', 'Enable verbose logging.')
+    .action(async (options) => {
+    if (options.verbose) {
+        logging_1.Logger.instance.logLevel = logging_1.LogLevel.DEBUG;
+    }
+    logging_1.Logger.instance.debug(JSON.stringify(options));
+    const client = new license_client_1.LicensingClient();
+    const licenseStr = options.license?.toString()?.trim();
+    if (!licenseStr || licenseStr.length === 0) {
+        throw new Error('License type is required. Use -l or --license to specify it.');
+    }
+    const licenseType = licenseStr.toLowerCase();
+    if (![license_client_1.LicenseType.personal, license_client_1.LicenseType.professional, license_client_1.LicenseType.floating].includes(licenseType)) {
+        throw new Error(`Invalid license type: ${licenseType}`);
+    }
+    await client.Deactivate(licenseType);
+});
+program.command('hub-version')
+    .description('Print the version of the Unity Hub.')
+    .action(async () => {
+    const unityHub = new unity_hub_1.UnityHub();
+    const version = await unityHub.Version();
+    process.stdout.write(`${version}\n`);
+});
+program.command('hub-install')
+    .description('Install the Unity Hub.')
+    .option('--verbose', 'Enable verbose logging.')
+    .option('--json', 'Prints the last line of output as JSON string.')
+    .action(async (options) => {
+    if (options.verbose) {
+        logging_1.Logger.instance.logLevel = logging_1.LogLevel.DEBUG;
+    }
+    const unityHub = new unity_hub_1.UnityHub();
+    const hubPath = await unityHub.Install();
+    if (options.json) {
+        process.stdout.write(`\n${JSON.stringify({ UNITY_HUB_PATH: hubPath })}\n`);
+    }
+    else {
+        process.stdout.write(`${hubPath}\n`);
+    }
+});
+program.command('hub-path')
+    .description('Print the path to the Unity Hub executable.')
+    .option('--json', 'Prints the last line of output as JSON string.')
+    .action(async (options) => {
+    const hub = new unity_hub_1.UnityHub();
+    if (options.json) {
+        process.stdout.write(`\n${JSON.stringify({ UNITY_HUB_PATH: hub.executable })}\n`);
+    }
+    else {
+        process.stdout.write(`${hub.executable}\n`);
+    }
+});
+program.command('hub')
+    .description('Run commands directly to the Unity Hub. (You need not to pass --headless or -- to this command).')
+    .allowUnknownOption(true)
+    .argument('<args...>', 'Arguments to pass to the Unity Hub executable.')
+    .option('--verbose', 'Enable verbose logging.')
+    .action(async (args, options) => {
+    if (options.verbose) {
+        logging_1.Logger.instance.logLevel = logging_1.LogLevel.DEBUG;
+    }
+    logging_1.Logger.instance.debug(JSON.stringify({ args, options }));
+    const unityHub = new unity_hub_1.UnityHub();
+    await unityHub.Exec(args, { silent: false, showCommand: logging_1.Logger.instance.logLevel === logging_1.LogLevel.DEBUG });
+});
+program.command('setup-unity')
+    .description('Sets up the environment for the specified project and finds or installs the Unity Editor version for it.')
+    .option('-p, --unity-project <unityProjectPath>', 'The path to a Unity project or "none" to skip project detection.')
+    .option('-u, --unity-version <unityVersion>', 'The Unity version to get (e.g. 2020.3.1f1, 2021.x, 2022.1.*, 6000). If specified, it will override the version read from the project.')
+    .option('-c, --changeset <changeset>', 'The Unity changeset to get (e.g. 1234567890ab).')
+    .option('-a, --arch <architecture>', 'The Unity architecture to get (e.g. x86_64, arm64). Defaults to the architecture of the current process.')
+    .option('-b, --build-targets <buildTargets>', 'The Unity build target to get (e.g. iOS, Android).')
+    .option('-m, --modules <modules>', 'The Unity module to get (e.g. ios, android).')
+    .option('-i, --install-path <installPath>', 'The path to install the Unity Editor to. By default, it will be installed to the default Unity Hub location.')
+    .option('--verbose', 'Enable verbose logging.')
+    .option('--json', 'Prints the last line of output as JSON string.')
+    .action(async (options) => {
+    if (options.verbose) {
+        logging_1.Logger.instance.logLevel = logging_1.LogLevel.DEBUG;
+    }
+    logging_1.Logger.instance.debug(JSON.stringify(options));
+    let unityProject;
+    if (options.unityProject) {
+        unityProject = await unity_project_1.UnityProject.GetProject(options.unityProject);
+    }
+    if (!options.unityVersion && !unityProject) {
+        throw new Error('You must specify a Unity version or project with -u, --unity-version, -p, --unity-project.');
+    }
+    const unityVersion = unityProject?.version ?? new unity_version_1.UnityVersion(options.unityVersion, options.changeset);
+    const modules = options.modules ? options.modules.split(/[ ,]+/).filter(Boolean) : [];
+    const buildTargets = options.buildTargets ? options.buildTargets.split(/[ ,]+/).filter(Boolean) : [];
+    const moduleBuildTargetMap = unity_hub_1.UnityHub.GetPlatformTargetModuleMap();
+    for (const target of buildTargets) {
+        const module = moduleBuildTargetMap[target];
+        if (module === undefined) {
+            if (target.toLowerCase() !== 'none') {
+                logging_1.Logger.instance.warn(`${target} is not a valid build target for ${os.type()}`);
+            }
+            continue;
+        }
+        if (!modules.includes(module)) {
+            modules.push(module);
+        }
+    }
+    if (modules.includes('none') ||
+        modules.includes('None')) {
+        modules.length = 0;
+    }
+    const unityHub = new unity_hub_1.UnityHub();
+    const editorPath = await unityHub.GetEditor(unityVersion, modules);
+    const output = {
+        'UNITY_HUB_PATH': unityHub.executable,
+        'UNITY_EDITOR': editorPath
+    };
+    if (unityProject) {
+        output['UNITY_PROJECT_PATH'] = unityProject.projectPath;
+        if (modules.includes('android')) {
+            await (0, android_sdk_1.CheckAndroidSdkInstalled)(editorPath, unityProject.projectPath);
+        }
+    }
+    if (options.json) {
+        process.stdout.write(`\n${JSON.stringify(output)}\n`);
+    }
+});
+program.command('create-project')
+    .description('Create a new Unity project.')
+    .option('--name <projectName>', 'The name of the new Unity project. If unspecified, the project will be created in the specified path or the current working directory.')
+    .option('--path <projectPath>', 'The path to create the new Unity project. If unspecified, the current working directory will be used.')
+    .option('--template <projectTemplate>', 'The name of the template package to use for creating the unity project. Supports regex patterns.', 'com.unity.template.3d(-cross-platform)?')
+    .option('--unity-editor <unityEditorPath>', 'The path to the Unity Editor executable. If unspecified, the UNITY_EDITOR environment variable must be set.')
+    .option('--verbose', 'Enable verbose logging.')
+    .option('--json', 'Prints the last line of output as JSON string.')
+    .action(async (options) => {
+    if (options.verbose) {
+        logging_1.Logger.instance.logLevel = logging_1.LogLevel.DEBUG;
+    }
+    logging_1.Logger.instance.debug(JSON.stringify(options));
+    const editorPath = options.unityEditor?.toString()?.trim() || process.env.UNITY_EDITOR;
+    if (!editorPath || editorPath.length === 0) {
+        throw new Error('The Unity Editor path was not specified. Use -e or --unity-editor to specify it, or set the UNITY_EDITOR environment variable.');
+    }
+    const unityEditor = new unity_editor_1.UnityEditor(editorPath);
+    if (!options.template || options.template.length === 0) {
+        throw new Error('The project template name was not specified. Use -t or --template to specify it.');
+    }
+    const templatePath = unityEditor.GetTemplatePath(options.template);
+    const projectName = options.name?.toString()?.trim();
+    let projectPath = options.path?.toString()?.trim() || process.cwd();
+    if (projectName && projectName.length > 0) {
+        projectPath = path_1.default.join(projectPath, projectName);
+    }
+    await unityEditor.Run({
+        projectPath: projectPath,
+        args: [
+            '-quit',
+            '-nographics',
+            '-batchmode',
+            '-createProject', projectPath,
+            '-cloneFromTemplate', templatePath
+        ]
+    });
+    if (options.json) {
+        process.stdout.write(`\n${JSON.stringify({ UNITY_PROJECT_PATH: projectPath })}\n`);
+    }
+});
+program.command('run')
+    .description('Run command line args directly to the Unity Editor.')
+    .option('--unity-editor <unityEditorPath>', 'The path to the Unity Editor executable. If unspecified, the UNITY_EDITOR environment variable must be set.')
+    .option('--unity-project <unityProjectPath>', 'The path to a Unity project. If unspecified, the UNITY_PROJECT_PATH environment variable or the current working directory will be used.')
+    .option('--log-name <logName>', 'The name of the log file.')
+    .allowUnknownOption(true)
+    .argument('<args...>', 'Arguments to pass to the Unity Editor executable.')
+    .option('--verbose', 'Enable verbose logging.')
+    .action(async (args, options) => {
+    if (options.verbose) {
+        logging_1.Logger.instance.logLevel = logging_1.LogLevel.DEBUG;
+    }
+    logging_1.Logger.instance.debug(JSON.stringify({ options, args }));
+    const editorPath = options.unityEditor?.toString()?.trim() || process.env.UNITY_EDITOR;
+    if (!editorPath || editorPath.length === 0) {
+        throw new Error('The Unity Editor path was not specified. Use -e or --unity-editor to specify it, or set the UNITY_EDITOR environment variable.');
+    }
+    const unityEditor = new unity_editor_1.UnityEditor(editorPath);
+    const projectPath = options.unityProject?.toString()?.trim() || process.env.UNITY_PROJECT_PATH || process.cwd();
+    const unityProject = await unity_project_1.UnityProject.GetProject(projectPath);
+    if (!unityProject) {
+        throw new Error(`The specified path is not a valid Unity project: ${projectPath}`);
+    }
+    if (!args.includes('-logFile')) {
+        const logPath = unityEditor.GenerateLogFilePath(unityProject.projectPath, options.logName);
+        args.push('-logFile', logPath);
+    }
+    await unityEditor.Run({
+        args: [...args]
+    });
+});
+program.parse(process.argv);
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 4115:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.LicensingClient = exports.LicenseType = void 0;
+const os = __importStar(__nccwpck_require__(2037));
+const fs = __importStar(__nccwpck_require__(7147));
+const path = __importStar(__nccwpck_require__(1017));
+const child_process_1 = __nccwpck_require__(2081);
+const logging_1 = __nccwpck_require__(4486);
+const unity_hub_1 = __nccwpck_require__(1723);
+const utilities_1 = __nccwpck_require__(9746);
+var LicenseType;
+(function (LicenseType) {
+    LicenseType["personal"] = "personal";
+    LicenseType["professional"] = "professional";
+    LicenseType["floating"] = "floating";
+})(LicenseType || (exports.LicenseType = LicenseType = {}));
+class LicensingClient {
+    unityHub = new unity_hub_1.UnityHub();
+    logger = logging_1.Logger.instance;
+    licenseClientPath;
+    licenseVersion;
+    /**
+     * Creates an instance of LicensingClient.
+     * @param licenseVersion The license version to use (e.g., '4.x', '5.x', '6.x'). If undefined, defaults to '6.x'.
+     */
+    constructor(licenseVersion = undefined) {
+        this.licenseVersion = licenseVersion;
+    }
+    async init() {
+        try {
+            await fs.promises.access(this.unityHub.executable, fs.constants.R_OK);
+            await fs.promises.access(this.unityHub.rootDirectory, fs.constants.R_OK);
+        }
+        catch (error) {
+            await this.unityHub.Install();
+        }
+        const licensingClientExecutable = process.platform === 'win32' ? 'Unity.Licensing.Client.exe' : 'Unity.Licensing.Client';
+        const licenseClientPath = await (0, utilities_1.ResolveGlobToPath)([this.unityHub.rootDirectory, '**', licensingClientExecutable]);
+        this.licenseClientPath = licenseClientPath;
+        await fs.promises.access(this.licenseClientPath, fs.constants.X_OK);
+        return this.licenseClientPath;
+    }
+    getUnityCommonDir() {
+        const result = process.env['UNITY_COMMON_DIR'];
+        if (result) {
+            return result;
+        }
+        const platform = os.platform();
+        switch (platform) {
+            case 'win32': {
+                const programData = process.env['PROGRAMDATA'] || 'C:\\ProgramData';
+                return path.join(programData, 'Unity');
+            }
+            case 'darwin': {
+                return '/Library/Application Support/Unity';
+            }
+            case 'linux': {
+                const dataHome = process.env['XDG_DATA_HOME'] || path.join(os.homedir(), '.local', 'share');
+                return path.join(dataHome, 'unity3d', 'Unity');
+            }
+            default:
+                throw new Error(`Failed to determine Unity common directory for platform: ${platform}`);
+        }
+    }
+    getExitCodeMessage(exitCode) {
+        switch (exitCode) {
+            case 0:
+                return 'OK';
+            case 1:
+                return 'Invalid arguments';
+            case 2:
+                return 'Invalid credentials';
+            case 3:
+                return 'Organization ID is missing';
+            case 4:
+                return 'Package Access Control List file download failed';
+            case 5:
+                return 'Context initialization failed';
+            case 6:
+                return 'Replication service initialization failed';
+            case 7:
+                return 'Orchestrator initialization failed';
+            case 8:
+                return 'Floating service initialization failed';
+            case 9:
+                return 'Package service initialization failed';
+            case 10:
+                return 'Access token initialization failed';
+            case 11:
+                return 'Multi client pipe server start failed';
+            case 12:
+                return 'License activation generation failed';
+            case 13:
+                return 'Syncing entitlements failed';
+            case 14:
+                return 'No valid entitlement found';
+            case 15:
+                return 'License update failed';
+            case 16:
+                return 'Unable to get list of user seats';
+            case 17:
+                return 'Seat activation or deactivation failed';
+            case 18:
+                return 'Getting entitlements failed';
+            case 19:
+                return 'Acquiring license failed';
+            case 20:
+                return 'Renewing floating lease failed';
+            case 21:
+                return 'Returning floating lease failed';
+            default:
+                return `Unknown Error`;
+        }
+    }
+    async patchBinary(src, dest, searchValue, replaceValue) {
+        const data = await fs.promises.readFile(src);
+        let modified = false;
+        for (let i = 0; i <= data.length - searchValue.length; i++) {
+            if (data.subarray(i, i + searchValue.length).equals(searchValue)) {
+                replaceValue.copy(data, i);
+                modified = true;
+                i += searchValue.length - 1;
+            }
+        }
+        if (!modified) {
+            throw new Error('Could not find the search value');
+        }
+        await fs.promises.writeFile(dest, data);
+    }
+    async patchLicenseVersion() {
+        if (!this.licenseVersion) {
+            // check if the UNITY_EDITOR_PATH is set. If it is, use it to determine the license version
+            const unityEditorPath = process.env['UNITY_EDITOR_PATH'];
+            if (unityEditorPath) {
+                const versionMatch = unityEditorPath.match(/(\d+)\.(\d+)\.(\d+)/);
+                if (!versionMatch) {
+                    this.licenseVersion = '6.x'; // default to 6.x if version cannot be determined
+                }
+                else {
+                    switch (versionMatch[1]) {
+                        case '4':
+                            this.licenseVersion = '4.x';
+                            break;
+                        case '5':
+                            this.licenseVersion = '5.x';
+                            break;
+                        default:
+                            this.licenseVersion = '6.x'; // default to 6.x for any other
+                            break;
+                    }
+                }
+            }
+            if (!this.licenseVersion) {
+                this.licenseVersion = '6.x'; // default to 6.x if not set
+            }
+        }
+        if (this.licenseVersion === '6.x') {
+            return;
+        }
+        if (this.licenseVersion !== '5.x' && this.licenseVersion !== '4.x') {
+            this.logger.warn(`Warning: Specified license version '${this.licenseVersion}' is unsupported, skipping`);
+            return;
+        }
+        if (!this.licenseClientPath) {
+            this.licenseClientPath = await this.init();
+        }
+        const clientDirectory = path.dirname(this.licenseClientPath);
+        const patchedDirectory = path.join(os.tmpdir(), `UnityLicensingClient-${this.licenseVersion.replace('.', '_')}`);
+        if (await fs.promises.mkdir(patchedDirectory, { recursive: true }) === undefined) {
+            this.logger.info('Unity Licensing Client was already patched, reusing');
+        }
+        else {
+            let found = false;
+            for (const fileName of await fs.promises.readdir(clientDirectory)) {
+                if (fileName === 'Unity.Licensing.EntitlementResolver.dll') {
+                    await this.patchBinary(path.join(clientDirectory, fileName), path.join(patchedDirectory, fileName), Buffer.from('6.x', 'utf16le'), Buffer.from(this.licenseVersion, 'utf16le'));
+                    found = true;
+                }
+                else {
+                    await fs.promises.symlink(path.join(clientDirectory, fileName), path.join(patchedDirectory, fileName));
+                }
+            }
+            if (!found) {
+                throw new Error('Could not find Unity.Licensing.EntitlementResolver.dll in the unityhub installation');
+            }
+        }
+        this.licenseClientPath = path.join(patchedDirectory, path.basename(this.licenseClientPath));
+        const unityCommonDir = this.getUnityCommonDir();
+        const legacyLicenseFile = path.join(unityCommonDir, `Unity_v${this.licenseVersion}.ulf`);
+        await fs.promises.mkdir(unityCommonDir, { recursive: true });
+        try {
+            await fs.promises.symlink(path.join(patchedDirectory, 'Unity_lic.ulf'), legacyLicenseFile);
+        }
+        catch (error) {
+            if (error && error.code === 'EEXIST') {
+                await fs.promises.unlink(legacyLicenseFile);
+                await fs.promises.symlink(path.join(patchedDirectory, 'Unity_lic.ulf'), legacyLicenseFile);
+            }
+            else {
+                throw error;
+            }
+        }
+        process.env['UNITY_COMMON_DIR'] = patchedDirectory;
+    }
+    async exec(args) {
+        await this.patchLicenseVersion();
+        if (!this.licenseClientPath) {
+            this.licenseClientPath = await this.init();
+        }
+        let output = '';
+        let exitCode = 0;
+        function processOutput(data) {
+            const chunk = data.toString();
+            output += chunk;
+        }
+        this.logger.startGroup(`\x1b[34m${this.licenseClientPath} ${args.join(' ')}\x1b[0m`);
+        await fs.promises.access(this.licenseClientPath, fs.constants.R_OK | fs.constants.X_OK);
+        try {
+            exitCode = await new Promise((resolve, reject) => {
+                fs.accessSync(this.licenseClientPath, fs.constants.R_OK | fs.constants.X_OK);
+                const child = (0, child_process_1.spawn)(this.licenseClientPath, args, {
+                    stdio: ['ignore', 'pipe', 'pipe']
+                });
+                const sigintHandler = () => child.kill('SIGINT');
+                const sigtermHandler = () => child.kill('SIGTERM');
+                process.once('SIGINT', sigintHandler);
+                process.once('SIGTERM', sigtermHandler);
+                child.stdout.on('data', processOutput);
+                child.stderr.on('data', processOutput);
+                child.on('error', (error) => {
+                    process.stdout.write('\n');
+                    process.removeListener('SIGINT', sigintHandler);
+                    process.removeListener('SIGTERM', sigtermHandler);
+                    reject(error);
+                });
+                child.on('close', (code) => {
+                    process.stdout.write('\n');
+                    process.removeListener('SIGINT', sigintHandler);
+                    process.removeListener('SIGTERM', sigtermHandler);
+                    resolve(code === null ? 0 : code);
+                });
+            });
+        }
+        finally {
+            const maskedOutput = this.maskSerialInOutput(output);
+            const splitLines = maskedOutput.split(/\r?\n/);
+            for (const line of splitLines) {
+                if (line === undefined || line.length === 0) {
+                    continue;
+                }
+                this.logger.info(line);
+            }
+            this.logger.endGroup();
+            if (exitCode !== 0) {
+                const message = this.getExitCodeMessage(exitCode);
+                throw new Error(`License command failed with exit code ${exitCode}: ${message}`);
+            }
+        }
+        return output;
+    }
+    maskSerialInOutput(output) {
+        return output.replace(/([\w-]+-XXXX)/g, (_, serial) => {
+            const maskedSerial = serial.slice(0, -4) + `XXXX`;
+            this.logger.mask(maskedSerial);
+            return serial;
+        });
+    }
+    /**
+     * Displays the version of the licensing client to the console.
+     */
+    async Version() {
+        await this.exec(['--version']);
+    }
+    /**
+     * Activates a Unity license.
+     * @param licenseType The type of license to activate.
+     * @param servicesConfig The services config path for floating licenses.
+     * @param serial The license serial number.
+     * @param username The Unity ID username.
+     * @param password The Unity ID password.
+     * @throws Error if activation fails or required parameters are missing.
+     */
+    async Activate(licenseType, servicesConfig = undefined, serial = undefined, username = undefined, password = undefined) {
+        let activeLicenses = await this.showEntitlements();
+        if (activeLicenses.includes(licenseType)) {
+            this.logger.info(`License of type '${licenseType}' is already active, skipping activation`);
+            return;
+        }
+        switch (licenseType) {
+            case LicenseType.floating: {
+                if (!servicesConfig) {
+                    throw new Error('Services config path is required for floating license activation');
+                }
+                let servicesPath;
+                switch (process.platform) {
+                    case 'win32':
+                        servicesPath = path.join(process.env.PROGRAMDATA || '', 'Unity', 'config');
+                        break;
+                    case 'darwin':
+                        servicesPath = path.join('/Library', 'Application Support', 'Unity', 'config');
+                        break;
+                    case 'linux':
+                        servicesPath = path.join('/usr', 'share', 'unity3d', 'config');
+                        break;
+                    default:
+                        throw new Error(`Unsupported platform: ${process.platform}`);
+                }
+                const servicesConfigPath = path.join(servicesPath, 'services-config.json');
+                await fs.promises.writeFile(servicesConfigPath, Buffer.from(servicesConfig, 'base64'));
+                return;
+            }
+            default: { // personal and professional license activation
+                if (!username) {
+                    const encodedUsername = process.env.UNITY_USERNAME_BASE64;
+                    if (!encodedUsername) {
+                        throw Error('Username is required for Unity License Activation!');
+                    }
+                    username = Buffer.from(encodedUsername, 'base64').toString('utf-8');
+                }
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (username.length === 0 || !emailRegex.test(username)) {
+                    throw Error('Username must be your Unity ID email address!');
+                }
+                if (!password) {
+                    const encodedPassword = process.env.UNITY_PASSWORD_BASE64;
+                    if (!encodedPassword) {
+                        throw Error('Password is required for Unity License Activation!');
+                    }
+                    password = Buffer.from(encodedPassword, 'base64').toString('utf-8');
+                }
+                if (password.length === 0) {
+                    throw Error('Password is required for Unity License Activation!');
+                }
+                await this.activateLicense(licenseType, username, password, serial);
+            }
+        }
+    }
+    /**
+     * Deactivates a Unity license.
+     * @param licenseType The type of license to deactivate.
+     * @returns A promise that resolves when the license is deactivated.
+     * @throws Error if deactivation fails.
+     */
+    async Deactivate(licenseType) {
+        if (licenseType === LicenseType.floating) {
+            return;
+        }
+        const activeLicenses = await this.showEntitlements();
+        if (activeLicenses.includes(licenseType)) {
+            await this.returnLicense(licenseType);
+        }
+    }
+    async showEntitlements() {
+        const output = await this.exec([`--showEntitlements`]);
+        const matches = output.matchAll(/Product Name: (?<license>.+)/g);
+        const licenses = [];
+        for (const match of matches) {
+            if (match.groups?.license) {
+                switch (match.groups.license) {
+                    case 'Unity Pro':
+                        if (!licenses.includes(LicenseType.professional)) {
+                            licenses.push(LicenseType.professional);
+                        }
+                        break;
+                    case 'Unity Personal':
+                        if (!licenses.includes(LicenseType.personal)) {
+                            licenses.push(LicenseType.personal);
+                        }
+                        break;
+                    default:
+                        throw Error(`Unsupported license type: ${match.groups.license}`);
+                }
+            }
+        }
+        return licenses;
+    }
+    async activateLicense(licenseType, username, password, serial = undefined) {
+        const args = [
+            `--activate-ulf`,
+            `--username`, username,
+            `--password`, password
+        ];
+        if (serial !== undefined && serial.length > 0) {
+            serial = serial.trim();
+            args.push(`--serial`, serial);
+            const maskedSerial = serial.slice(0, -4) + `XXXX`;
+            this.logger.mask(maskedSerial);
+        }
+        if (licenseType === LicenseType.personal) {
+            args.push(`--include-personal`);
+        }
+        await this.exec(args);
+        const activeLicenses = await this.showEntitlements();
+        if (!activeLicenses.includes(licenseType)) {
+            throw new Error(`Failed to activate license of type '${licenseType}'`);
+        }
+        this.logger.info(`Successfully activated license of type '${licenseType}'`);
+    }
+    async returnLicense(licenseType) {
+        await this.exec([`--return-ulf`]);
+        const activeLicenses = await this.showEntitlements();
+        if (activeLicenses.includes(licenseType)) {
+            throw new Error(`Failed to return license of type '${licenseType}'`);
+        }
+        this.logger.info(`Successfully returned license of type '${licenseType}'`);
+    }
+}
+exports.LicensingClient = LicensingClient;
+//# sourceMappingURL=license-client.js.map
 
 /***/ }),
 
@@ -3366,11 +4140,10 @@ class Logger {
     _ci;
     static instance = new Logger();
     constructor() {
-        if (process.env.GITHUB_ACTIONS) {
+        if (process.env.GITHUB_ACTIONS === 'true') {
             this._ci = 'GITHUB_ACTIONS';
             this.logLevel = process.env.ACTIONS_STEP_DEBUG === 'true' ? LogLevel.DEBUG : LogLevel.CI;
         }
-        Logger.instance = this;
     }
     /**
      * Logs a message to the console.
@@ -3548,10 +4321,14 @@ const child_process_1 = __nccwpck_require__(2081);
 class UnityEditor {
     editorPath;
     editorRootPath;
-    procInfo;
-    pidFile;
     logger = logging_1.Logger.instance;
     autoAddNoGraphics;
+    procInfo;
+    /**
+     * Initializes a new instance of the UnityEditor class.
+     * @param editorPath The path to the Unity Editor installation.
+     * @throws Will throw an error if the editor path is invalid or not executable.
+     */
     constructor(editorPath) {
         this.editorPath = editorPath;
         if (!fs.existsSync(editorPath)) {
@@ -3559,7 +4336,6 @@ class UnityEditor {
         }
         fs.accessSync(editorPath, fs.constants.X_OK);
         this.editorRootPath = UnityEditor.GetEditorRootPath(editorPath);
-        this.pidFile = path.join(process.env.RUNNER_TEMP || process.env.USERPROFILE || '.', '.unity', 'unity-editor-process-id.txt');
         const match = editorPath.match(/(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)/);
         if (!match) {
             throw Error(`Invalid Unity Editor Path: ${editorPath}`);
@@ -3644,6 +4420,8 @@ class UnityEditor {
             }
         }
         finally {
+            process.removeListener('SIGINT', onCancel);
+            process.removeListener('SIGTERM', onCancel);
             this.logger.endGroup();
             if (!isCancelled) {
                 await this.tryKillEditorProcess();
@@ -3689,7 +4467,7 @@ class UnityEditor {
         if (!command.args.includes('-logFile')) {
             command.args.push('-logFile', this.GenerateLogFilePath(command.projectPath));
         }
-        const logPath = (0, utilities_1.getArgumentValueAsString)('-logFile', command.args);
+        const logPath = (0, utilities_1.GetArgumentValueAsString)('-logFile', command.args);
         let unityProcess;
         if (process.platform === 'linux' && !command.args.includes('-nographics')) {
             unityProcess = (0, child_process_1.spawn)('xvfb-run', [this.editorPath, ...command.args], {
@@ -3718,27 +4496,6 @@ class UnityEditor {
         }
         onPid({ pid: processId, ppid: process.pid, name: this.editorPath });
         this.logger.debug(`Unity process started with pid: ${processId}`);
-        // make sure the directory for the PID file exists
-        const pidDir = path.dirname(this.pidFile);
-        if (!fs.existsSync(pidDir)) {
-            fs.mkdirSync(pidDir, { recursive: true });
-        }
-        else {
-            try {
-                var existingProcInfo = await (0, utilities_1.readPidFile)(this.pidFile);
-                if (existingProcInfo) {
-                    const killedPid = await (0, utilities_1.tryKillProcess)(existingProcInfo);
-                    if (killedPid) {
-                        this.logger.warn(`Killed existing Unity process with pid: ${killedPid}`);
-                    }
-                }
-            }
-            catch {
-                // PID file does not exist, continue
-            }
-        }
-        // Write the PID to the PID file
-        fs.writeFileSync(this.pidFile, String(processId));
         const logPollingInterval = 100; // milliseconds
         // Wait for log file to appear
         while (!fs.existsSync(logPath)) {
@@ -3811,8 +4568,8 @@ class UnityEditor {
     }
     async tryKillEditorProcess() {
         if (this.procInfo) {
-            await (0, utilities_1.tryKillProcess)(this.procInfo);
-            await (0, utilities_1.killChildProcesses)(this.procInfo);
+            await (0, utilities_1.TryKillProcess)(this.procInfo);
+            await (0, utilities_1.KillChildProcesses)(this.procInfo);
         }
         else {
             this.logger.debug('No Unity process info available to kill.');
@@ -3888,13 +4645,15 @@ const child_process_1 = __nccwpck_require__(2081);
 const logging_1 = __nccwpck_require__(4486);
 const semver_1 = __nccwpck_require__(1383);
 const utilities_1 = __nccwpck_require__(9746);
-const unity_version_1 = __nccwpck_require__(3331);
+const unity_version_1 = __nccwpck_require__(7474);
 const client_1 = __nccwpck_require__(601);
 const unity_editor_1 = __nccwpck_require__(8944);
 class UnityHub {
+    /** The path to the Unity Hub executable. */
     executable;
+    /** The root directory of the Unity Hub installation. */
     rootDirectory;
-    editorInstallationDirectory;
+    /** The file extension for the Unity editor executable. */
     editorFileExtension;
     logger = logging_1.Logger.instance;
     constructor() {
@@ -3902,19 +4661,16 @@ class UnityHub {
             case 'win32':
                 this.executable = process.env.UNITY_HUB_PATH || 'C:\\Program Files\\Unity Hub\\Unity Hub.exe';
                 this.rootDirectory = path.join(this.executable, '../');
-                this.editorInstallationDirectory = 'C:\\Program Files\\Unity\\Hub\\Editor\\';
                 this.editorFileExtension = '\\Editor\\Unity.exe';
                 break;
             case 'darwin':
                 this.executable = process.env.UNITY_HUB_PATH || '/Applications/Unity Hub.app/Contents/MacOS/Unity Hub';
                 this.rootDirectory = path.join(this.executable, '../../../');
-                this.editorInstallationDirectory = '/Applications/Unity/Hub/Editor/';
                 this.editorFileExtension = '/Unity.app/Contents/MacOS/Unity';
                 break;
             case 'linux':
                 this.executable = process.env.UNITY_HUB_PATH || '/opt/unityhub/unityhub';
                 this.rootDirectory = path.join(this.executable, '../');
-                this.editorInstallationDirectory = `${process.env.HOME}/Unity/Hub/Editor/`;
                 this.editorFileExtension = '/Editor/Unity';
                 break;
             default:
@@ -3951,13 +4707,22 @@ class UnityHub {
                 const child = (0, child_process_1.spawn)(executable, execArgs, {
                     stdio: ['ignore', 'pipe', 'pipe'],
                 });
-                process.once('SIGINT', () => child.kill('SIGINT'));
-                process.once('SIGTERM', () => child.kill('SIGTERM'));
+                const sigintHandler = () => child.kill('SIGINT');
+                const sigtermHandler = () => child.kill('SIGTERM');
+                process.once('SIGINT', sigintHandler);
+                process.once('SIGTERM', sigtermHandler);
                 child.stdout.on('data', processOutput);
                 child.stderr.on('data', processOutput);
-                child.on('error', (error) => reject(error));
+                child.on('error', (error) => {
+                    process.stdout.write('\n');
+                    process.removeListener('SIGINT', sigintHandler);
+                    process.removeListener('SIGTERM', sigtermHandler);
+                    reject(error);
+                });
                 child.on('close', (code) => {
                     process.stdout.write('\n');
+                    process.removeListener('SIGINT', sigintHandler);
+                    process.removeListener('SIGTERM', sigtermHandler);
                     resolve(code === null ? 0 : code);
                 });
             });
@@ -3998,6 +4763,7 @@ class UnityHub {
     }
     /**
      * Prints the installed Unity Hub version.
+     * @returns The installed Unity Hub version.
      */
     async Version() {
         const version = await this.getInstalledHubVersion();
@@ -4006,6 +4772,7 @@ class UnityHub {
     /**
      * Installs or updates the Unity Hub.
      * If the Unity Hub is already installed, it will be updated to the latest version.
+     * @returns The path to the Unity Hub executable.
      */
     async Install() {
         let isInstalled = false;
@@ -4046,9 +4813,11 @@ sudo apt-get install -y --no-install-recommends --only-upgrade unityhub`]);
                 this.logger.info(`Unity Hub is already installed and up to date.`);
             }
         }
+        await fs.promises.access(this.executable, fs.constants.X_OK);
         return this.executable;
     }
     async installHub() {
+        this.logger.ci(`Installing Unity Hub...`);
         switch (process.platform) {
             case 'win32': {
                 const url = 'https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup.exe';
@@ -4056,7 +4825,7 @@ sudo apt-get install -y --no-install-recommends --only-upgrade unityhub`]);
                 await (0, utilities_1.DownloadFile)(url, downloadPath);
                 this.logger.info(`Running Unity Hub installer...`);
                 try {
-                    await (0, utilities_1.Exec)(downloadPath, ['/S'], { silent: true });
+                    await (0, utilities_1.Exec)(downloadPath, ['/S'], { silent: true, showCommand: true });
                 }
                 finally {
                     if (fs.statSync(downloadPath).isFile()) {
@@ -4069,13 +4838,12 @@ sudo apt-get install -y --no-install-recommends --only-upgrade unityhub`]);
                 const baseUrl = 'https://public-cdn.cloud.unity3d.com/hub/prod';
                 const url = `${baseUrl}/UnityHubSetup-${process.arch}.dmg`;
                 const downloadPath = path.join((0, utilities_1.GetTempDir)(), `UnityHubSetup-${process.arch}.dmg`);
-                this.logger.info(`Downloading Unity Hub from ${url} to ${downloadPath}`);
                 await (0, utilities_1.DownloadFile)(url, downloadPath);
                 await fs.promises.chmod(downloadPath, 0o777);
                 let mountPoint = '';
                 this.logger.debug(`Mounting DMG...`);
                 try {
-                    const output = await (0, utilities_1.Exec)('hdiutil', ['attach', downloadPath, '-nobrowse'], { silent: true });
+                    const output = await (0, utilities_1.Exec)('hdiutil', ['attach', downloadPath, '-nobrowse'], { silent: true, showCommand: true });
                     // can be "/Volumes/Unity Hub 3.13.1-arm64" or "/Volumes/Unity Hub 3.13.1"
                     const mountPointMatch = output.match(/\/Volumes\/Unity Hub.*$/m);
                     if (!mountPointMatch || mountPointMatch.length === 0) {
@@ -4087,17 +4855,17 @@ sudo apt-get install -y --no-install-recommends --only-upgrade unityhub`]);
                     this.logger.debug(`Copying ${appPath} to /Applications...`);
                     await fs.promises.access(appPath, fs.constants.R_OK | fs.constants.X_OK);
                     if (fs.existsSync('/Applications/Unity Hub.app')) {
-                        await (0, utilities_1.Exec)('sudo', ['rm', '-rf', '/Applications/Unity Hub.app'], { silent: true });
+                        await (0, utilities_1.Exec)('sudo', ['rm', '-rf', '/Applications/Unity Hub.app'], { silent: true, showCommand: true });
                     }
-                    await (0, utilities_1.Exec)('sudo', ['cp', '-R', appPath, '/Applications/Unity Hub.app'], { silent: true });
-                    await (0, utilities_1.Exec)('sudo', ['chmod', '777', '/Applications/Unity Hub.app/Contents/MacOS/Unity Hub'], { silent: true });
-                    await (0, utilities_1.Exec)('sudo', ['mkdir', '-p', '/Library/Application Support/Unity'], { silent: true });
-                    await (0, utilities_1.Exec)('sudo', ['chmod', '777', '/Library/Application Support/Unity'], { silent: true });
+                    await (0, utilities_1.Exec)('sudo', ['cp', '-R', appPath, '/Applications/Unity Hub.app'], { silent: true, showCommand: true });
+                    await (0, utilities_1.Exec)('sudo', ['chmod', '777', '/Applications/Unity Hub.app/Contents/MacOS/Unity Hub'], { silent: true, showCommand: true });
+                    await (0, utilities_1.Exec)('sudo', ['mkdir', '-p', '/Library/Application Support/Unity'], { silent: true, showCommand: true });
+                    await (0, utilities_1.Exec)('sudo', ['chmod', '777', '/Library/Application Support/Unity'], { silent: true, showCommand: true });
                 }
                 finally {
                     try {
                         if (mountPoint && mountPoint.length > 0) {
-                            await (0, utilities_1.Exec)('hdiutil', ['detach', mountPoint, '-quiet'], { silent: true });
+                            await (0, utilities_1.Exec)('hdiutil', ['detach', mountPoint, '-quiet'], { silent: true, showCommand: true });
                         }
                     }
                     finally {
@@ -4135,7 +4903,7 @@ chmod -R 777 "$hubPath"`]);
                 throw new Error(`Unsupported platform: ${process.platform}`);
         }
         await fs.promises.access(this.executable, fs.constants.X_OK);
-        this.logger.info(`Unity Hub installed successfully.`);
+        this.logger.debug(`Unity Hub install complete`);
     }
     async getInstalledHubVersion() {
         let asarPath = undefined;
@@ -4150,7 +4918,7 @@ chmod -R 777 "$hubPath"`]);
             }
         }
         await fs.promises.access(asarPath, fs.constants.R_OK);
-        const asar = await Promise.resolve().then(() => __importStar(__nccwpck_require__(3756)));
+        const asar = await Promise.resolve().then(() => __importStar(__nccwpck_require__(9735)));
         const fileBuffer = asar.extractFile(asarPath, 'package.json');
         const packageJson = JSON.parse(fileBuffer.toString());
         const version = (0, semver_1.coerce)(packageJson.version);
@@ -4185,7 +4953,7 @@ chmod -R 777 "$hubPath"`]);
     }
     /**
      * Returns the path where the Unity editors will be installed.
-     * @returns {Promise<string>} The install path.
+     * @returns The editor install path.
      */
     async GetInstallPath() {
         const result = (await this.Exec(['install-path', '--get'])).trim();
@@ -4196,7 +4964,7 @@ chmod -R 777 "$hubPath"`]);
     }
     /**
      * Sets the path where Unity editors will be installed.
-     * @param installPath The path to set.
+     * @param installPath The install path to set when installing Unity editors.
      */
     async SetInstallPath(installPath) {
         await fs.promises.mkdir(installPath, { recursive: true });
@@ -4204,7 +4972,7 @@ chmod -R 777 "$hubPath"`]);
     }
     /**
      * Locate and associate an installed editor from a stipulated path.
-     * @param editorPath
+     * @param editorPath The path to the Unity Editor installation.
      */
     async AddEditor(editorPath) {
         await fs.promises.access(editorPath, fs.constants.R_OK | fs.constants.X_OK);
@@ -4629,7 +5397,7 @@ done
                     await (0, utilities_1.DownloadFile)(url, installerPath);
                     this.logger.info(`Running Unity ${unityVersion.toString()} installer...`);
                     try {
-                        await (0, utilities_1.Exec)(installerPath, ['/S', `/D=${installPath}`, '-Wait', '-NoNewWindow'], { silent: true });
+                        await (0, utilities_1.Exec)(installerPath, ['/S', `/D=${installPath}`, '-Wait', '-NoNewWindow'], { silent: true, showCommand: true });
                     }
                     catch (error) {
                         this.logger.error(`Failed to install Unity ${unityVersion.toString()}: ${error}`);
@@ -4650,7 +5418,7 @@ done
                     this.logger.info(`Running Unity ${unityVersion.toString()} installer...`);
                     let mountPoint = '';
                     try {
-                        const output = await (0, utilities_1.Exec)('hdiutil', ['attach', installerPath, '-nobrowse'], { silent: true });
+                        const output = await (0, utilities_1.Exec)('hdiutil', ['attach', installerPath, '-nobrowse'], { silent: true, showCommand: true });
                         const mountPointMatch = output.match(/\/Volumes\/Unity Installer.*$/m);
                         if (!mountPointMatch || mountPointMatch.length === 0) {
                             throw new Error(`Failed to find mount point in hdiutil output: ${output}`);
@@ -4660,7 +5428,7 @@ done
                         const pkgPath = path.join(mountPoint, 'Unity.pkg');
                         await fs.promises.access(pkgPath, fs.constants.R_OK);
                         this.logger.debug(`Found .pkg installer: ${pkgPath}`);
-                        await (0, utilities_1.Exec)('sudo', ['installer', '-pkg', pkgPath, '-target', '/', '-verboseR'], { silent: true });
+                        await (0, utilities_1.Exec)('sudo', ['installer', '-pkg', pkgPath, '-target', '/', '-verboseR'], { silent: true, showCommand: true });
                         const unityAppPath = path.join('/Applications', 'Unity');
                         const targetPath = path.join(installDir, `Unity ${unityVersion.version}`);
                         if (fs.existsSync(unityAppPath)) {
@@ -4688,7 +5456,7 @@ done
                     finally {
                         try {
                             if (mountPoint && mountPoint.length > 0) {
-                                await (0, utilities_1.Exec)('hdiutil', ['detach', mountPoint, '-quiet'], { silent: true });
+                                await (0, utilities_1.Exec)('hdiutil', ['detach', mountPoint, '-quiet'], { silent: true, showCommand: true });
                             }
                         }
                         finally {
@@ -4703,6 +5471,10 @@ done
                 throw new Error(`Unity ${unityVersion.toString()} is not supported on ${process.platform}`);
         }
     }
+    /**
+     * Get the mapping of Unity platform targets to their corresponding module identifiers for the current OS.
+     * @returns A map of Unity platform targets to their corresponding module identifiers for the current OS.
+     */
     static GetPlatformTargetModuleMap() {
         const osType = os.type();
         let moduleMap;
@@ -4749,7 +5521,114 @@ exports.UnityHub = UnityHub;
 
 /***/ }),
 
-/***/ 3331:
+/***/ 8468:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.UnityProject = void 0;
+const os_1 = __importDefault(__nccwpck_require__(2037));
+const fs_1 = __importDefault(__nccwpck_require__(7147));
+const path_1 = __importDefault(__nccwpck_require__(1017));
+const utilities_1 = __nccwpck_require__(9746);
+const unity_version_1 = __nccwpck_require__(7474);
+class UnityProject {
+    projectPath;
+    /** The default modules to include in a new Unity project. */
+    static DefaultModules = (() => {
+        switch (os_1.default.type()) {
+            case 'Linux': return ['linux-il2cpp'];
+            case 'Darwin': return ['mac-il2cpp'];
+            case 'Windows_NT': return ['windows-il2cpp'];
+            default: throw Error(`${os_1.default.type()} not supported`);
+        }
+    })();
+    /** A map of build targets to their corresponding Unity Hub module names. */
+    static BuildTargetModuleMap = (() => {
+        switch (os_1.default.type()) {
+            case 'Linux': return {
+                StandaloneLinux64: "linux-il2cpp",
+                Android: "android",
+                WebGL: "webgl",
+                iOS: "ios",
+            };
+            case 'Darwin': return {
+                StandaloneOSX: "mac-il2cpp",
+                iOS: "ios",
+                Android: "android",
+                tvOS: "appletv",
+                StandaloneLinux64: "linux-il2cpp",
+                WebGL: "webgl",
+                VisionOS: "visionos"
+            };
+            case 'Windows_NT': return {
+                StandaloneWindows64: "windows-il2cpp",
+                WSAPlayer: "universal-windows-platform",
+                Android: "android",
+                iOS: "ios",
+                tvOS: "appletv",
+                StandaloneLinux64: "linux-il2cpp",
+                Lumin: "lumin",
+                WebGL: "webgl",
+            };
+            default: throw Error(`${os_1.default.type()} not supported`);
+        }
+    })();
+    /** The path to the ProjectVersion.txt file within the Unity project. */
+    projectVersionPath;
+    /** The Unity version used by the project. */
+    version;
+    /**
+     * Initializes a new instance of the UnityProject class.
+     * @param projectPath The path to the Unity project.
+     * @throws Will throw an error if the project path is invalid or if the ProjectVersion.txt file cannot be found or read.
+     */
+    constructor(projectPath) {
+        this.projectPath = projectPath;
+        fs_1.default.accessSync(projectPath, fs_1.default.constants.R_OK);
+        this.projectVersionPath = path_1.default.join(this.projectPath, 'ProjectSettings', 'ProjectVersion.txt');
+        fs_1.default.accessSync(this.projectVersionPath, fs_1.default.constants.R_OK);
+        const versionText = fs_1.default.readFileSync(this.projectVersionPath, 'utf-8');
+        const match = versionText.match(/m_EditorVersionWithRevision: (?<version>(?:(?<major>\d+)\.)?(?:(?<minor>\d+)\.)?(?:(?<patch>\d+[abcfpx]\d+)\b))\s?(?:\((?<changeset>\w+)\))?/);
+        if (!match) {
+            throw Error(`No version match found!`);
+        }
+        if (!match.groups?.version) {
+            throw Error(`No version group found!`);
+        }
+        if (!match.groups?.changeset) {
+            throw Error(`No changeset group found!`);
+        }
+        this.version = new unity_version_1.UnityVersion(match.groups.version, match.groups.changeset, undefined);
+    }
+    /**
+     * Gets the Unity project located at the specified path, or the current working directory if no path is provided.
+     * @param projectPath The path to the Unity project. If undefined, the current working directory is used.
+     * @returns The UnityProject instance representing the project at the specified path.
+     * @throws Will throw an error if the project path is invalid or if the ProjectVersion.txt file cannot be found or read.
+     */
+    static async GetProject(projectPath = undefined) {
+        if (!projectPath) {
+            projectPath = process.cwd();
+            const versionFilePath = await (0, utilities_1.ResolveGlobToPath)([projectPath, '**', 'ProjectVersion.txt']);
+            projectPath = path_1.default.join(versionFilePath, '..', '..');
+        }
+        if (process.platform === `win32` && projectPath.endsWith(`\\`)) {
+            projectPath = projectPath.slice(0, -1);
+        }
+        return new UnityProject(projectPath);
+    }
+}
+exports.UnityProject = UnityProject;
+//# sourceMappingURL=unity-project.js.map
+
+/***/ }),
+
+/***/ 7474:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -4988,12 +5867,12 @@ exports.DownloadFile = DownloadFile;
 exports.DeleteDirectory = DeleteDirectory;
 exports.ReadFileContents = ReadFileContents;
 exports.GetTempDir = GetTempDir;
-exports.getArgumentValueAsString = getArgumentValueAsString;
-exports.tryKillProcess = tryKillProcess;
-exports.readPidFile = readPidFile;
-exports.killChildProcesses = killChildProcesses;
+exports.GetArgumentValueAsString = GetArgumentValueAsString;
+exports.TryKillProcess = TryKillProcess;
+exports.ReadPidFile = ReadPidFile;
+exports.KillChildProcesses = KillChildProcesses;
 const path = __importStar(__nccwpck_require__(1017));
-const glob = __importStar(__nccwpck_require__(1473));
+const glob = __importStar(__nccwpck_require__(8211));
 const fs = __importStar(__nccwpck_require__(7147));
 const https = __importStar(__nccwpck_require__(5687));
 const readline = __importStar(__nccwpck_require__(4521));
@@ -5072,13 +5951,22 @@ async function Exec(command, args, options = { silent: false, showCommand: true 
                 env: process.env,
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
-            process.once('SIGINT', () => child.kill('SIGINT'));
-            process.once('SIGTERM', () => child.kill('SIGTERM'));
+            const sigintHandler = () => child.kill('SIGINT');
+            const sigtermHandler = () => child.kill('SIGTERM');
+            process.once('SIGINT', sigintHandler);
+            process.once('SIGTERM', sigtermHandler);
             child.stdout.on('data', processOutput);
             child.stderr.on('data', processOutput);
-            child.on('error', (error) => reject(error));
+            child.on('error', (error) => {
+                process.stdout.write('\n');
+                process.removeListener('SIGINT', sigintHandler);
+                process.removeListener('SIGTERM', sigtermHandler);
+                reject(error);
+            });
             child.on('close', (code) => {
                 process.stdout.write('\n');
+                process.removeListener('SIGINT', sigintHandler);
+                process.removeListener('SIGTERM', sigtermHandler);
                 resolve(code === null ? 0 : code);
             });
         });
@@ -5095,8 +5983,14 @@ async function Exec(command, args, options = { silent: false, showCommand: true 
     }
     return output;
 }
+/**
+ * Downloads a file from a URL to a specified path.
+ * @param url The URL to download from.
+ * @param downloadPath The path to save the downloaded file.
+ * @throws An error if the download fails or the file is not accessible after download.
+ */
 async function DownloadFile(url, downloadPath) {
-    logger.debug(`Downloading from ${url} to ${downloadPath}...`);
+    logger.ci(`Downloading from ${url} to ${downloadPath}...`);
     await fs.promises.mkdir(path.dirname(downloadPath), { recursive: true });
     await new Promise((resolve, reject) => {
         const file = fs.createWriteStream(downloadPath, { mode: 0o755 });
@@ -5114,12 +6008,23 @@ async function DownloadFile(url, downloadPath) {
     await new Promise((r) => setTimeout(r, 100));
     await fs.promises.access(downloadPath, fs.constants.R_OK | fs.constants.X_OK);
 }
+/**
+ * Deletes a directory and its contents if it exists.
+ * @param targetPath The path of the directory to delete.
+ * @throws An error if the deletion fails.
+ */
 async function DeleteDirectory(targetPath) {
     logger.debug(`Attempting to delete directory: ${targetPath}...`);
     if (targetPath && targetPath.length > 0 && fs.existsSync(targetPath)) {
         await fs.promises.rm(targetPath, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 });
     }
 }
+/**
+ * Reads the contents of a file.
+ * @param filePath The path of the file to read.
+ * @returns The contents of the file as a string.
+ * @throws An error if the file cannot be read.
+ */
 async function ReadFileContents(filePath) {
     const fileHandle = await fs.promises.open(filePath, 'r');
     try {
@@ -5130,6 +6035,11 @@ async function ReadFileContents(filePath) {
         await fileHandle.close();
     }
 }
+/**
+ * Gets the path to a temporary directory.
+ * @returns The path to a temporary directory.
+ * @remarks Falls back to the system temp directory if no environment variables are set.
+ */
 function GetTempDir() {
     if (process.env['RUNNER_TEMP']) {
         return process.env['RUNNER_TEMP'];
@@ -5152,7 +6062,7 @@ function GetTempDir() {
  * @param args The list of command line arguments.
  * @returns The value of the argument or an error if not found.
  */
-function getArgumentValueAsString(value, args) {
+function GetArgumentValueAsString(value, args) {
     const index = args.indexOf(value);
     if (index === -1 || index === args.length - 1) {
         throw Error(`Missing ${value} argument`);
@@ -5164,7 +6074,7 @@ function getArgumentValueAsString(value, args) {
  * @param procInfo The process information containing the PID.
  * @returns The PID of the killed process, or undefined if no process was killed.
  */
-async function tryKillProcess(procInfo) {
+async function TryKillProcess(procInfo) {
     let pid;
     try {
         pid = procInfo.pid;
@@ -5180,7 +6090,13 @@ async function tryKillProcess(procInfo) {
     }
     return pid;
 }
-async function readPidFile(pidFilePath) {
+/**
+ * Reads a PID file and returns the process information.
+ * @param pidFilePath The path to the PID file.
+ * @returns The process information, or undefined if the file does not exist or cannot be read.
+ * @remarks The PID file is deleted after reading.
+ */
+async function ReadPidFile(pidFilePath) {
     let procInfo;
     try {
         if (!fs.existsSync(pidFilePath)) {
@@ -5209,7 +6125,11 @@ async function readPidFile(pidFilePath) {
     }
     return procInfo;
 }
-async function killChildProcesses(procInfo) {
+/**
+ * Kills all child processes of the given process.
+ * @param procInfo The process information of the parent process.
+ */
+async function KillChildProcesses(procInfo) {
     logger.debug(`Killing child processes of ${procInfo.name} with pid: ${procInfo.pid}...`);
     try {
         if (process.platform === 'win32') {
@@ -5226,7 +6146,7 @@ async function killChildProcesses(procInfo) {
                     const ppid = parseInt(parts[1], 10);
                     const name = parts[2];
                     if (ppid === procInfo.pid) {
-                        await tryKillProcess({ pid, ppid, name });
+                        await TryKillProcess({ pid, ppid, name });
                     }
                 }
             }
@@ -6554,6 +7474,85 @@ exports.ReleaseService = ReleaseService;
 
 // This file is auto-generated by @hey-api/openapi-ts
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+
+
+/***/ }),
+
+/***/ 3018:
+/***/ ((module) => {
+
+/* eslint-disable node/no-deprecated-api */
+
+var toString = Object.prototype.toString
+
+var isModern = (
+  typeof Buffer !== 'undefined' &&
+  typeof Buffer.alloc === 'function' &&
+  typeof Buffer.allocUnsafe === 'function' &&
+  typeof Buffer.from === 'function'
+)
+
+function isArrayBuffer (input) {
+  return toString.call(input).slice(8, -1) === 'ArrayBuffer'
+}
+
+function fromArrayBuffer (obj, byteOffset, length) {
+  byteOffset >>>= 0
+
+  var maxLength = obj.byteLength - byteOffset
+
+  if (maxLength < 0) {
+    throw new RangeError("'offset' is out of bounds")
+  }
+
+  if (length === undefined) {
+    length = maxLength
+  } else {
+    length >>>= 0
+
+    if (length > maxLength) {
+      throw new RangeError("'length' is out of bounds")
+    }
+  }
+
+  return isModern
+    ? Buffer.from(obj.slice(byteOffset, byteOffset + length))
+    : new Buffer(new Uint8Array(obj.slice(byteOffset, byteOffset + length)))
+}
+
+function fromString (string, encoding) {
+  if (typeof encoding !== 'string' || encoding === '') {
+    encoding = 'utf8'
+  }
+
+  if (!Buffer.isEncoding(encoding)) {
+    throw new TypeError('"encoding" must be a valid string encoding')
+  }
+
+  return isModern
+    ? Buffer.from(string, encoding)
+    : new Buffer(string, encoding)
+}
+
+function bufferFrom (value, encodingOrOffset, length) {
+  if (typeof value === 'number') {
+    throw new TypeError('"value" argument must not be a number')
+  }
+
+  if (isArrayBuffer(value)) {
+    return fromArrayBuffer(value, encodingOrOffset, length)
+  }
+
+  if (typeof value === 'string') {
+    return fromString(value, encodingOrOffset)
+  }
+
+  return isModern
+    ? Buffer.from(value)
+    : new Buffer(value)
+}
+
+module.exports = bufferFrom
 
 
 /***/ }),
@@ -9254,6 +10253,3837 @@ module.exports = validRange
 
 /***/ }),
 
+/***/ 8224:
+/***/ ((__unused_webpack_module, __unused_webpack_exports, __nccwpck_require__) => {
+
+(__nccwpck_require__(9249).install)();
+
+
+/***/ }),
+
+/***/ 9249:
+/***/ ((module, exports, __nccwpck_require__) => {
+
+/* module decorator */ module = __nccwpck_require__.nmd(module);
+var SourceMapConsumer = (__nccwpck_require__(6594).SourceMapConsumer);
+var path = __nccwpck_require__(1017);
+
+var fs;
+try {
+  fs = __nccwpck_require__(7147);
+  if (!fs.existsSync || !fs.readFileSync) {
+    // fs doesn't have all methods we need
+    fs = null;
+  }
+} catch (err) {
+  /* nop */
+}
+
+var bufferFrom = __nccwpck_require__(3018);
+
+/**
+ * Requires a module which is protected against bundler minification.
+ *
+ * @param {NodeModule} mod
+ * @param {string} request
+ */
+function dynamicRequire(mod, request) {
+  return mod.require(request);
+}
+
+// Only install once if called multiple times
+var errorFormatterInstalled = false;
+var uncaughtShimInstalled = false;
+
+// If true, the caches are reset before a stack trace formatting operation
+var emptyCacheBetweenOperations = false;
+
+// Supports {browser, node, auto}
+var environment = "auto";
+
+// Maps a file path to a string containing the file contents
+var fileContentsCache = {};
+
+// Maps a file path to a source map for that file
+var sourceMapCache = {};
+
+// Regex for detecting source maps
+var reSourceMap = /^data:application\/json[^,]+base64,/;
+
+// Priority list of retrieve handlers
+var retrieveFileHandlers = [];
+var retrieveMapHandlers = [];
+
+function isInBrowser() {
+  if (environment === "browser")
+    return true;
+  if (environment === "node")
+    return false;
+  return ((typeof window !== 'undefined') && (typeof XMLHttpRequest === 'function') && !(window.require && window.module && window.process && window.process.type === "renderer"));
+}
+
+function hasGlobalProcessEventEmitter() {
+  return ((typeof process === 'object') && (process !== null) && (typeof process.on === 'function'));
+}
+
+function globalProcessVersion() {
+  if ((typeof process === 'object') && (process !== null)) {
+    return process.version;
+  } else {
+    return '';
+  }
+}
+
+function globalProcessStderr() {
+  if ((typeof process === 'object') && (process !== null)) {
+    return process.stderr;
+  }
+}
+
+function globalProcessExit(code) {
+  if ((typeof process === 'object') && (process !== null) && (typeof process.exit === 'function')) {
+    return process.exit(code);
+  }
+}
+
+function handlerExec(list) {
+  return function(arg) {
+    for (var i = 0; i < list.length; i++) {
+      var ret = list[i](arg);
+      if (ret) {
+        return ret;
+      }
+    }
+    return null;
+  };
+}
+
+var retrieveFile = handlerExec(retrieveFileHandlers);
+
+retrieveFileHandlers.push(function(path) {
+  // Trim the path to make sure there is no extra whitespace.
+  path = path.trim();
+  if (/^file:/.test(path)) {
+    // existsSync/readFileSync can't handle file protocol, but once stripped, it works
+    path = path.replace(/file:\/\/\/(\w:)?/, function(protocol, drive) {
+      return drive ?
+        '' : // file:///C:/dir/file -> C:/dir/file
+        '/'; // file:///root-dir/file -> /root-dir/file
+    });
+  }
+  if (path in fileContentsCache) {
+    return fileContentsCache[path];
+  }
+
+  var contents = '';
+  try {
+    if (!fs) {
+      // Use SJAX if we are in the browser
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', path, /** async */ false);
+      xhr.send(null);
+      if (xhr.readyState === 4 && xhr.status === 200) {
+        contents = xhr.responseText;
+      }
+    } else if (fs.existsSync(path)) {
+      // Otherwise, use the filesystem
+      contents = fs.readFileSync(path, 'utf8');
+    }
+  } catch (er) {
+    /* ignore any errors */
+  }
+
+  return fileContentsCache[path] = contents;
+});
+
+// Support URLs relative to a directory, but be careful about a protocol prefix
+// in case we are in the browser (i.e. directories may start with "http://" or "file:///")
+function supportRelativeURL(file, url) {
+  if (!file) return url;
+  var dir = path.dirname(file);
+  var match = /^\w+:\/\/[^\/]*/.exec(dir);
+  var protocol = match ? match[0] : '';
+  var startPath = dir.slice(protocol.length);
+  if (protocol && /^\/\w\:/.test(startPath)) {
+    // handle file:///C:/ paths
+    protocol += '/';
+    return protocol + path.resolve(dir.slice(protocol.length), url).replace(/\\/g, '/');
+  }
+  return protocol + path.resolve(dir.slice(protocol.length), url);
+}
+
+function retrieveSourceMapURL(source) {
+  var fileData;
+
+  if (isInBrowser()) {
+     try {
+       var xhr = new XMLHttpRequest();
+       xhr.open('GET', source, false);
+       xhr.send(null);
+       fileData = xhr.readyState === 4 ? xhr.responseText : null;
+
+       // Support providing a sourceMappingURL via the SourceMap header
+       var sourceMapHeader = xhr.getResponseHeader("SourceMap") ||
+                             xhr.getResponseHeader("X-SourceMap");
+       if (sourceMapHeader) {
+         return sourceMapHeader;
+       }
+     } catch (e) {
+     }
+  }
+
+  // Get the URL of the source map
+  fileData = retrieveFile(source);
+  var re = /(?:\/\/[@#][\s]*sourceMappingURL=([^\s'"]+)[\s]*$)|(?:\/\*[@#][\s]*sourceMappingURL=([^\s*'"]+)[\s]*(?:\*\/)[\s]*$)/mg;
+  // Keep executing the search to find the *last* sourceMappingURL to avoid
+  // picking up sourceMappingURLs from comments, strings, etc.
+  var lastMatch, match;
+  while (match = re.exec(fileData)) lastMatch = match;
+  if (!lastMatch) return null;
+  return lastMatch[1];
+};
+
+// Can be overridden by the retrieveSourceMap option to install. Takes a
+// generated source filename; returns a {map, optional url} object, or null if
+// there is no source map.  The map field may be either a string or the parsed
+// JSON object (ie, it must be a valid argument to the SourceMapConsumer
+// constructor).
+var retrieveSourceMap = handlerExec(retrieveMapHandlers);
+retrieveMapHandlers.push(function(source) {
+  var sourceMappingURL = retrieveSourceMapURL(source);
+  if (!sourceMappingURL) return null;
+
+  // Read the contents of the source map
+  var sourceMapData;
+  if (reSourceMap.test(sourceMappingURL)) {
+    // Support source map URL as a data url
+    var rawData = sourceMappingURL.slice(sourceMappingURL.indexOf(',') + 1);
+    sourceMapData = bufferFrom(rawData, "base64").toString();
+    sourceMappingURL = source;
+  } else {
+    // Support source map URLs relative to the source URL
+    sourceMappingURL = supportRelativeURL(source, sourceMappingURL);
+    sourceMapData = retrieveFile(sourceMappingURL);
+  }
+
+  if (!sourceMapData) {
+    return null;
+  }
+
+  return {
+    url: sourceMappingURL,
+    map: sourceMapData
+  };
+});
+
+function mapSourcePosition(position) {
+  var sourceMap = sourceMapCache[position.source];
+  if (!sourceMap) {
+    // Call the (overrideable) retrieveSourceMap function to get the source map.
+    var urlAndMap = retrieveSourceMap(position.source);
+    if (urlAndMap) {
+      sourceMap = sourceMapCache[position.source] = {
+        url: urlAndMap.url,
+        map: new SourceMapConsumer(urlAndMap.map)
+      };
+
+      // Load all sources stored inline with the source map into the file cache
+      // to pretend like they are already loaded. They may not exist on disk.
+      if (sourceMap.map.sourcesContent) {
+        sourceMap.map.sources.forEach(function(source, i) {
+          var contents = sourceMap.map.sourcesContent[i];
+          if (contents) {
+            var url = supportRelativeURL(sourceMap.url, source);
+            fileContentsCache[url] = contents;
+          }
+        });
+      }
+    } else {
+      sourceMap = sourceMapCache[position.source] = {
+        url: null,
+        map: null
+      };
+    }
+  }
+
+  // Resolve the source URL relative to the URL of the source map
+  if (sourceMap && sourceMap.map && typeof sourceMap.map.originalPositionFor === 'function') {
+    var originalPosition = sourceMap.map.originalPositionFor(position);
+
+    // Only return the original position if a matching line was found. If no
+    // matching line is found then we return position instead, which will cause
+    // the stack trace to print the path and line for the compiled file. It is
+    // better to give a precise location in the compiled file than a vague
+    // location in the original file.
+    if (originalPosition.source !== null) {
+      originalPosition.source = supportRelativeURL(
+        sourceMap.url, originalPosition.source);
+      return originalPosition;
+    }
+  }
+
+  return position;
+}
+
+// Parses code generated by FormatEvalOrigin(), a function inside V8:
+// https://code.google.com/p/v8/source/browse/trunk/src/messages.js
+function mapEvalOrigin(origin) {
+  // Most eval() calls are in this format
+  var match = /^eval at ([^(]+) \((.+):(\d+):(\d+)\)$/.exec(origin);
+  if (match) {
+    var position = mapSourcePosition({
+      source: match[2],
+      line: +match[3],
+      column: match[4] - 1
+    });
+    return 'eval at ' + match[1] + ' (' + position.source + ':' +
+      position.line + ':' + (position.column + 1) + ')';
+  }
+
+  // Parse nested eval() calls using recursion
+  match = /^eval at ([^(]+) \((.+)\)$/.exec(origin);
+  if (match) {
+    return 'eval at ' + match[1] + ' (' + mapEvalOrigin(match[2]) + ')';
+  }
+
+  // Make sure we still return useful information if we didn't find anything
+  return origin;
+}
+
+// This is copied almost verbatim from the V8 source code at
+// https://code.google.com/p/v8/source/browse/trunk/src/messages.js. The
+// implementation of wrapCallSite() used to just forward to the actual source
+// code of CallSite.prototype.toString but unfortunately a new release of V8
+// did something to the prototype chain and broke the shim. The only fix I
+// could find was copy/paste.
+function CallSiteToString() {
+  var fileName;
+  var fileLocation = "";
+  if (this.isNative()) {
+    fileLocation = "native";
+  } else {
+    fileName = this.getScriptNameOrSourceURL();
+    if (!fileName && this.isEval()) {
+      fileLocation = this.getEvalOrigin();
+      fileLocation += ", ";  // Expecting source position to follow.
+    }
+
+    if (fileName) {
+      fileLocation += fileName;
+    } else {
+      // Source code does not originate from a file and is not native, but we
+      // can still get the source position inside the source string, e.g. in
+      // an eval string.
+      fileLocation += "<anonymous>";
+    }
+    var lineNumber = this.getLineNumber();
+    if (lineNumber != null) {
+      fileLocation += ":" + lineNumber;
+      var columnNumber = this.getColumnNumber();
+      if (columnNumber) {
+        fileLocation += ":" + columnNumber;
+      }
+    }
+  }
+
+  var line = "";
+  var functionName = this.getFunctionName();
+  var addSuffix = true;
+  var isConstructor = this.isConstructor();
+  var isMethodCall = !(this.isToplevel() || isConstructor);
+  if (isMethodCall) {
+    var typeName = this.getTypeName();
+    // Fixes shim to be backward compatable with Node v0 to v4
+    if (typeName === "[object Object]") {
+      typeName = "null";
+    }
+    var methodName = this.getMethodName();
+    if (functionName) {
+      if (typeName && functionName.indexOf(typeName) != 0) {
+        line += typeName + ".";
+      }
+      line += functionName;
+      if (methodName && functionName.indexOf("." + methodName) != functionName.length - methodName.length - 1) {
+        line += " [as " + methodName + "]";
+      }
+    } else {
+      line += typeName + "." + (methodName || "<anonymous>");
+    }
+  } else if (isConstructor) {
+    line += "new " + (functionName || "<anonymous>");
+  } else if (functionName) {
+    line += functionName;
+  } else {
+    line += fileLocation;
+    addSuffix = false;
+  }
+  if (addSuffix) {
+    line += " (" + fileLocation + ")";
+  }
+  return line;
+}
+
+function cloneCallSite(frame) {
+  var object = {};
+  Object.getOwnPropertyNames(Object.getPrototypeOf(frame)).forEach(function(name) {
+    object[name] = /^(?:is|get)/.test(name) ? function() { return frame[name].call(frame); } : frame[name];
+  });
+  object.toString = CallSiteToString;
+  return object;
+}
+
+function wrapCallSite(frame, state) {
+  // provides interface backward compatibility
+  if (state === undefined) {
+    state = { nextPosition: null, curPosition: null }
+  }
+  if(frame.isNative()) {
+    state.curPosition = null;
+    return frame;
+  }
+
+  // Most call sites will return the source file from getFileName(), but code
+  // passed to eval() ending in "//# sourceURL=..." will return the source file
+  // from getScriptNameOrSourceURL() instead
+  var source = frame.getFileName() || frame.getScriptNameOrSourceURL();
+  if (source) {
+    var line = frame.getLineNumber();
+    var column = frame.getColumnNumber() - 1;
+
+    // Fix position in Node where some (internal) code is prepended.
+    // See https://github.com/evanw/node-source-map-support/issues/36
+    // Header removed in node at ^10.16 || >=11.11.0
+    // v11 is not an LTS candidate, we can just test the one version with it.
+    // Test node versions for: 10.16-19, 10.20+, 12-19, 20-99, 100+, or 11.11
+    var noHeader = /^v(10\.1[6-9]|10\.[2-9][0-9]|10\.[0-9]{3,}|1[2-9]\d*|[2-9]\d|\d{3,}|11\.11)/;
+    var headerLength = noHeader.test(globalProcessVersion()) ? 0 : 62;
+    if (line === 1 && column > headerLength && !isInBrowser() && !frame.isEval()) {
+      column -= headerLength;
+    }
+
+    var position = mapSourcePosition({
+      source: source,
+      line: line,
+      column: column
+    });
+    state.curPosition = position;
+    frame = cloneCallSite(frame);
+    var originalFunctionName = frame.getFunctionName;
+    frame.getFunctionName = function() {
+      if (state.nextPosition == null) {
+        return originalFunctionName();
+      }
+      return state.nextPosition.name || originalFunctionName();
+    };
+    frame.getFileName = function() { return position.source; };
+    frame.getLineNumber = function() { return position.line; };
+    frame.getColumnNumber = function() { return position.column + 1; };
+    frame.getScriptNameOrSourceURL = function() { return position.source; };
+    return frame;
+  }
+
+  // Code called using eval() needs special handling
+  var origin = frame.isEval() && frame.getEvalOrigin();
+  if (origin) {
+    origin = mapEvalOrigin(origin);
+    frame = cloneCallSite(frame);
+    frame.getEvalOrigin = function() { return origin; };
+    return frame;
+  }
+
+  // If we get here then we were unable to change the source position
+  return frame;
+}
+
+// This function is part of the V8 stack trace API, for more info see:
+// https://v8.dev/docs/stack-trace-api
+function prepareStackTrace(error, stack) {
+  if (emptyCacheBetweenOperations) {
+    fileContentsCache = {};
+    sourceMapCache = {};
+  }
+
+  var name = error.name || 'Error';
+  var message = error.message || '';
+  var errorString = name + ": " + message;
+
+  var state = { nextPosition: null, curPosition: null };
+  var processedStack = [];
+  for (var i = stack.length - 1; i >= 0; i--) {
+    processedStack.push('\n    at ' + wrapCallSite(stack[i], state));
+    state.nextPosition = state.curPosition;
+  }
+  state.curPosition = state.nextPosition = null;
+  return errorString + processedStack.reverse().join('');
+}
+
+// Generate position and snippet of original source with pointer
+function getErrorSource(error) {
+  var match = /\n    at [^(]+ \((.*):(\d+):(\d+)\)/.exec(error.stack);
+  if (match) {
+    var source = match[1];
+    var line = +match[2];
+    var column = +match[3];
+
+    // Support the inline sourceContents inside the source map
+    var contents = fileContentsCache[source];
+
+    // Support files on disk
+    if (!contents && fs && fs.existsSync(source)) {
+      try {
+        contents = fs.readFileSync(source, 'utf8');
+      } catch (er) {
+        contents = '';
+      }
+    }
+
+    // Format the line from the original source code like node does
+    if (contents) {
+      var code = contents.split(/(?:\r\n|\r|\n)/)[line - 1];
+      if (code) {
+        return source + ':' + line + '\n' + code + '\n' +
+          new Array(column).join(' ') + '^';
+      }
+    }
+  }
+  return null;
+}
+
+function printErrorAndExit (error) {
+  var source = getErrorSource(error);
+
+  // Ensure error is printed synchronously and not truncated
+  var stderr = globalProcessStderr();
+  if (stderr && stderr._handle && stderr._handle.setBlocking) {
+    stderr._handle.setBlocking(true);
+  }
+
+  if (source) {
+    console.error();
+    console.error(source);
+  }
+
+  console.error(error.stack);
+  globalProcessExit(1);
+}
+
+function shimEmitUncaughtException () {
+  var origEmit = process.emit;
+
+  process.emit = function (type) {
+    if (type === 'uncaughtException') {
+      var hasStack = (arguments[1] && arguments[1].stack);
+      var hasListeners = (this.listeners(type).length > 0);
+
+      if (hasStack && !hasListeners) {
+        return printErrorAndExit(arguments[1]);
+      }
+    }
+
+    return origEmit.apply(this, arguments);
+  };
+}
+
+var originalRetrieveFileHandlers = retrieveFileHandlers.slice(0);
+var originalRetrieveMapHandlers = retrieveMapHandlers.slice(0);
+
+exports.wrapCallSite = wrapCallSite;
+exports.getErrorSource = getErrorSource;
+exports.mapSourcePosition = mapSourcePosition;
+exports.retrieveSourceMap = retrieveSourceMap;
+
+exports.install = function(options) {
+  options = options || {};
+
+  if (options.environment) {
+    environment = options.environment;
+    if (["node", "browser", "auto"].indexOf(environment) === -1) {
+      throw new Error("environment " + environment + " was unknown. Available options are {auto, browser, node}")
+    }
+  }
+
+  // Allow sources to be found by methods other than reading the files
+  // directly from disk.
+  if (options.retrieveFile) {
+    if (options.overrideRetrieveFile) {
+      retrieveFileHandlers.length = 0;
+    }
+
+    retrieveFileHandlers.unshift(options.retrieveFile);
+  }
+
+  // Allow source maps to be found by methods other than reading the files
+  // directly from disk.
+  if (options.retrieveSourceMap) {
+    if (options.overrideRetrieveSourceMap) {
+      retrieveMapHandlers.length = 0;
+    }
+
+    retrieveMapHandlers.unshift(options.retrieveSourceMap);
+  }
+
+  // Support runtime transpilers that include inline source maps
+  if (options.hookRequire && !isInBrowser()) {
+    // Use dynamicRequire to avoid including in browser bundles
+    var Module = dynamicRequire(module, 'module');
+    var $compile = Module.prototype._compile;
+
+    if (!$compile.__sourceMapSupport) {
+      Module.prototype._compile = function(content, filename) {
+        fileContentsCache[filename] = content;
+        sourceMapCache[filename] = undefined;
+        return $compile.call(this, content, filename);
+      };
+
+      Module.prototype._compile.__sourceMapSupport = true;
+    }
+  }
+
+  // Configure options
+  if (!emptyCacheBetweenOperations) {
+    emptyCacheBetweenOperations = 'emptyCacheBetweenOperations' in options ?
+      options.emptyCacheBetweenOperations : false;
+  }
+
+  // Install the error reformatter
+  if (!errorFormatterInstalled) {
+    errorFormatterInstalled = true;
+    Error.prepareStackTrace = prepareStackTrace;
+  }
+
+  if (!uncaughtShimInstalled) {
+    var installHandler = 'handleUncaughtExceptions' in options ?
+      options.handleUncaughtExceptions : true;
+
+    // Do not override 'uncaughtException' with our own handler in Node.js
+    // Worker threads. Workers pass the error to the main thread as an event,
+    // rather than printing something to stderr and exiting.
+    try {
+      // We need to use `dynamicRequire` because `require` on it's own will be optimized by WebPack/Browserify.
+      var worker_threads = dynamicRequire(module, 'worker_threads');
+      if (worker_threads.isMainThread === false) {
+        installHandler = false;
+      }
+    } catch(e) {}
+
+    // Provide the option to not install the uncaught exception handler. This is
+    // to support other uncaught exception handlers (in test frameworks, for
+    // example). If this handler is not installed and there are no other uncaught
+    // exception handlers, uncaught exceptions will be caught by node's built-in
+    // exception handler and the process will still be terminated. However, the
+    // generated JavaScript code will be shown above the stack trace instead of
+    // the original source code.
+    if (installHandler && hasGlobalProcessEventEmitter()) {
+      uncaughtShimInstalled = true;
+      shimEmitUncaughtException();
+    }
+  }
+};
+
+exports.resetRetrieveHandlers = function() {
+  retrieveFileHandlers.length = 0;
+  retrieveMapHandlers.length = 0;
+
+  retrieveFileHandlers = originalRetrieveFileHandlers.slice(0);
+  retrieveMapHandlers = originalRetrieveMapHandlers.slice(0);
+
+  retrieveSourceMap = handlerExec(retrieveMapHandlers);
+  retrieveFile = handlerExec(retrieveFileHandlers);
+}
+
+
+/***/ }),
+
+/***/ 6375:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var util = __nccwpck_require__(2344);
+var has = Object.prototype.hasOwnProperty;
+var hasNativeMap = typeof Map !== "undefined";
+
+/**
+ * A data structure which is a combination of an array and a set. Adding a new
+ * member is O(1), testing for membership is O(1), and finding the index of an
+ * element is O(1). Removing elements from the set is not supported. Only
+ * strings are supported for membership.
+ */
+function ArraySet() {
+  this._array = [];
+  this._set = hasNativeMap ? new Map() : Object.create(null);
+}
+
+/**
+ * Static method for creating ArraySet instances from an existing array.
+ */
+ArraySet.fromArray = function ArraySet_fromArray(aArray, aAllowDuplicates) {
+  var set = new ArraySet();
+  for (var i = 0, len = aArray.length; i < len; i++) {
+    set.add(aArray[i], aAllowDuplicates);
+  }
+  return set;
+};
+
+/**
+ * Return how many unique items are in this ArraySet. If duplicates have been
+ * added, than those do not count towards the size.
+ *
+ * @returns Number
+ */
+ArraySet.prototype.size = function ArraySet_size() {
+  return hasNativeMap ? this._set.size : Object.getOwnPropertyNames(this._set).length;
+};
+
+/**
+ * Add the given string to this set.
+ *
+ * @param String aStr
+ */
+ArraySet.prototype.add = function ArraySet_add(aStr, aAllowDuplicates) {
+  var sStr = hasNativeMap ? aStr : util.toSetString(aStr);
+  var isDuplicate = hasNativeMap ? this.has(aStr) : has.call(this._set, sStr);
+  var idx = this._array.length;
+  if (!isDuplicate || aAllowDuplicates) {
+    this._array.push(aStr);
+  }
+  if (!isDuplicate) {
+    if (hasNativeMap) {
+      this._set.set(aStr, idx);
+    } else {
+      this._set[sStr] = idx;
+    }
+  }
+};
+
+/**
+ * Is the given string a member of this set?
+ *
+ * @param String aStr
+ */
+ArraySet.prototype.has = function ArraySet_has(aStr) {
+  if (hasNativeMap) {
+    return this._set.has(aStr);
+  } else {
+    var sStr = util.toSetString(aStr);
+    return has.call(this._set, sStr);
+  }
+};
+
+/**
+ * What is the index of the given string in the array?
+ *
+ * @param String aStr
+ */
+ArraySet.prototype.indexOf = function ArraySet_indexOf(aStr) {
+  if (hasNativeMap) {
+    var idx = this._set.get(aStr);
+    if (idx >= 0) {
+        return idx;
+    }
+  } else {
+    var sStr = util.toSetString(aStr);
+    if (has.call(this._set, sStr)) {
+      return this._set[sStr];
+    }
+  }
+
+  throw new Error('"' + aStr + '" is not in the set.');
+};
+
+/**
+ * What is the element at the given index?
+ *
+ * @param Number aIdx
+ */
+ArraySet.prototype.at = function ArraySet_at(aIdx) {
+  if (aIdx >= 0 && aIdx < this._array.length) {
+    return this._array[aIdx];
+  }
+  throw new Error('No element indexed by ' + aIdx);
+};
+
+/**
+ * Returns the array representation of this set (which has the proper indices
+ * indicated by indexOf). Note that this is a copy of the internal array used
+ * for storing the members so that no one can mess with internal state.
+ */
+ArraySet.prototype.toArray = function ArraySet_toArray() {
+  return this._array.slice();
+};
+
+exports.I = ArraySet;
+
+
+/***/ }),
+
+/***/ 975:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ *
+ * Based on the Base 64 VLQ implementation in Closure Compiler:
+ * https://code.google.com/p/closure-compiler/source/browse/trunk/src/com/google/debugging/sourcemap/Base64VLQ.java
+ *
+ * Copyright 2011 The Closure Compiler Authors. All rights reserved.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above
+ *    copyright notice, this list of conditions and the following
+ *    disclaimer in the documentation and/or other materials provided
+ *    with the distribution.
+ *  * Neither the name of Google Inc. nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+var base64 = __nccwpck_require__(6156);
+
+// A single base 64 digit can contain 6 bits of data. For the base 64 variable
+// length quantities we use in the source map spec, the first bit is the sign,
+// the next four bits are the actual value, and the 6th bit is the
+// continuation bit. The continuation bit tells us whether there are more
+// digits in this value following this digit.
+//
+//   Continuation
+//   |    Sign
+//   |    |
+//   V    V
+//   101011
+
+var VLQ_BASE_SHIFT = 5;
+
+// binary: 100000
+var VLQ_BASE = 1 << VLQ_BASE_SHIFT;
+
+// binary: 011111
+var VLQ_BASE_MASK = VLQ_BASE - 1;
+
+// binary: 100000
+var VLQ_CONTINUATION_BIT = VLQ_BASE;
+
+/**
+ * Converts from a two-complement value to a value where the sign bit is
+ * placed in the least significant bit.  For example, as decimals:
+ *   1 becomes 2 (10 binary), -1 becomes 3 (11 binary)
+ *   2 becomes 4 (100 binary), -2 becomes 5 (101 binary)
+ */
+function toVLQSigned(aValue) {
+  return aValue < 0
+    ? ((-aValue) << 1) + 1
+    : (aValue << 1) + 0;
+}
+
+/**
+ * Converts to a two-complement value from a value where the sign bit is
+ * placed in the least significant bit.  For example, as decimals:
+ *   2 (10 binary) becomes 1, 3 (11 binary) becomes -1
+ *   4 (100 binary) becomes 2, 5 (101 binary) becomes -2
+ */
+function fromVLQSigned(aValue) {
+  var isNegative = (aValue & 1) === 1;
+  var shifted = aValue >> 1;
+  return isNegative
+    ? -shifted
+    : shifted;
+}
+
+/**
+ * Returns the base 64 VLQ encoded value.
+ */
+exports.encode = function base64VLQ_encode(aValue) {
+  var encoded = "";
+  var digit;
+
+  var vlq = toVLQSigned(aValue);
+
+  do {
+    digit = vlq & VLQ_BASE_MASK;
+    vlq >>>= VLQ_BASE_SHIFT;
+    if (vlq > 0) {
+      // There are still more digits in this value, so we must make sure the
+      // continuation bit is marked.
+      digit |= VLQ_CONTINUATION_BIT;
+    }
+    encoded += base64.encode(digit);
+  } while (vlq > 0);
+
+  return encoded;
+};
+
+/**
+ * Decodes the next base 64 VLQ value from the given string and returns the
+ * value and the rest of the string via the out parameter.
+ */
+exports.decode = function base64VLQ_decode(aStr, aIndex, aOutParam) {
+  var strLen = aStr.length;
+  var result = 0;
+  var shift = 0;
+  var continuation, digit;
+
+  do {
+    if (aIndex >= strLen) {
+      throw new Error("Expected more digits in base 64 VLQ value.");
+    }
+
+    digit = base64.decode(aStr.charCodeAt(aIndex++));
+    if (digit === -1) {
+      throw new Error("Invalid base64 digit: " + aStr.charAt(aIndex - 1));
+    }
+
+    continuation = !!(digit & VLQ_CONTINUATION_BIT);
+    digit &= VLQ_BASE_MASK;
+    result = result + (digit << shift);
+    shift += VLQ_BASE_SHIFT;
+  } while (continuation);
+
+  aOutParam.value = fromVLQSigned(result);
+  aOutParam.rest = aIndex;
+};
+
+
+/***/ }),
+
+/***/ 6156:
+/***/ ((__unused_webpack_module, exports) => {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var intToCharMap = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.split('');
+
+/**
+ * Encode an integer in the range of 0 to 63 to a single base 64 digit.
+ */
+exports.encode = function (number) {
+  if (0 <= number && number < intToCharMap.length) {
+    return intToCharMap[number];
+  }
+  throw new TypeError("Must be between 0 and 63: " + number);
+};
+
+/**
+ * Decode a single base 64 character code digit to an integer. Returns -1 on
+ * failure.
+ */
+exports.decode = function (charCode) {
+  var bigA = 65;     // 'A'
+  var bigZ = 90;     // 'Z'
+
+  var littleA = 97;  // 'a'
+  var littleZ = 122; // 'z'
+
+  var zero = 48;     // '0'
+  var nine = 57;     // '9'
+
+  var plus = 43;     // '+'
+  var slash = 47;    // '/'
+
+  var littleOffset = 26;
+  var numberOffset = 52;
+
+  // 0 - 25: ABCDEFGHIJKLMNOPQRSTUVWXYZ
+  if (bigA <= charCode && charCode <= bigZ) {
+    return (charCode - bigA);
+  }
+
+  // 26 - 51: abcdefghijklmnopqrstuvwxyz
+  if (littleA <= charCode && charCode <= littleZ) {
+    return (charCode - littleA + littleOffset);
+  }
+
+  // 52 - 61: 0123456789
+  if (zero <= charCode && charCode <= nine) {
+    return (charCode - zero + numberOffset);
+  }
+
+  // 62: +
+  if (charCode == plus) {
+    return 62;
+  }
+
+  // 63: /
+  if (charCode == slash) {
+    return 63;
+  }
+
+  // Invalid base64 digit.
+  return -1;
+};
+
+
+/***/ }),
+
+/***/ 3600:
+/***/ ((__unused_webpack_module, exports) => {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+exports.GREATEST_LOWER_BOUND = 1;
+exports.LEAST_UPPER_BOUND = 2;
+
+/**
+ * Recursive implementation of binary search.
+ *
+ * @param aLow Indices here and lower do not contain the needle.
+ * @param aHigh Indices here and higher do not contain the needle.
+ * @param aNeedle The element being searched for.
+ * @param aHaystack The non-empty array being searched.
+ * @param aCompare Function which takes two elements and returns -1, 0, or 1.
+ * @param aBias Either 'binarySearch.GREATEST_LOWER_BOUND' or
+ *     'binarySearch.LEAST_UPPER_BOUND'. Specifies whether to return the
+ *     closest element that is smaller than or greater than the one we are
+ *     searching for, respectively, if the exact element cannot be found.
+ */
+function recursiveSearch(aLow, aHigh, aNeedle, aHaystack, aCompare, aBias) {
+  // This function terminates when one of the following is true:
+  //
+  //   1. We find the exact element we are looking for.
+  //
+  //   2. We did not find the exact element, but we can return the index of
+  //      the next-closest element.
+  //
+  //   3. We did not find the exact element, and there is no next-closest
+  //      element than the one we are searching for, so we return -1.
+  var mid = Math.floor((aHigh - aLow) / 2) + aLow;
+  var cmp = aCompare(aNeedle, aHaystack[mid], true);
+  if (cmp === 0) {
+    // Found the element we are looking for.
+    return mid;
+  }
+  else if (cmp > 0) {
+    // Our needle is greater than aHaystack[mid].
+    if (aHigh - mid > 1) {
+      // The element is in the upper half.
+      return recursiveSearch(mid, aHigh, aNeedle, aHaystack, aCompare, aBias);
+    }
+
+    // The exact needle element was not found in this haystack. Determine if
+    // we are in termination case (3) or (2) and return the appropriate thing.
+    if (aBias == exports.LEAST_UPPER_BOUND) {
+      return aHigh < aHaystack.length ? aHigh : -1;
+    } else {
+      return mid;
+    }
+  }
+  else {
+    // Our needle is less than aHaystack[mid].
+    if (mid - aLow > 1) {
+      // The element is in the lower half.
+      return recursiveSearch(aLow, mid, aNeedle, aHaystack, aCompare, aBias);
+    }
+
+    // we are in termination case (3) or (2) and return the appropriate thing.
+    if (aBias == exports.LEAST_UPPER_BOUND) {
+      return mid;
+    } else {
+      return aLow < 0 ? -1 : aLow;
+    }
+  }
+}
+
+/**
+ * This is an implementation of binary search which will always try and return
+ * the index of the closest element if there is no exact hit. This is because
+ * mappings between original and generated line/col pairs are single points,
+ * and there is an implicit region between each of them, so a miss just means
+ * that you aren't on the very start of a region.
+ *
+ * @param aNeedle The element you are looking for.
+ * @param aHaystack The array that is being searched.
+ * @param aCompare A function which takes the needle and an element in the
+ *     array and returns -1, 0, or 1 depending on whether the needle is less
+ *     than, equal to, or greater than the element, respectively.
+ * @param aBias Either 'binarySearch.GREATEST_LOWER_BOUND' or
+ *     'binarySearch.LEAST_UPPER_BOUND'. Specifies whether to return the
+ *     closest element that is smaller than or greater than the one we are
+ *     searching for, respectively, if the exact element cannot be found.
+ *     Defaults to 'binarySearch.GREATEST_LOWER_BOUND'.
+ */
+exports.search = function search(aNeedle, aHaystack, aCompare, aBias) {
+  if (aHaystack.length === 0) {
+    return -1;
+  }
+
+  var index = recursiveSearch(-1, aHaystack.length, aNeedle, aHaystack,
+                              aCompare, aBias || exports.GREATEST_LOWER_BOUND);
+  if (index < 0) {
+    return -1;
+  }
+
+  // We have found either the exact element, or the next-closest element than
+  // the one we are searching for. However, there may be more than one such
+  // element. Make sure we always return the smallest of these.
+  while (index - 1 >= 0) {
+    if (aCompare(aHaystack[index], aHaystack[index - 1], true) !== 0) {
+      break;
+    }
+    --index;
+  }
+
+  return index;
+};
+
+
+/***/ }),
+
+/***/ 6817:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2014 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var util = __nccwpck_require__(2344);
+
+/**
+ * Determine whether mappingB is after mappingA with respect to generated
+ * position.
+ */
+function generatedPositionAfter(mappingA, mappingB) {
+  // Optimized for most common case
+  var lineA = mappingA.generatedLine;
+  var lineB = mappingB.generatedLine;
+  var columnA = mappingA.generatedColumn;
+  var columnB = mappingB.generatedColumn;
+  return lineB > lineA || lineB == lineA && columnB >= columnA ||
+         util.compareByGeneratedPositionsInflated(mappingA, mappingB) <= 0;
+}
+
+/**
+ * A data structure to provide a sorted view of accumulated mappings in a
+ * performance conscious manner. It trades a neglibable overhead in general
+ * case for a large speedup in case of mappings being added in order.
+ */
+function MappingList() {
+  this._array = [];
+  this._sorted = true;
+  // Serves as infimum
+  this._last = {generatedLine: -1, generatedColumn: 0};
+}
+
+/**
+ * Iterate through internal items. This method takes the same arguments that
+ * `Array.prototype.forEach` takes.
+ *
+ * NOTE: The order of the mappings is NOT guaranteed.
+ */
+MappingList.prototype.unsortedForEach =
+  function MappingList_forEach(aCallback, aThisArg) {
+    this._array.forEach(aCallback, aThisArg);
+  };
+
+/**
+ * Add the given source mapping.
+ *
+ * @param Object aMapping
+ */
+MappingList.prototype.add = function MappingList_add(aMapping) {
+  if (generatedPositionAfter(this._last, aMapping)) {
+    this._last = aMapping;
+    this._array.push(aMapping);
+  } else {
+    this._sorted = false;
+    this._array.push(aMapping);
+  }
+};
+
+/**
+ * Returns the flat, sorted array of mappings. The mappings are sorted by
+ * generated position.
+ *
+ * WARNING: This method returns internal data without copying, for
+ * performance. The return value must NOT be mutated, and should be treated as
+ * an immutable borrow. If you want to take ownership, you must make your own
+ * copy.
+ */
+MappingList.prototype.toArray = function MappingList_toArray() {
+  if (!this._sorted) {
+    this._array.sort(util.compareByGeneratedPositionsInflated);
+    this._sorted = true;
+  }
+  return this._array;
+};
+
+exports.H = MappingList;
+
+
+/***/ }),
+
+/***/ 3254:
+/***/ ((__unused_webpack_module, exports) => {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+// It turns out that some (most?) JavaScript engines don't self-host
+// `Array.prototype.sort`. This makes sense because C++ will likely remain
+// faster than JS when doing raw CPU-intensive sorting. However, when using a
+// custom comparator function, calling back and forth between the VM's C++ and
+// JIT'd JS is rather slow *and* loses JIT type information, resulting in
+// worse generated code for the comparator function than would be optimal. In
+// fact, when sorting with a comparator, these costs outweigh the benefits of
+// sorting in C++. By using our own JS-implemented Quick Sort (below), we get
+// a ~3500ms mean speed-up in `bench/bench.html`.
+
+/**
+ * Swap the elements indexed by `x` and `y` in the array `ary`.
+ *
+ * @param {Array} ary
+ *        The array.
+ * @param {Number} x
+ *        The index of the first item.
+ * @param {Number} y
+ *        The index of the second item.
+ */
+function swap(ary, x, y) {
+  var temp = ary[x];
+  ary[x] = ary[y];
+  ary[y] = temp;
+}
+
+/**
+ * Returns a random integer within the range `low .. high` inclusive.
+ *
+ * @param {Number} low
+ *        The lower bound on the range.
+ * @param {Number} high
+ *        The upper bound on the range.
+ */
+function randomIntInRange(low, high) {
+  return Math.round(low + (Math.random() * (high - low)));
+}
+
+/**
+ * The Quick Sort algorithm.
+ *
+ * @param {Array} ary
+ *        An array to sort.
+ * @param {function} comparator
+ *        Function to use to compare two items.
+ * @param {Number} p
+ *        Start index of the array
+ * @param {Number} r
+ *        End index of the array
+ */
+function doQuickSort(ary, comparator, p, r) {
+  // If our lower bound is less than our upper bound, we (1) partition the
+  // array into two pieces and (2) recurse on each half. If it is not, this is
+  // the empty array and our base case.
+
+  if (p < r) {
+    // (1) Partitioning.
+    //
+    // The partitioning chooses a pivot between `p` and `r` and moves all
+    // elements that are less than or equal to the pivot to the before it, and
+    // all the elements that are greater than it after it. The effect is that
+    // once partition is done, the pivot is in the exact place it will be when
+    // the array is put in sorted order, and it will not need to be moved
+    // again. This runs in O(n) time.
+
+    // Always choose a random pivot so that an input array which is reverse
+    // sorted does not cause O(n^2) running time.
+    var pivotIndex = randomIntInRange(p, r);
+    var i = p - 1;
+
+    swap(ary, pivotIndex, r);
+    var pivot = ary[r];
+
+    // Immediately after `j` is incremented in this loop, the following hold
+    // true:
+    //
+    //   * Every element in `ary[p .. i]` is less than or equal to the pivot.
+    //
+    //   * Every element in `ary[i+1 .. j-1]` is greater than the pivot.
+    for (var j = p; j < r; j++) {
+      if (comparator(ary[j], pivot) <= 0) {
+        i += 1;
+        swap(ary, i, j);
+      }
+    }
+
+    swap(ary, i + 1, j);
+    var q = i + 1;
+
+    // (2) Recurse on each half.
+
+    doQuickSort(ary, comparator, p, q - 1);
+    doQuickSort(ary, comparator, q + 1, r);
+  }
+}
+
+/**
+ * Sort the given array in-place with the given comparator function.
+ *
+ * @param {Array} ary
+ *        An array to sort.
+ * @param {function} comparator
+ *        Function to use to compare two items.
+ */
+exports.U = function (ary, comparator) {
+  doQuickSort(ary, comparator, 0, ary.length - 1);
+};
+
+
+/***/ }),
+
+/***/ 5155:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+var __webpack_unused_export__;
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var util = __nccwpck_require__(2344);
+var binarySearch = __nccwpck_require__(3600);
+var ArraySet = (__nccwpck_require__(6375)/* .ArraySet */ .I);
+var base64VLQ = __nccwpck_require__(975);
+var quickSort = (__nccwpck_require__(3254)/* .quickSort */ .U);
+
+function SourceMapConsumer(aSourceMap, aSourceMapURL) {
+  var sourceMap = aSourceMap;
+  if (typeof aSourceMap === 'string') {
+    sourceMap = util.parseSourceMapInput(aSourceMap);
+  }
+
+  return sourceMap.sections != null
+    ? new IndexedSourceMapConsumer(sourceMap, aSourceMapURL)
+    : new BasicSourceMapConsumer(sourceMap, aSourceMapURL);
+}
+
+SourceMapConsumer.fromSourceMap = function(aSourceMap, aSourceMapURL) {
+  return BasicSourceMapConsumer.fromSourceMap(aSourceMap, aSourceMapURL);
+}
+
+/**
+ * The version of the source mapping spec that we are consuming.
+ */
+SourceMapConsumer.prototype._version = 3;
+
+// `__generatedMappings` and `__originalMappings` are arrays that hold the
+// parsed mapping coordinates from the source map's "mappings" attribute. They
+// are lazily instantiated, accessed via the `_generatedMappings` and
+// `_originalMappings` getters respectively, and we only parse the mappings
+// and create these arrays once queried for a source location. We jump through
+// these hoops because there can be many thousands of mappings, and parsing
+// them is expensive, so we only want to do it if we must.
+//
+// Each object in the arrays is of the form:
+//
+//     {
+//       generatedLine: The line number in the generated code,
+//       generatedColumn: The column number in the generated code,
+//       source: The path to the original source file that generated this
+//               chunk of code,
+//       originalLine: The line number in the original source that
+//                     corresponds to this chunk of generated code,
+//       originalColumn: The column number in the original source that
+//                       corresponds to this chunk of generated code,
+//       name: The name of the original symbol which generated this chunk of
+//             code.
+//     }
+//
+// All properties except for `generatedLine` and `generatedColumn` can be
+// `null`.
+//
+// `_generatedMappings` is ordered by the generated positions.
+//
+// `_originalMappings` is ordered by the original positions.
+
+SourceMapConsumer.prototype.__generatedMappings = null;
+Object.defineProperty(SourceMapConsumer.prototype, '_generatedMappings', {
+  configurable: true,
+  enumerable: true,
+  get: function () {
+    if (!this.__generatedMappings) {
+      this._parseMappings(this._mappings, this.sourceRoot);
+    }
+
+    return this.__generatedMappings;
+  }
+});
+
+SourceMapConsumer.prototype.__originalMappings = null;
+Object.defineProperty(SourceMapConsumer.prototype, '_originalMappings', {
+  configurable: true,
+  enumerable: true,
+  get: function () {
+    if (!this.__originalMappings) {
+      this._parseMappings(this._mappings, this.sourceRoot);
+    }
+
+    return this.__originalMappings;
+  }
+});
+
+SourceMapConsumer.prototype._charIsMappingSeparator =
+  function SourceMapConsumer_charIsMappingSeparator(aStr, index) {
+    var c = aStr.charAt(index);
+    return c === ";" || c === ",";
+  };
+
+/**
+ * Parse the mappings in a string in to a data structure which we can easily
+ * query (the ordered arrays in the `this.__generatedMappings` and
+ * `this.__originalMappings` properties).
+ */
+SourceMapConsumer.prototype._parseMappings =
+  function SourceMapConsumer_parseMappings(aStr, aSourceRoot) {
+    throw new Error("Subclasses must implement _parseMappings");
+  };
+
+SourceMapConsumer.GENERATED_ORDER = 1;
+SourceMapConsumer.ORIGINAL_ORDER = 2;
+
+SourceMapConsumer.GREATEST_LOWER_BOUND = 1;
+SourceMapConsumer.LEAST_UPPER_BOUND = 2;
+
+/**
+ * Iterate over each mapping between an original source/line/column and a
+ * generated line/column in this source map.
+ *
+ * @param Function aCallback
+ *        The function that is called with each mapping.
+ * @param Object aContext
+ *        Optional. If specified, this object will be the value of `this` every
+ *        time that `aCallback` is called.
+ * @param aOrder
+ *        Either `SourceMapConsumer.GENERATED_ORDER` or
+ *        `SourceMapConsumer.ORIGINAL_ORDER`. Specifies whether you want to
+ *        iterate over the mappings sorted by the generated file's line/column
+ *        order or the original's source/line/column order, respectively. Defaults to
+ *        `SourceMapConsumer.GENERATED_ORDER`.
+ */
+SourceMapConsumer.prototype.eachMapping =
+  function SourceMapConsumer_eachMapping(aCallback, aContext, aOrder) {
+    var context = aContext || null;
+    var order = aOrder || SourceMapConsumer.GENERATED_ORDER;
+
+    var mappings;
+    switch (order) {
+    case SourceMapConsumer.GENERATED_ORDER:
+      mappings = this._generatedMappings;
+      break;
+    case SourceMapConsumer.ORIGINAL_ORDER:
+      mappings = this._originalMappings;
+      break;
+    default:
+      throw new Error("Unknown order of iteration.");
+    }
+
+    var sourceRoot = this.sourceRoot;
+    mappings.map(function (mapping) {
+      var source = mapping.source === null ? null : this._sources.at(mapping.source);
+      source = util.computeSourceURL(sourceRoot, source, this._sourceMapURL);
+      return {
+        source: source,
+        generatedLine: mapping.generatedLine,
+        generatedColumn: mapping.generatedColumn,
+        originalLine: mapping.originalLine,
+        originalColumn: mapping.originalColumn,
+        name: mapping.name === null ? null : this._names.at(mapping.name)
+      };
+    }, this).forEach(aCallback, context);
+  };
+
+/**
+ * Returns all generated line and column information for the original source,
+ * line, and column provided. If no column is provided, returns all mappings
+ * corresponding to a either the line we are searching for or the next
+ * closest line that has any mappings. Otherwise, returns all mappings
+ * corresponding to the given line and either the column we are searching for
+ * or the next closest column that has any offsets.
+ *
+ * The only argument is an object with the following properties:
+ *
+ *   - source: The filename of the original source.
+ *   - line: The line number in the original source.  The line number is 1-based.
+ *   - column: Optional. the column number in the original source.
+ *    The column number is 0-based.
+ *
+ * and an array of objects is returned, each with the following properties:
+ *
+ *   - line: The line number in the generated source, or null.  The
+ *    line number is 1-based.
+ *   - column: The column number in the generated source, or null.
+ *    The column number is 0-based.
+ */
+SourceMapConsumer.prototype.allGeneratedPositionsFor =
+  function SourceMapConsumer_allGeneratedPositionsFor(aArgs) {
+    var line = util.getArg(aArgs, 'line');
+
+    // When there is no exact match, BasicSourceMapConsumer.prototype._findMapping
+    // returns the index of the closest mapping less than the needle. By
+    // setting needle.originalColumn to 0, we thus find the last mapping for
+    // the given line, provided such a mapping exists.
+    var needle = {
+      source: util.getArg(aArgs, 'source'),
+      originalLine: line,
+      originalColumn: util.getArg(aArgs, 'column', 0)
+    };
+
+    needle.source = this._findSourceIndex(needle.source);
+    if (needle.source < 0) {
+      return [];
+    }
+
+    var mappings = [];
+
+    var index = this._findMapping(needle,
+                                  this._originalMappings,
+                                  "originalLine",
+                                  "originalColumn",
+                                  util.compareByOriginalPositions,
+                                  binarySearch.LEAST_UPPER_BOUND);
+    if (index >= 0) {
+      var mapping = this._originalMappings[index];
+
+      if (aArgs.column === undefined) {
+        var originalLine = mapping.originalLine;
+
+        // Iterate until either we run out of mappings, or we run into
+        // a mapping for a different line than the one we found. Since
+        // mappings are sorted, this is guaranteed to find all mappings for
+        // the line we found.
+        while (mapping && mapping.originalLine === originalLine) {
+          mappings.push({
+            line: util.getArg(mapping, 'generatedLine', null),
+            column: util.getArg(mapping, 'generatedColumn', null),
+            lastColumn: util.getArg(mapping, 'lastGeneratedColumn', null)
+          });
+
+          mapping = this._originalMappings[++index];
+        }
+      } else {
+        var originalColumn = mapping.originalColumn;
+
+        // Iterate until either we run out of mappings, or we run into
+        // a mapping for a different line than the one we were searching for.
+        // Since mappings are sorted, this is guaranteed to find all mappings for
+        // the line we are searching for.
+        while (mapping &&
+               mapping.originalLine === line &&
+               mapping.originalColumn == originalColumn) {
+          mappings.push({
+            line: util.getArg(mapping, 'generatedLine', null),
+            column: util.getArg(mapping, 'generatedColumn', null),
+            lastColumn: util.getArg(mapping, 'lastGeneratedColumn', null)
+          });
+
+          mapping = this._originalMappings[++index];
+        }
+      }
+    }
+
+    return mappings;
+  };
+
+exports.SourceMapConsumer = SourceMapConsumer;
+
+/**
+ * A BasicSourceMapConsumer instance represents a parsed source map which we can
+ * query for information about the original file positions by giving it a file
+ * position in the generated source.
+ *
+ * The first parameter is the raw source map (either as a JSON string, or
+ * already parsed to an object). According to the spec, source maps have the
+ * following attributes:
+ *
+ *   - version: Which version of the source map spec this map is following.
+ *   - sources: An array of URLs to the original source files.
+ *   - names: An array of identifiers which can be referrenced by individual mappings.
+ *   - sourceRoot: Optional. The URL root from which all sources are relative.
+ *   - sourcesContent: Optional. An array of contents of the original source files.
+ *   - mappings: A string of base64 VLQs which contain the actual mappings.
+ *   - file: Optional. The generated file this source map is associated with.
+ *
+ * Here is an example source map, taken from the source map spec[0]:
+ *
+ *     {
+ *       version : 3,
+ *       file: "out.js",
+ *       sourceRoot : "",
+ *       sources: ["foo.js", "bar.js"],
+ *       names: ["src", "maps", "are", "fun"],
+ *       mappings: "AA,AB;;ABCDE;"
+ *     }
+ *
+ * The second parameter, if given, is a string whose value is the URL
+ * at which the source map was found.  This URL is used to compute the
+ * sources array.
+ *
+ * [0]: https://docs.google.com/document/d/1U1RGAehQwRypUTovF1KRlpiOFze0b-_2gc6fAH0KY0k/edit?pli=1#
+ */
+function BasicSourceMapConsumer(aSourceMap, aSourceMapURL) {
+  var sourceMap = aSourceMap;
+  if (typeof aSourceMap === 'string') {
+    sourceMap = util.parseSourceMapInput(aSourceMap);
+  }
+
+  var version = util.getArg(sourceMap, 'version');
+  var sources = util.getArg(sourceMap, 'sources');
+  // Sass 3.3 leaves out the 'names' array, so we deviate from the spec (which
+  // requires the array) to play nice here.
+  var names = util.getArg(sourceMap, 'names', []);
+  var sourceRoot = util.getArg(sourceMap, 'sourceRoot', null);
+  var sourcesContent = util.getArg(sourceMap, 'sourcesContent', null);
+  var mappings = util.getArg(sourceMap, 'mappings');
+  var file = util.getArg(sourceMap, 'file', null);
+
+  // Once again, Sass deviates from the spec and supplies the version as a
+  // string rather than a number, so we use loose equality checking here.
+  if (version != this._version) {
+    throw new Error('Unsupported version: ' + version);
+  }
+
+  if (sourceRoot) {
+    sourceRoot = util.normalize(sourceRoot);
+  }
+
+  sources = sources
+    .map(String)
+    // Some source maps produce relative source paths like "./foo.js" instead of
+    // "foo.js".  Normalize these first so that future comparisons will succeed.
+    // See bugzil.la/1090768.
+    .map(util.normalize)
+    // Always ensure that absolute sources are internally stored relative to
+    // the source root, if the source root is absolute. Not doing this would
+    // be particularly problematic when the source root is a prefix of the
+    // source (valid, but why??). See github issue #199 and bugzil.la/1188982.
+    .map(function (source) {
+      return sourceRoot && util.isAbsolute(sourceRoot) && util.isAbsolute(source)
+        ? util.relative(sourceRoot, source)
+        : source;
+    });
+
+  // Pass `true` below to allow duplicate names and sources. While source maps
+  // are intended to be compressed and deduplicated, the TypeScript compiler
+  // sometimes generates source maps with duplicates in them. See Github issue
+  // #72 and bugzil.la/889492.
+  this._names = ArraySet.fromArray(names.map(String), true);
+  this._sources = ArraySet.fromArray(sources, true);
+
+  this._absoluteSources = this._sources.toArray().map(function (s) {
+    return util.computeSourceURL(sourceRoot, s, aSourceMapURL);
+  });
+
+  this.sourceRoot = sourceRoot;
+  this.sourcesContent = sourcesContent;
+  this._mappings = mappings;
+  this._sourceMapURL = aSourceMapURL;
+  this.file = file;
+}
+
+BasicSourceMapConsumer.prototype = Object.create(SourceMapConsumer.prototype);
+BasicSourceMapConsumer.prototype.consumer = SourceMapConsumer;
+
+/**
+ * Utility function to find the index of a source.  Returns -1 if not
+ * found.
+ */
+BasicSourceMapConsumer.prototype._findSourceIndex = function(aSource) {
+  var relativeSource = aSource;
+  if (this.sourceRoot != null) {
+    relativeSource = util.relative(this.sourceRoot, relativeSource);
+  }
+
+  if (this._sources.has(relativeSource)) {
+    return this._sources.indexOf(relativeSource);
+  }
+
+  // Maybe aSource is an absolute URL as returned by |sources|.  In
+  // this case we can't simply undo the transform.
+  var i;
+  for (i = 0; i < this._absoluteSources.length; ++i) {
+    if (this._absoluteSources[i] == aSource) {
+      return i;
+    }
+  }
+
+  return -1;
+};
+
+/**
+ * Create a BasicSourceMapConsumer from a SourceMapGenerator.
+ *
+ * @param SourceMapGenerator aSourceMap
+ *        The source map that will be consumed.
+ * @param String aSourceMapURL
+ *        The URL at which the source map can be found (optional)
+ * @returns BasicSourceMapConsumer
+ */
+BasicSourceMapConsumer.fromSourceMap =
+  function SourceMapConsumer_fromSourceMap(aSourceMap, aSourceMapURL) {
+    var smc = Object.create(BasicSourceMapConsumer.prototype);
+
+    var names = smc._names = ArraySet.fromArray(aSourceMap._names.toArray(), true);
+    var sources = smc._sources = ArraySet.fromArray(aSourceMap._sources.toArray(), true);
+    smc.sourceRoot = aSourceMap._sourceRoot;
+    smc.sourcesContent = aSourceMap._generateSourcesContent(smc._sources.toArray(),
+                                                            smc.sourceRoot);
+    smc.file = aSourceMap._file;
+    smc._sourceMapURL = aSourceMapURL;
+    smc._absoluteSources = smc._sources.toArray().map(function (s) {
+      return util.computeSourceURL(smc.sourceRoot, s, aSourceMapURL);
+    });
+
+    // Because we are modifying the entries (by converting string sources and
+    // names to indices into the sources and names ArraySets), we have to make
+    // a copy of the entry or else bad things happen. Shared mutable state
+    // strikes again! See github issue #191.
+
+    var generatedMappings = aSourceMap._mappings.toArray().slice();
+    var destGeneratedMappings = smc.__generatedMappings = [];
+    var destOriginalMappings = smc.__originalMappings = [];
+
+    for (var i = 0, length = generatedMappings.length; i < length; i++) {
+      var srcMapping = generatedMappings[i];
+      var destMapping = new Mapping;
+      destMapping.generatedLine = srcMapping.generatedLine;
+      destMapping.generatedColumn = srcMapping.generatedColumn;
+
+      if (srcMapping.source) {
+        destMapping.source = sources.indexOf(srcMapping.source);
+        destMapping.originalLine = srcMapping.originalLine;
+        destMapping.originalColumn = srcMapping.originalColumn;
+
+        if (srcMapping.name) {
+          destMapping.name = names.indexOf(srcMapping.name);
+        }
+
+        destOriginalMappings.push(destMapping);
+      }
+
+      destGeneratedMappings.push(destMapping);
+    }
+
+    quickSort(smc.__originalMappings, util.compareByOriginalPositions);
+
+    return smc;
+  };
+
+/**
+ * The version of the source mapping spec that we are consuming.
+ */
+BasicSourceMapConsumer.prototype._version = 3;
+
+/**
+ * The list of original sources.
+ */
+Object.defineProperty(BasicSourceMapConsumer.prototype, 'sources', {
+  get: function () {
+    return this._absoluteSources.slice();
+  }
+});
+
+/**
+ * Provide the JIT with a nice shape / hidden class.
+ */
+function Mapping() {
+  this.generatedLine = 0;
+  this.generatedColumn = 0;
+  this.source = null;
+  this.originalLine = null;
+  this.originalColumn = null;
+  this.name = null;
+}
+
+/**
+ * Parse the mappings in a string in to a data structure which we can easily
+ * query (the ordered arrays in the `this.__generatedMappings` and
+ * `this.__originalMappings` properties).
+ */
+BasicSourceMapConsumer.prototype._parseMappings =
+  function SourceMapConsumer_parseMappings(aStr, aSourceRoot) {
+    var generatedLine = 1;
+    var previousGeneratedColumn = 0;
+    var previousOriginalLine = 0;
+    var previousOriginalColumn = 0;
+    var previousSource = 0;
+    var previousName = 0;
+    var length = aStr.length;
+    var index = 0;
+    var cachedSegments = {};
+    var temp = {};
+    var originalMappings = [];
+    var generatedMappings = [];
+    var mapping, str, segment, end, value;
+
+    while (index < length) {
+      if (aStr.charAt(index) === ';') {
+        generatedLine++;
+        index++;
+        previousGeneratedColumn = 0;
+      }
+      else if (aStr.charAt(index) === ',') {
+        index++;
+      }
+      else {
+        mapping = new Mapping();
+        mapping.generatedLine = generatedLine;
+
+        // Because each offset is encoded relative to the previous one,
+        // many segments often have the same encoding. We can exploit this
+        // fact by caching the parsed variable length fields of each segment,
+        // allowing us to avoid a second parse if we encounter the same
+        // segment again.
+        for (end = index; end < length; end++) {
+          if (this._charIsMappingSeparator(aStr, end)) {
+            break;
+          }
+        }
+        str = aStr.slice(index, end);
+
+        segment = cachedSegments[str];
+        if (segment) {
+          index += str.length;
+        } else {
+          segment = [];
+          while (index < end) {
+            base64VLQ.decode(aStr, index, temp);
+            value = temp.value;
+            index = temp.rest;
+            segment.push(value);
+          }
+
+          if (segment.length === 2) {
+            throw new Error('Found a source, but no line and column');
+          }
+
+          if (segment.length === 3) {
+            throw new Error('Found a source and line, but no column');
+          }
+
+          cachedSegments[str] = segment;
+        }
+
+        // Generated column.
+        mapping.generatedColumn = previousGeneratedColumn + segment[0];
+        previousGeneratedColumn = mapping.generatedColumn;
+
+        if (segment.length > 1) {
+          // Original source.
+          mapping.source = previousSource + segment[1];
+          previousSource += segment[1];
+
+          // Original line.
+          mapping.originalLine = previousOriginalLine + segment[2];
+          previousOriginalLine = mapping.originalLine;
+          // Lines are stored 0-based
+          mapping.originalLine += 1;
+
+          // Original column.
+          mapping.originalColumn = previousOriginalColumn + segment[3];
+          previousOriginalColumn = mapping.originalColumn;
+
+          if (segment.length > 4) {
+            // Original name.
+            mapping.name = previousName + segment[4];
+            previousName += segment[4];
+          }
+        }
+
+        generatedMappings.push(mapping);
+        if (typeof mapping.originalLine === 'number') {
+          originalMappings.push(mapping);
+        }
+      }
+    }
+
+    quickSort(generatedMappings, util.compareByGeneratedPositionsDeflated);
+    this.__generatedMappings = generatedMappings;
+
+    quickSort(originalMappings, util.compareByOriginalPositions);
+    this.__originalMappings = originalMappings;
+  };
+
+/**
+ * Find the mapping that best matches the hypothetical "needle" mapping that
+ * we are searching for in the given "haystack" of mappings.
+ */
+BasicSourceMapConsumer.prototype._findMapping =
+  function SourceMapConsumer_findMapping(aNeedle, aMappings, aLineName,
+                                         aColumnName, aComparator, aBias) {
+    // To return the position we are searching for, we must first find the
+    // mapping for the given position and then return the opposite position it
+    // points to. Because the mappings are sorted, we can use binary search to
+    // find the best mapping.
+
+    if (aNeedle[aLineName] <= 0) {
+      throw new TypeError('Line must be greater than or equal to 1, got '
+                          + aNeedle[aLineName]);
+    }
+    if (aNeedle[aColumnName] < 0) {
+      throw new TypeError('Column must be greater than or equal to 0, got '
+                          + aNeedle[aColumnName]);
+    }
+
+    return binarySearch.search(aNeedle, aMappings, aComparator, aBias);
+  };
+
+/**
+ * Compute the last column for each generated mapping. The last column is
+ * inclusive.
+ */
+BasicSourceMapConsumer.prototype.computeColumnSpans =
+  function SourceMapConsumer_computeColumnSpans() {
+    for (var index = 0; index < this._generatedMappings.length; ++index) {
+      var mapping = this._generatedMappings[index];
+
+      // Mappings do not contain a field for the last generated columnt. We
+      // can come up with an optimistic estimate, however, by assuming that
+      // mappings are contiguous (i.e. given two consecutive mappings, the
+      // first mapping ends where the second one starts).
+      if (index + 1 < this._generatedMappings.length) {
+        var nextMapping = this._generatedMappings[index + 1];
+
+        if (mapping.generatedLine === nextMapping.generatedLine) {
+          mapping.lastGeneratedColumn = nextMapping.generatedColumn - 1;
+          continue;
+        }
+      }
+
+      // The last mapping for each line spans the entire line.
+      mapping.lastGeneratedColumn = Infinity;
+    }
+  };
+
+/**
+ * Returns the original source, line, and column information for the generated
+ * source's line and column positions provided. The only argument is an object
+ * with the following properties:
+ *
+ *   - line: The line number in the generated source.  The line number
+ *     is 1-based.
+ *   - column: The column number in the generated source.  The column
+ *     number is 0-based.
+ *   - bias: Either 'SourceMapConsumer.GREATEST_LOWER_BOUND' or
+ *     'SourceMapConsumer.LEAST_UPPER_BOUND'. Specifies whether to return the
+ *     closest element that is smaller than or greater than the one we are
+ *     searching for, respectively, if the exact element cannot be found.
+ *     Defaults to 'SourceMapConsumer.GREATEST_LOWER_BOUND'.
+ *
+ * and an object is returned with the following properties:
+ *
+ *   - source: The original source file, or null.
+ *   - line: The line number in the original source, or null.  The
+ *     line number is 1-based.
+ *   - column: The column number in the original source, or null.  The
+ *     column number is 0-based.
+ *   - name: The original identifier, or null.
+ */
+BasicSourceMapConsumer.prototype.originalPositionFor =
+  function SourceMapConsumer_originalPositionFor(aArgs) {
+    var needle = {
+      generatedLine: util.getArg(aArgs, 'line'),
+      generatedColumn: util.getArg(aArgs, 'column')
+    };
+
+    var index = this._findMapping(
+      needle,
+      this._generatedMappings,
+      "generatedLine",
+      "generatedColumn",
+      util.compareByGeneratedPositionsDeflated,
+      util.getArg(aArgs, 'bias', SourceMapConsumer.GREATEST_LOWER_BOUND)
+    );
+
+    if (index >= 0) {
+      var mapping = this._generatedMappings[index];
+
+      if (mapping.generatedLine === needle.generatedLine) {
+        var source = util.getArg(mapping, 'source', null);
+        if (source !== null) {
+          source = this._sources.at(source);
+          source = util.computeSourceURL(this.sourceRoot, source, this._sourceMapURL);
+        }
+        var name = util.getArg(mapping, 'name', null);
+        if (name !== null) {
+          name = this._names.at(name);
+        }
+        return {
+          source: source,
+          line: util.getArg(mapping, 'originalLine', null),
+          column: util.getArg(mapping, 'originalColumn', null),
+          name: name
+        };
+      }
+    }
+
+    return {
+      source: null,
+      line: null,
+      column: null,
+      name: null
+    };
+  };
+
+/**
+ * Return true if we have the source content for every source in the source
+ * map, false otherwise.
+ */
+BasicSourceMapConsumer.prototype.hasContentsOfAllSources =
+  function BasicSourceMapConsumer_hasContentsOfAllSources() {
+    if (!this.sourcesContent) {
+      return false;
+    }
+    return this.sourcesContent.length >= this._sources.size() &&
+      !this.sourcesContent.some(function (sc) { return sc == null; });
+  };
+
+/**
+ * Returns the original source content. The only argument is the url of the
+ * original source file. Returns null if no original source content is
+ * available.
+ */
+BasicSourceMapConsumer.prototype.sourceContentFor =
+  function SourceMapConsumer_sourceContentFor(aSource, nullOnMissing) {
+    if (!this.sourcesContent) {
+      return null;
+    }
+
+    var index = this._findSourceIndex(aSource);
+    if (index >= 0) {
+      return this.sourcesContent[index];
+    }
+
+    var relativeSource = aSource;
+    if (this.sourceRoot != null) {
+      relativeSource = util.relative(this.sourceRoot, relativeSource);
+    }
+
+    var url;
+    if (this.sourceRoot != null
+        && (url = util.urlParse(this.sourceRoot))) {
+      // XXX: file:// URIs and absolute paths lead to unexpected behavior for
+      // many users. We can help them out when they expect file:// URIs to
+      // behave like it would if they were running a local HTTP server. See
+      // https://bugzilla.mozilla.org/show_bug.cgi?id=885597.
+      var fileUriAbsPath = relativeSource.replace(/^file:\/\//, "");
+      if (url.scheme == "file"
+          && this._sources.has(fileUriAbsPath)) {
+        return this.sourcesContent[this._sources.indexOf(fileUriAbsPath)]
+      }
+
+      if ((!url.path || url.path == "/")
+          && this._sources.has("/" + relativeSource)) {
+        return this.sourcesContent[this._sources.indexOf("/" + relativeSource)];
+      }
+    }
+
+    // This function is used recursively from
+    // IndexedSourceMapConsumer.prototype.sourceContentFor. In that case, we
+    // don't want to throw if we can't find the source - we just want to
+    // return null, so we provide a flag to exit gracefully.
+    if (nullOnMissing) {
+      return null;
+    }
+    else {
+      throw new Error('"' + relativeSource + '" is not in the SourceMap.');
+    }
+  };
+
+/**
+ * Returns the generated line and column information for the original source,
+ * line, and column positions provided. The only argument is an object with
+ * the following properties:
+ *
+ *   - source: The filename of the original source.
+ *   - line: The line number in the original source.  The line number
+ *     is 1-based.
+ *   - column: The column number in the original source.  The column
+ *     number is 0-based.
+ *   - bias: Either 'SourceMapConsumer.GREATEST_LOWER_BOUND' or
+ *     'SourceMapConsumer.LEAST_UPPER_BOUND'. Specifies whether to return the
+ *     closest element that is smaller than or greater than the one we are
+ *     searching for, respectively, if the exact element cannot be found.
+ *     Defaults to 'SourceMapConsumer.GREATEST_LOWER_BOUND'.
+ *
+ * and an object is returned with the following properties:
+ *
+ *   - line: The line number in the generated source, or null.  The
+ *     line number is 1-based.
+ *   - column: The column number in the generated source, or null.
+ *     The column number is 0-based.
+ */
+BasicSourceMapConsumer.prototype.generatedPositionFor =
+  function SourceMapConsumer_generatedPositionFor(aArgs) {
+    var source = util.getArg(aArgs, 'source');
+    source = this._findSourceIndex(source);
+    if (source < 0) {
+      return {
+        line: null,
+        column: null,
+        lastColumn: null
+      };
+    }
+
+    var needle = {
+      source: source,
+      originalLine: util.getArg(aArgs, 'line'),
+      originalColumn: util.getArg(aArgs, 'column')
+    };
+
+    var index = this._findMapping(
+      needle,
+      this._originalMappings,
+      "originalLine",
+      "originalColumn",
+      util.compareByOriginalPositions,
+      util.getArg(aArgs, 'bias', SourceMapConsumer.GREATEST_LOWER_BOUND)
+    );
+
+    if (index >= 0) {
+      var mapping = this._originalMappings[index];
+
+      if (mapping.source === needle.source) {
+        return {
+          line: util.getArg(mapping, 'generatedLine', null),
+          column: util.getArg(mapping, 'generatedColumn', null),
+          lastColumn: util.getArg(mapping, 'lastGeneratedColumn', null)
+        };
+      }
+    }
+
+    return {
+      line: null,
+      column: null,
+      lastColumn: null
+    };
+  };
+
+__webpack_unused_export__ = BasicSourceMapConsumer;
+
+/**
+ * An IndexedSourceMapConsumer instance represents a parsed source map which
+ * we can query for information. It differs from BasicSourceMapConsumer in
+ * that it takes "indexed" source maps (i.e. ones with a "sections" field) as
+ * input.
+ *
+ * The first parameter is a raw source map (either as a JSON string, or already
+ * parsed to an object). According to the spec for indexed source maps, they
+ * have the following attributes:
+ *
+ *   - version: Which version of the source map spec this map is following.
+ *   - file: Optional. The generated file this source map is associated with.
+ *   - sections: A list of section definitions.
+ *
+ * Each value under the "sections" field has two fields:
+ *   - offset: The offset into the original specified at which this section
+ *       begins to apply, defined as an object with a "line" and "column"
+ *       field.
+ *   - map: A source map definition. This source map could also be indexed,
+ *       but doesn't have to be.
+ *
+ * Instead of the "map" field, it's also possible to have a "url" field
+ * specifying a URL to retrieve a source map from, but that's currently
+ * unsupported.
+ *
+ * Here's an example source map, taken from the source map spec[0], but
+ * modified to omit a section which uses the "url" field.
+ *
+ *  {
+ *    version : 3,
+ *    file: "app.js",
+ *    sections: [{
+ *      offset: {line:100, column:10},
+ *      map: {
+ *        version : 3,
+ *        file: "section.js",
+ *        sources: ["foo.js", "bar.js"],
+ *        names: ["src", "maps", "are", "fun"],
+ *        mappings: "AAAA,E;;ABCDE;"
+ *      }
+ *    }],
+ *  }
+ *
+ * The second parameter, if given, is a string whose value is the URL
+ * at which the source map was found.  This URL is used to compute the
+ * sources array.
+ *
+ * [0]: https://docs.google.com/document/d/1U1RGAehQwRypUTovF1KRlpiOFze0b-_2gc6fAH0KY0k/edit#heading=h.535es3xeprgt
+ */
+function IndexedSourceMapConsumer(aSourceMap, aSourceMapURL) {
+  var sourceMap = aSourceMap;
+  if (typeof aSourceMap === 'string') {
+    sourceMap = util.parseSourceMapInput(aSourceMap);
+  }
+
+  var version = util.getArg(sourceMap, 'version');
+  var sections = util.getArg(sourceMap, 'sections');
+
+  if (version != this._version) {
+    throw new Error('Unsupported version: ' + version);
+  }
+
+  this._sources = new ArraySet();
+  this._names = new ArraySet();
+
+  var lastOffset = {
+    line: -1,
+    column: 0
+  };
+  this._sections = sections.map(function (s) {
+    if (s.url) {
+      // The url field will require support for asynchronicity.
+      // See https://github.com/mozilla/source-map/issues/16
+      throw new Error('Support for url field in sections not implemented.');
+    }
+    var offset = util.getArg(s, 'offset');
+    var offsetLine = util.getArg(offset, 'line');
+    var offsetColumn = util.getArg(offset, 'column');
+
+    if (offsetLine < lastOffset.line ||
+        (offsetLine === lastOffset.line && offsetColumn < lastOffset.column)) {
+      throw new Error('Section offsets must be ordered and non-overlapping.');
+    }
+    lastOffset = offset;
+
+    return {
+      generatedOffset: {
+        // The offset fields are 0-based, but we use 1-based indices when
+        // encoding/decoding from VLQ.
+        generatedLine: offsetLine + 1,
+        generatedColumn: offsetColumn + 1
+      },
+      consumer: new SourceMapConsumer(util.getArg(s, 'map'), aSourceMapURL)
+    }
+  });
+}
+
+IndexedSourceMapConsumer.prototype = Object.create(SourceMapConsumer.prototype);
+IndexedSourceMapConsumer.prototype.constructor = SourceMapConsumer;
+
+/**
+ * The version of the source mapping spec that we are consuming.
+ */
+IndexedSourceMapConsumer.prototype._version = 3;
+
+/**
+ * The list of original sources.
+ */
+Object.defineProperty(IndexedSourceMapConsumer.prototype, 'sources', {
+  get: function () {
+    var sources = [];
+    for (var i = 0; i < this._sections.length; i++) {
+      for (var j = 0; j < this._sections[i].consumer.sources.length; j++) {
+        sources.push(this._sections[i].consumer.sources[j]);
+      }
+    }
+    return sources;
+  }
+});
+
+/**
+ * Returns the original source, line, and column information for the generated
+ * source's line and column positions provided. The only argument is an object
+ * with the following properties:
+ *
+ *   - line: The line number in the generated source.  The line number
+ *     is 1-based.
+ *   - column: The column number in the generated source.  The column
+ *     number is 0-based.
+ *
+ * and an object is returned with the following properties:
+ *
+ *   - source: The original source file, or null.
+ *   - line: The line number in the original source, or null.  The
+ *     line number is 1-based.
+ *   - column: The column number in the original source, or null.  The
+ *     column number is 0-based.
+ *   - name: The original identifier, or null.
+ */
+IndexedSourceMapConsumer.prototype.originalPositionFor =
+  function IndexedSourceMapConsumer_originalPositionFor(aArgs) {
+    var needle = {
+      generatedLine: util.getArg(aArgs, 'line'),
+      generatedColumn: util.getArg(aArgs, 'column')
+    };
+
+    // Find the section containing the generated position we're trying to map
+    // to an original position.
+    var sectionIndex = binarySearch.search(needle, this._sections,
+      function(needle, section) {
+        var cmp = needle.generatedLine - section.generatedOffset.generatedLine;
+        if (cmp) {
+          return cmp;
+        }
+
+        return (needle.generatedColumn -
+                section.generatedOffset.generatedColumn);
+      });
+    var section = this._sections[sectionIndex];
+
+    if (!section) {
+      return {
+        source: null,
+        line: null,
+        column: null,
+        name: null
+      };
+    }
+
+    return section.consumer.originalPositionFor({
+      line: needle.generatedLine -
+        (section.generatedOffset.generatedLine - 1),
+      column: needle.generatedColumn -
+        (section.generatedOffset.generatedLine === needle.generatedLine
+         ? section.generatedOffset.generatedColumn - 1
+         : 0),
+      bias: aArgs.bias
+    });
+  };
+
+/**
+ * Return true if we have the source content for every source in the source
+ * map, false otherwise.
+ */
+IndexedSourceMapConsumer.prototype.hasContentsOfAllSources =
+  function IndexedSourceMapConsumer_hasContentsOfAllSources() {
+    return this._sections.every(function (s) {
+      return s.consumer.hasContentsOfAllSources();
+    });
+  };
+
+/**
+ * Returns the original source content. The only argument is the url of the
+ * original source file. Returns null if no original source content is
+ * available.
+ */
+IndexedSourceMapConsumer.prototype.sourceContentFor =
+  function IndexedSourceMapConsumer_sourceContentFor(aSource, nullOnMissing) {
+    for (var i = 0; i < this._sections.length; i++) {
+      var section = this._sections[i];
+
+      var content = section.consumer.sourceContentFor(aSource, true);
+      if (content) {
+        return content;
+      }
+    }
+    if (nullOnMissing) {
+      return null;
+    }
+    else {
+      throw new Error('"' + aSource + '" is not in the SourceMap.');
+    }
+  };
+
+/**
+ * Returns the generated line and column information for the original source,
+ * line, and column positions provided. The only argument is an object with
+ * the following properties:
+ *
+ *   - source: The filename of the original source.
+ *   - line: The line number in the original source.  The line number
+ *     is 1-based.
+ *   - column: The column number in the original source.  The column
+ *     number is 0-based.
+ *
+ * and an object is returned with the following properties:
+ *
+ *   - line: The line number in the generated source, or null.  The
+ *     line number is 1-based. 
+ *   - column: The column number in the generated source, or null.
+ *     The column number is 0-based.
+ */
+IndexedSourceMapConsumer.prototype.generatedPositionFor =
+  function IndexedSourceMapConsumer_generatedPositionFor(aArgs) {
+    for (var i = 0; i < this._sections.length; i++) {
+      var section = this._sections[i];
+
+      // Only consider this section if the requested source is in the list of
+      // sources of the consumer.
+      if (section.consumer._findSourceIndex(util.getArg(aArgs, 'source')) === -1) {
+        continue;
+      }
+      var generatedPosition = section.consumer.generatedPositionFor(aArgs);
+      if (generatedPosition) {
+        var ret = {
+          line: generatedPosition.line +
+            (section.generatedOffset.generatedLine - 1),
+          column: generatedPosition.column +
+            (section.generatedOffset.generatedLine === generatedPosition.line
+             ? section.generatedOffset.generatedColumn - 1
+             : 0)
+        };
+        return ret;
+      }
+    }
+
+    return {
+      line: null,
+      column: null
+    };
+  };
+
+/**
+ * Parse the mappings in a string in to a data structure which we can easily
+ * query (the ordered arrays in the `this.__generatedMappings` and
+ * `this.__originalMappings` properties).
+ */
+IndexedSourceMapConsumer.prototype._parseMappings =
+  function IndexedSourceMapConsumer_parseMappings(aStr, aSourceRoot) {
+    this.__generatedMappings = [];
+    this.__originalMappings = [];
+    for (var i = 0; i < this._sections.length; i++) {
+      var section = this._sections[i];
+      var sectionMappings = section.consumer._generatedMappings;
+      for (var j = 0; j < sectionMappings.length; j++) {
+        var mapping = sectionMappings[j];
+
+        var source = section.consumer._sources.at(mapping.source);
+        source = util.computeSourceURL(section.consumer.sourceRoot, source, this._sourceMapURL);
+        this._sources.add(source);
+        source = this._sources.indexOf(source);
+
+        var name = null;
+        if (mapping.name) {
+          name = section.consumer._names.at(mapping.name);
+          this._names.add(name);
+          name = this._names.indexOf(name);
+        }
+
+        // The mappings coming from the consumer for the section have
+        // generated positions relative to the start of the section, so we
+        // need to offset them to be relative to the start of the concatenated
+        // generated file.
+        var adjustedMapping = {
+          source: source,
+          generatedLine: mapping.generatedLine +
+            (section.generatedOffset.generatedLine - 1),
+          generatedColumn: mapping.generatedColumn +
+            (section.generatedOffset.generatedLine === mapping.generatedLine
+            ? section.generatedOffset.generatedColumn - 1
+            : 0),
+          originalLine: mapping.originalLine,
+          originalColumn: mapping.originalColumn,
+          name: name
+        };
+
+        this.__generatedMappings.push(adjustedMapping);
+        if (typeof adjustedMapping.originalLine === 'number') {
+          this.__originalMappings.push(adjustedMapping);
+        }
+      }
+    }
+
+    quickSort(this.__generatedMappings, util.compareByGeneratedPositionsDeflated);
+    quickSort(this.__originalMappings, util.compareByOriginalPositions);
+  };
+
+__webpack_unused_export__ = IndexedSourceMapConsumer;
+
+
+/***/ }),
+
+/***/ 9425:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var base64VLQ = __nccwpck_require__(975);
+var util = __nccwpck_require__(2344);
+var ArraySet = (__nccwpck_require__(6375)/* .ArraySet */ .I);
+var MappingList = (__nccwpck_require__(6817)/* .MappingList */ .H);
+
+/**
+ * An instance of the SourceMapGenerator represents a source map which is
+ * being built incrementally. You may pass an object with the following
+ * properties:
+ *
+ *   - file: The filename of the generated source.
+ *   - sourceRoot: A root for all relative URLs in this source map.
+ */
+function SourceMapGenerator(aArgs) {
+  if (!aArgs) {
+    aArgs = {};
+  }
+  this._file = util.getArg(aArgs, 'file', null);
+  this._sourceRoot = util.getArg(aArgs, 'sourceRoot', null);
+  this._skipValidation = util.getArg(aArgs, 'skipValidation', false);
+  this._sources = new ArraySet();
+  this._names = new ArraySet();
+  this._mappings = new MappingList();
+  this._sourcesContents = null;
+}
+
+SourceMapGenerator.prototype._version = 3;
+
+/**
+ * Creates a new SourceMapGenerator based on a SourceMapConsumer
+ *
+ * @param aSourceMapConsumer The SourceMap.
+ */
+SourceMapGenerator.fromSourceMap =
+  function SourceMapGenerator_fromSourceMap(aSourceMapConsumer) {
+    var sourceRoot = aSourceMapConsumer.sourceRoot;
+    var generator = new SourceMapGenerator({
+      file: aSourceMapConsumer.file,
+      sourceRoot: sourceRoot
+    });
+    aSourceMapConsumer.eachMapping(function (mapping) {
+      var newMapping = {
+        generated: {
+          line: mapping.generatedLine,
+          column: mapping.generatedColumn
+        }
+      };
+
+      if (mapping.source != null) {
+        newMapping.source = mapping.source;
+        if (sourceRoot != null) {
+          newMapping.source = util.relative(sourceRoot, newMapping.source);
+        }
+
+        newMapping.original = {
+          line: mapping.originalLine,
+          column: mapping.originalColumn
+        };
+
+        if (mapping.name != null) {
+          newMapping.name = mapping.name;
+        }
+      }
+
+      generator.addMapping(newMapping);
+    });
+    aSourceMapConsumer.sources.forEach(function (sourceFile) {
+      var sourceRelative = sourceFile;
+      if (sourceRoot !== null) {
+        sourceRelative = util.relative(sourceRoot, sourceFile);
+      }
+
+      if (!generator._sources.has(sourceRelative)) {
+        generator._sources.add(sourceRelative);
+      }
+
+      var content = aSourceMapConsumer.sourceContentFor(sourceFile);
+      if (content != null) {
+        generator.setSourceContent(sourceFile, content);
+      }
+    });
+    return generator;
+  };
+
+/**
+ * Add a single mapping from original source line and column to the generated
+ * source's line and column for this source map being created. The mapping
+ * object should have the following properties:
+ *
+ *   - generated: An object with the generated line and column positions.
+ *   - original: An object with the original line and column positions.
+ *   - source: The original source file (relative to the sourceRoot).
+ *   - name: An optional original token name for this mapping.
+ */
+SourceMapGenerator.prototype.addMapping =
+  function SourceMapGenerator_addMapping(aArgs) {
+    var generated = util.getArg(aArgs, 'generated');
+    var original = util.getArg(aArgs, 'original', null);
+    var source = util.getArg(aArgs, 'source', null);
+    var name = util.getArg(aArgs, 'name', null);
+
+    if (!this._skipValidation) {
+      this._validateMapping(generated, original, source, name);
+    }
+
+    if (source != null) {
+      source = String(source);
+      if (!this._sources.has(source)) {
+        this._sources.add(source);
+      }
+    }
+
+    if (name != null) {
+      name = String(name);
+      if (!this._names.has(name)) {
+        this._names.add(name);
+      }
+    }
+
+    this._mappings.add({
+      generatedLine: generated.line,
+      generatedColumn: generated.column,
+      originalLine: original != null && original.line,
+      originalColumn: original != null && original.column,
+      source: source,
+      name: name
+    });
+  };
+
+/**
+ * Set the source content for a source file.
+ */
+SourceMapGenerator.prototype.setSourceContent =
+  function SourceMapGenerator_setSourceContent(aSourceFile, aSourceContent) {
+    var source = aSourceFile;
+    if (this._sourceRoot != null) {
+      source = util.relative(this._sourceRoot, source);
+    }
+
+    if (aSourceContent != null) {
+      // Add the source content to the _sourcesContents map.
+      // Create a new _sourcesContents map if the property is null.
+      if (!this._sourcesContents) {
+        this._sourcesContents = Object.create(null);
+      }
+      this._sourcesContents[util.toSetString(source)] = aSourceContent;
+    } else if (this._sourcesContents) {
+      // Remove the source file from the _sourcesContents map.
+      // If the _sourcesContents map is empty, set the property to null.
+      delete this._sourcesContents[util.toSetString(source)];
+      if (Object.keys(this._sourcesContents).length === 0) {
+        this._sourcesContents = null;
+      }
+    }
+  };
+
+/**
+ * Applies the mappings of a sub-source-map for a specific source file to the
+ * source map being generated. Each mapping to the supplied source file is
+ * rewritten using the supplied source map. Note: The resolution for the
+ * resulting mappings is the minimium of this map and the supplied map.
+ *
+ * @param aSourceMapConsumer The source map to be applied.
+ * @param aSourceFile Optional. The filename of the source file.
+ *        If omitted, SourceMapConsumer's file property will be used.
+ * @param aSourceMapPath Optional. The dirname of the path to the source map
+ *        to be applied. If relative, it is relative to the SourceMapConsumer.
+ *        This parameter is needed when the two source maps aren't in the same
+ *        directory, and the source map to be applied contains relative source
+ *        paths. If so, those relative source paths need to be rewritten
+ *        relative to the SourceMapGenerator.
+ */
+SourceMapGenerator.prototype.applySourceMap =
+  function SourceMapGenerator_applySourceMap(aSourceMapConsumer, aSourceFile, aSourceMapPath) {
+    var sourceFile = aSourceFile;
+    // If aSourceFile is omitted, we will use the file property of the SourceMap
+    if (aSourceFile == null) {
+      if (aSourceMapConsumer.file == null) {
+        throw new Error(
+          'SourceMapGenerator.prototype.applySourceMap requires either an explicit source file, ' +
+          'or the source map\'s "file" property. Both were omitted.'
+        );
+      }
+      sourceFile = aSourceMapConsumer.file;
+    }
+    var sourceRoot = this._sourceRoot;
+    // Make "sourceFile" relative if an absolute Url is passed.
+    if (sourceRoot != null) {
+      sourceFile = util.relative(sourceRoot, sourceFile);
+    }
+    // Applying the SourceMap can add and remove items from the sources and
+    // the names array.
+    var newSources = new ArraySet();
+    var newNames = new ArraySet();
+
+    // Find mappings for the "sourceFile"
+    this._mappings.unsortedForEach(function (mapping) {
+      if (mapping.source === sourceFile && mapping.originalLine != null) {
+        // Check if it can be mapped by the source map, then update the mapping.
+        var original = aSourceMapConsumer.originalPositionFor({
+          line: mapping.originalLine,
+          column: mapping.originalColumn
+        });
+        if (original.source != null) {
+          // Copy mapping
+          mapping.source = original.source;
+          if (aSourceMapPath != null) {
+            mapping.source = util.join(aSourceMapPath, mapping.source)
+          }
+          if (sourceRoot != null) {
+            mapping.source = util.relative(sourceRoot, mapping.source);
+          }
+          mapping.originalLine = original.line;
+          mapping.originalColumn = original.column;
+          if (original.name != null) {
+            mapping.name = original.name;
+          }
+        }
+      }
+
+      var source = mapping.source;
+      if (source != null && !newSources.has(source)) {
+        newSources.add(source);
+      }
+
+      var name = mapping.name;
+      if (name != null && !newNames.has(name)) {
+        newNames.add(name);
+      }
+
+    }, this);
+    this._sources = newSources;
+    this._names = newNames;
+
+    // Copy sourcesContents of applied map.
+    aSourceMapConsumer.sources.forEach(function (sourceFile) {
+      var content = aSourceMapConsumer.sourceContentFor(sourceFile);
+      if (content != null) {
+        if (aSourceMapPath != null) {
+          sourceFile = util.join(aSourceMapPath, sourceFile);
+        }
+        if (sourceRoot != null) {
+          sourceFile = util.relative(sourceRoot, sourceFile);
+        }
+        this.setSourceContent(sourceFile, content);
+      }
+    }, this);
+  };
+
+/**
+ * A mapping can have one of the three levels of data:
+ *
+ *   1. Just the generated position.
+ *   2. The Generated position, original position, and original source.
+ *   3. Generated and original position, original source, as well as a name
+ *      token.
+ *
+ * To maintain consistency, we validate that any new mapping being added falls
+ * in to one of these categories.
+ */
+SourceMapGenerator.prototype._validateMapping =
+  function SourceMapGenerator_validateMapping(aGenerated, aOriginal, aSource,
+                                              aName) {
+    // When aOriginal is truthy but has empty values for .line and .column,
+    // it is most likely a programmer error. In this case we throw a very
+    // specific error message to try to guide them the right way.
+    // For example: https://github.com/Polymer/polymer-bundler/pull/519
+    if (aOriginal && typeof aOriginal.line !== 'number' && typeof aOriginal.column !== 'number') {
+        throw new Error(
+            'original.line and original.column are not numbers -- you probably meant to omit ' +
+            'the original mapping entirely and only map the generated position. If so, pass ' +
+            'null for the original mapping instead of an object with empty or null values.'
+        );
+    }
+
+    if (aGenerated && 'line' in aGenerated && 'column' in aGenerated
+        && aGenerated.line > 0 && aGenerated.column >= 0
+        && !aOriginal && !aSource && !aName) {
+      // Case 1.
+      return;
+    }
+    else if (aGenerated && 'line' in aGenerated && 'column' in aGenerated
+             && aOriginal && 'line' in aOriginal && 'column' in aOriginal
+             && aGenerated.line > 0 && aGenerated.column >= 0
+             && aOriginal.line > 0 && aOriginal.column >= 0
+             && aSource) {
+      // Cases 2 and 3.
+      return;
+    }
+    else {
+      throw new Error('Invalid mapping: ' + JSON.stringify({
+        generated: aGenerated,
+        source: aSource,
+        original: aOriginal,
+        name: aName
+      }));
+    }
+  };
+
+/**
+ * Serialize the accumulated mappings in to the stream of base 64 VLQs
+ * specified by the source map format.
+ */
+SourceMapGenerator.prototype._serializeMappings =
+  function SourceMapGenerator_serializeMappings() {
+    var previousGeneratedColumn = 0;
+    var previousGeneratedLine = 1;
+    var previousOriginalColumn = 0;
+    var previousOriginalLine = 0;
+    var previousName = 0;
+    var previousSource = 0;
+    var result = '';
+    var next;
+    var mapping;
+    var nameIdx;
+    var sourceIdx;
+
+    var mappings = this._mappings.toArray();
+    for (var i = 0, len = mappings.length; i < len; i++) {
+      mapping = mappings[i];
+      next = ''
+
+      if (mapping.generatedLine !== previousGeneratedLine) {
+        previousGeneratedColumn = 0;
+        while (mapping.generatedLine !== previousGeneratedLine) {
+          next += ';';
+          previousGeneratedLine++;
+        }
+      }
+      else {
+        if (i > 0) {
+          if (!util.compareByGeneratedPositionsInflated(mapping, mappings[i - 1])) {
+            continue;
+          }
+          next += ',';
+        }
+      }
+
+      next += base64VLQ.encode(mapping.generatedColumn
+                                 - previousGeneratedColumn);
+      previousGeneratedColumn = mapping.generatedColumn;
+
+      if (mapping.source != null) {
+        sourceIdx = this._sources.indexOf(mapping.source);
+        next += base64VLQ.encode(sourceIdx - previousSource);
+        previousSource = sourceIdx;
+
+        // lines are stored 0-based in SourceMap spec version 3
+        next += base64VLQ.encode(mapping.originalLine - 1
+                                   - previousOriginalLine);
+        previousOriginalLine = mapping.originalLine - 1;
+
+        next += base64VLQ.encode(mapping.originalColumn
+                                   - previousOriginalColumn);
+        previousOriginalColumn = mapping.originalColumn;
+
+        if (mapping.name != null) {
+          nameIdx = this._names.indexOf(mapping.name);
+          next += base64VLQ.encode(nameIdx - previousName);
+          previousName = nameIdx;
+        }
+      }
+
+      result += next;
+    }
+
+    return result;
+  };
+
+SourceMapGenerator.prototype._generateSourcesContent =
+  function SourceMapGenerator_generateSourcesContent(aSources, aSourceRoot) {
+    return aSources.map(function (source) {
+      if (!this._sourcesContents) {
+        return null;
+      }
+      if (aSourceRoot != null) {
+        source = util.relative(aSourceRoot, source);
+      }
+      var key = util.toSetString(source);
+      return Object.prototype.hasOwnProperty.call(this._sourcesContents, key)
+        ? this._sourcesContents[key]
+        : null;
+    }, this);
+  };
+
+/**
+ * Externalize the source map.
+ */
+SourceMapGenerator.prototype.toJSON =
+  function SourceMapGenerator_toJSON() {
+    var map = {
+      version: this._version,
+      sources: this._sources.toArray(),
+      names: this._names.toArray(),
+      mappings: this._serializeMappings()
+    };
+    if (this._file != null) {
+      map.file = this._file;
+    }
+    if (this._sourceRoot != null) {
+      map.sourceRoot = this._sourceRoot;
+    }
+    if (this._sourcesContents) {
+      map.sourcesContent = this._generateSourcesContent(map.sources, map.sourceRoot);
+    }
+
+    return map;
+  };
+
+/**
+ * Render the source map being generated to a string.
+ */
+SourceMapGenerator.prototype.toString =
+  function SourceMapGenerator_toString() {
+    return JSON.stringify(this.toJSON());
+  };
+
+exports.h = SourceMapGenerator;
+
+
+/***/ }),
+
+/***/ 2616:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+var __webpack_unused_export__;
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+var SourceMapGenerator = (__nccwpck_require__(9425)/* .SourceMapGenerator */ .h);
+var util = __nccwpck_require__(2344);
+
+// Matches a Windows-style `\r\n` newline or a `\n` newline used by all other
+// operating systems these days (capturing the result).
+var REGEX_NEWLINE = /(\r?\n)/;
+
+// Newline character code for charCodeAt() comparisons
+var NEWLINE_CODE = 10;
+
+// Private symbol for identifying `SourceNode`s when multiple versions of
+// the source-map library are loaded. This MUST NOT CHANGE across
+// versions!
+var isSourceNode = "$$$isSourceNode$$$";
+
+/**
+ * SourceNodes provide a way to abstract over interpolating/concatenating
+ * snippets of generated JavaScript source code while maintaining the line and
+ * column information associated with the original source code.
+ *
+ * @param aLine The original line number.
+ * @param aColumn The original column number.
+ * @param aSource The original source's filename.
+ * @param aChunks Optional. An array of strings which are snippets of
+ *        generated JS, or other SourceNodes.
+ * @param aName The original identifier.
+ */
+function SourceNode(aLine, aColumn, aSource, aChunks, aName) {
+  this.children = [];
+  this.sourceContents = {};
+  this.line = aLine == null ? null : aLine;
+  this.column = aColumn == null ? null : aColumn;
+  this.source = aSource == null ? null : aSource;
+  this.name = aName == null ? null : aName;
+  this[isSourceNode] = true;
+  if (aChunks != null) this.add(aChunks);
+}
+
+/**
+ * Creates a SourceNode from generated code and a SourceMapConsumer.
+ *
+ * @param aGeneratedCode The generated code
+ * @param aSourceMapConsumer The SourceMap for the generated code
+ * @param aRelativePath Optional. The path that relative sources in the
+ *        SourceMapConsumer should be relative to.
+ */
+SourceNode.fromStringWithSourceMap =
+  function SourceNode_fromStringWithSourceMap(aGeneratedCode, aSourceMapConsumer, aRelativePath) {
+    // The SourceNode we want to fill with the generated code
+    // and the SourceMap
+    var node = new SourceNode();
+
+    // All even indices of this array are one line of the generated code,
+    // while all odd indices are the newlines between two adjacent lines
+    // (since `REGEX_NEWLINE` captures its match).
+    // Processed fragments are accessed by calling `shiftNextLine`.
+    var remainingLines = aGeneratedCode.split(REGEX_NEWLINE);
+    var remainingLinesIndex = 0;
+    var shiftNextLine = function() {
+      var lineContents = getNextLine();
+      // The last line of a file might not have a newline.
+      var newLine = getNextLine() || "";
+      return lineContents + newLine;
+
+      function getNextLine() {
+        return remainingLinesIndex < remainingLines.length ?
+            remainingLines[remainingLinesIndex++] : undefined;
+      }
+    };
+
+    // We need to remember the position of "remainingLines"
+    var lastGeneratedLine = 1, lastGeneratedColumn = 0;
+
+    // The generate SourceNodes we need a code range.
+    // To extract it current and last mapping is used.
+    // Here we store the last mapping.
+    var lastMapping = null;
+
+    aSourceMapConsumer.eachMapping(function (mapping) {
+      if (lastMapping !== null) {
+        // We add the code from "lastMapping" to "mapping":
+        // First check if there is a new line in between.
+        if (lastGeneratedLine < mapping.generatedLine) {
+          // Associate first line with "lastMapping"
+          addMappingWithCode(lastMapping, shiftNextLine());
+          lastGeneratedLine++;
+          lastGeneratedColumn = 0;
+          // The remaining code is added without mapping
+        } else {
+          // There is no new line in between.
+          // Associate the code between "lastGeneratedColumn" and
+          // "mapping.generatedColumn" with "lastMapping"
+          var nextLine = remainingLines[remainingLinesIndex] || '';
+          var code = nextLine.substr(0, mapping.generatedColumn -
+                                        lastGeneratedColumn);
+          remainingLines[remainingLinesIndex] = nextLine.substr(mapping.generatedColumn -
+                                              lastGeneratedColumn);
+          lastGeneratedColumn = mapping.generatedColumn;
+          addMappingWithCode(lastMapping, code);
+          // No more remaining code, continue
+          lastMapping = mapping;
+          return;
+        }
+      }
+      // We add the generated code until the first mapping
+      // to the SourceNode without any mapping.
+      // Each line is added as separate string.
+      while (lastGeneratedLine < mapping.generatedLine) {
+        node.add(shiftNextLine());
+        lastGeneratedLine++;
+      }
+      if (lastGeneratedColumn < mapping.generatedColumn) {
+        var nextLine = remainingLines[remainingLinesIndex] || '';
+        node.add(nextLine.substr(0, mapping.generatedColumn));
+        remainingLines[remainingLinesIndex] = nextLine.substr(mapping.generatedColumn);
+        lastGeneratedColumn = mapping.generatedColumn;
+      }
+      lastMapping = mapping;
+    }, this);
+    // We have processed all mappings.
+    if (remainingLinesIndex < remainingLines.length) {
+      if (lastMapping) {
+        // Associate the remaining code in the current line with "lastMapping"
+        addMappingWithCode(lastMapping, shiftNextLine());
+      }
+      // and add the remaining lines without any mapping
+      node.add(remainingLines.splice(remainingLinesIndex).join(""));
+    }
+
+    // Copy sourcesContent into SourceNode
+    aSourceMapConsumer.sources.forEach(function (sourceFile) {
+      var content = aSourceMapConsumer.sourceContentFor(sourceFile);
+      if (content != null) {
+        if (aRelativePath != null) {
+          sourceFile = util.join(aRelativePath, sourceFile);
+        }
+        node.setSourceContent(sourceFile, content);
+      }
+    });
+
+    return node;
+
+    function addMappingWithCode(mapping, code) {
+      if (mapping === null || mapping.source === undefined) {
+        node.add(code);
+      } else {
+        var source = aRelativePath
+          ? util.join(aRelativePath, mapping.source)
+          : mapping.source;
+        node.add(new SourceNode(mapping.originalLine,
+                                mapping.originalColumn,
+                                source,
+                                code,
+                                mapping.name));
+      }
+    }
+  };
+
+/**
+ * Add a chunk of generated JS to this source node.
+ *
+ * @param aChunk A string snippet of generated JS code, another instance of
+ *        SourceNode, or an array where each member is one of those things.
+ */
+SourceNode.prototype.add = function SourceNode_add(aChunk) {
+  if (Array.isArray(aChunk)) {
+    aChunk.forEach(function (chunk) {
+      this.add(chunk);
+    }, this);
+  }
+  else if (aChunk[isSourceNode] || typeof aChunk === "string") {
+    if (aChunk) {
+      this.children.push(aChunk);
+    }
+  }
+  else {
+    throw new TypeError(
+      "Expected a SourceNode, string, or an array of SourceNodes and strings. Got " + aChunk
+    );
+  }
+  return this;
+};
+
+/**
+ * Add a chunk of generated JS to the beginning of this source node.
+ *
+ * @param aChunk A string snippet of generated JS code, another instance of
+ *        SourceNode, or an array where each member is one of those things.
+ */
+SourceNode.prototype.prepend = function SourceNode_prepend(aChunk) {
+  if (Array.isArray(aChunk)) {
+    for (var i = aChunk.length-1; i >= 0; i--) {
+      this.prepend(aChunk[i]);
+    }
+  }
+  else if (aChunk[isSourceNode] || typeof aChunk === "string") {
+    this.children.unshift(aChunk);
+  }
+  else {
+    throw new TypeError(
+      "Expected a SourceNode, string, or an array of SourceNodes and strings. Got " + aChunk
+    );
+  }
+  return this;
+};
+
+/**
+ * Walk over the tree of JS snippets in this node and its children. The
+ * walking function is called once for each snippet of JS and is passed that
+ * snippet and the its original associated source's line/column location.
+ *
+ * @param aFn The traversal function.
+ */
+SourceNode.prototype.walk = function SourceNode_walk(aFn) {
+  var chunk;
+  for (var i = 0, len = this.children.length; i < len; i++) {
+    chunk = this.children[i];
+    if (chunk[isSourceNode]) {
+      chunk.walk(aFn);
+    }
+    else {
+      if (chunk !== '') {
+        aFn(chunk, { source: this.source,
+                     line: this.line,
+                     column: this.column,
+                     name: this.name });
+      }
+    }
+  }
+};
+
+/**
+ * Like `String.prototype.join` except for SourceNodes. Inserts `aStr` between
+ * each of `this.children`.
+ *
+ * @param aSep The separator.
+ */
+SourceNode.prototype.join = function SourceNode_join(aSep) {
+  var newChildren;
+  var i;
+  var len = this.children.length;
+  if (len > 0) {
+    newChildren = [];
+    for (i = 0; i < len-1; i++) {
+      newChildren.push(this.children[i]);
+      newChildren.push(aSep);
+    }
+    newChildren.push(this.children[i]);
+    this.children = newChildren;
+  }
+  return this;
+};
+
+/**
+ * Call String.prototype.replace on the very right-most source snippet. Useful
+ * for trimming whitespace from the end of a source node, etc.
+ *
+ * @param aPattern The pattern to replace.
+ * @param aReplacement The thing to replace the pattern with.
+ */
+SourceNode.prototype.replaceRight = function SourceNode_replaceRight(aPattern, aReplacement) {
+  var lastChild = this.children[this.children.length - 1];
+  if (lastChild[isSourceNode]) {
+    lastChild.replaceRight(aPattern, aReplacement);
+  }
+  else if (typeof lastChild === 'string') {
+    this.children[this.children.length - 1] = lastChild.replace(aPattern, aReplacement);
+  }
+  else {
+    this.children.push(''.replace(aPattern, aReplacement));
+  }
+  return this;
+};
+
+/**
+ * Set the source content for a source file. This will be added to the SourceMapGenerator
+ * in the sourcesContent field.
+ *
+ * @param aSourceFile The filename of the source file
+ * @param aSourceContent The content of the source file
+ */
+SourceNode.prototype.setSourceContent =
+  function SourceNode_setSourceContent(aSourceFile, aSourceContent) {
+    this.sourceContents[util.toSetString(aSourceFile)] = aSourceContent;
+  };
+
+/**
+ * Walk over the tree of SourceNodes. The walking function is called for each
+ * source file content and is passed the filename and source content.
+ *
+ * @param aFn The traversal function.
+ */
+SourceNode.prototype.walkSourceContents =
+  function SourceNode_walkSourceContents(aFn) {
+    for (var i = 0, len = this.children.length; i < len; i++) {
+      if (this.children[i][isSourceNode]) {
+        this.children[i].walkSourceContents(aFn);
+      }
+    }
+
+    var sources = Object.keys(this.sourceContents);
+    for (var i = 0, len = sources.length; i < len; i++) {
+      aFn(util.fromSetString(sources[i]), this.sourceContents[sources[i]]);
+    }
+  };
+
+/**
+ * Return the string representation of this source node. Walks over the tree
+ * and concatenates all the various snippets together to one string.
+ */
+SourceNode.prototype.toString = function SourceNode_toString() {
+  var str = "";
+  this.walk(function (chunk) {
+    str += chunk;
+  });
+  return str;
+};
+
+/**
+ * Returns the string representation of this source node along with a source
+ * map.
+ */
+SourceNode.prototype.toStringWithSourceMap = function SourceNode_toStringWithSourceMap(aArgs) {
+  var generated = {
+    code: "",
+    line: 1,
+    column: 0
+  };
+  var map = new SourceMapGenerator(aArgs);
+  var sourceMappingActive = false;
+  var lastOriginalSource = null;
+  var lastOriginalLine = null;
+  var lastOriginalColumn = null;
+  var lastOriginalName = null;
+  this.walk(function (chunk, original) {
+    generated.code += chunk;
+    if (original.source !== null
+        && original.line !== null
+        && original.column !== null) {
+      if(lastOriginalSource !== original.source
+         || lastOriginalLine !== original.line
+         || lastOriginalColumn !== original.column
+         || lastOriginalName !== original.name) {
+        map.addMapping({
+          source: original.source,
+          original: {
+            line: original.line,
+            column: original.column
+          },
+          generated: {
+            line: generated.line,
+            column: generated.column
+          },
+          name: original.name
+        });
+      }
+      lastOriginalSource = original.source;
+      lastOriginalLine = original.line;
+      lastOriginalColumn = original.column;
+      lastOriginalName = original.name;
+      sourceMappingActive = true;
+    } else if (sourceMappingActive) {
+      map.addMapping({
+        generated: {
+          line: generated.line,
+          column: generated.column
+        }
+      });
+      lastOriginalSource = null;
+      sourceMappingActive = false;
+    }
+    for (var idx = 0, length = chunk.length; idx < length; idx++) {
+      if (chunk.charCodeAt(idx) === NEWLINE_CODE) {
+        generated.line++;
+        generated.column = 0;
+        // Mappings end at eol
+        if (idx + 1 === length) {
+          lastOriginalSource = null;
+          sourceMappingActive = false;
+        } else if (sourceMappingActive) {
+          map.addMapping({
+            source: original.source,
+            original: {
+              line: original.line,
+              column: original.column
+            },
+            generated: {
+              line: generated.line,
+              column: generated.column
+            },
+            name: original.name
+          });
+        }
+      } else {
+        generated.column++;
+      }
+    }
+  });
+  this.walkSourceContents(function (sourceFile, sourceContent) {
+    map.setSourceContent(sourceFile, sourceContent);
+  });
+
+  return { code: generated.code, map: map };
+};
+
+__webpack_unused_export__ = SourceNode;
+
+
+/***/ }),
+
+/***/ 2344:
+/***/ ((__unused_webpack_module, exports) => {
+
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+
+/**
+ * This is a helper function for getting values from parameter/options
+ * objects.
+ *
+ * @param args The object we are extracting values from
+ * @param name The name of the property we are getting.
+ * @param defaultValue An optional value to return if the property is missing
+ * from the object. If this is not specified and the property is missing, an
+ * error will be thrown.
+ */
+function getArg(aArgs, aName, aDefaultValue) {
+  if (aName in aArgs) {
+    return aArgs[aName];
+  } else if (arguments.length === 3) {
+    return aDefaultValue;
+  } else {
+    throw new Error('"' + aName + '" is a required argument.');
+  }
+}
+exports.getArg = getArg;
+
+var urlRegexp = /^(?:([\w+\-.]+):)?\/\/(?:(\w+:\w+)@)?([\w.-]*)(?::(\d+))?(.*)$/;
+var dataUrlRegexp = /^data:.+\,.+$/;
+
+function urlParse(aUrl) {
+  var match = aUrl.match(urlRegexp);
+  if (!match) {
+    return null;
+  }
+  return {
+    scheme: match[1],
+    auth: match[2],
+    host: match[3],
+    port: match[4],
+    path: match[5]
+  };
+}
+exports.urlParse = urlParse;
+
+function urlGenerate(aParsedUrl) {
+  var url = '';
+  if (aParsedUrl.scheme) {
+    url += aParsedUrl.scheme + ':';
+  }
+  url += '//';
+  if (aParsedUrl.auth) {
+    url += aParsedUrl.auth + '@';
+  }
+  if (aParsedUrl.host) {
+    url += aParsedUrl.host;
+  }
+  if (aParsedUrl.port) {
+    url += ":" + aParsedUrl.port
+  }
+  if (aParsedUrl.path) {
+    url += aParsedUrl.path;
+  }
+  return url;
+}
+exports.urlGenerate = urlGenerate;
+
+/**
+ * Normalizes a path, or the path portion of a URL:
+ *
+ * - Replaces consecutive slashes with one slash.
+ * - Removes unnecessary '.' parts.
+ * - Removes unnecessary '<dir>/..' parts.
+ *
+ * Based on code in the Node.js 'path' core module.
+ *
+ * @param aPath The path or url to normalize.
+ */
+function normalize(aPath) {
+  var path = aPath;
+  var url = urlParse(aPath);
+  if (url) {
+    if (!url.path) {
+      return aPath;
+    }
+    path = url.path;
+  }
+  var isAbsolute = exports.isAbsolute(path);
+
+  var parts = path.split(/\/+/);
+  for (var part, up = 0, i = parts.length - 1; i >= 0; i--) {
+    part = parts[i];
+    if (part === '.') {
+      parts.splice(i, 1);
+    } else if (part === '..') {
+      up++;
+    } else if (up > 0) {
+      if (part === '') {
+        // The first part is blank if the path is absolute. Trying to go
+        // above the root is a no-op. Therefore we can remove all '..' parts
+        // directly after the root.
+        parts.splice(i + 1, up);
+        up = 0;
+      } else {
+        parts.splice(i, 2);
+        up--;
+      }
+    }
+  }
+  path = parts.join('/');
+
+  if (path === '') {
+    path = isAbsolute ? '/' : '.';
+  }
+
+  if (url) {
+    url.path = path;
+    return urlGenerate(url);
+  }
+  return path;
+}
+exports.normalize = normalize;
+
+/**
+ * Joins two paths/URLs.
+ *
+ * @param aRoot The root path or URL.
+ * @param aPath The path or URL to be joined with the root.
+ *
+ * - If aPath is a URL or a data URI, aPath is returned, unless aPath is a
+ *   scheme-relative URL: Then the scheme of aRoot, if any, is prepended
+ *   first.
+ * - Otherwise aPath is a path. If aRoot is a URL, then its path portion
+ *   is updated with the result and aRoot is returned. Otherwise the result
+ *   is returned.
+ *   - If aPath is absolute, the result is aPath.
+ *   - Otherwise the two paths are joined with a slash.
+ * - Joining for example 'http://' and 'www.example.com' is also supported.
+ */
+function join(aRoot, aPath) {
+  if (aRoot === "") {
+    aRoot = ".";
+  }
+  if (aPath === "") {
+    aPath = ".";
+  }
+  var aPathUrl = urlParse(aPath);
+  var aRootUrl = urlParse(aRoot);
+  if (aRootUrl) {
+    aRoot = aRootUrl.path || '/';
+  }
+
+  // `join(foo, '//www.example.org')`
+  if (aPathUrl && !aPathUrl.scheme) {
+    if (aRootUrl) {
+      aPathUrl.scheme = aRootUrl.scheme;
+    }
+    return urlGenerate(aPathUrl);
+  }
+
+  if (aPathUrl || aPath.match(dataUrlRegexp)) {
+    return aPath;
+  }
+
+  // `join('http://', 'www.example.com')`
+  if (aRootUrl && !aRootUrl.host && !aRootUrl.path) {
+    aRootUrl.host = aPath;
+    return urlGenerate(aRootUrl);
+  }
+
+  var joined = aPath.charAt(0) === '/'
+    ? aPath
+    : normalize(aRoot.replace(/\/+$/, '') + '/' + aPath);
+
+  if (aRootUrl) {
+    aRootUrl.path = joined;
+    return urlGenerate(aRootUrl);
+  }
+  return joined;
+}
+exports.join = join;
+
+exports.isAbsolute = function (aPath) {
+  return aPath.charAt(0) === '/' || urlRegexp.test(aPath);
+};
+
+/**
+ * Make a path relative to a URL or another path.
+ *
+ * @param aRoot The root path or URL.
+ * @param aPath The path or URL to be made relative to aRoot.
+ */
+function relative(aRoot, aPath) {
+  if (aRoot === "") {
+    aRoot = ".";
+  }
+
+  aRoot = aRoot.replace(/\/$/, '');
+
+  // It is possible for the path to be above the root. In this case, simply
+  // checking whether the root is a prefix of the path won't work. Instead, we
+  // need to remove components from the root one by one, until either we find
+  // a prefix that fits, or we run out of components to remove.
+  var level = 0;
+  while (aPath.indexOf(aRoot + '/') !== 0) {
+    var index = aRoot.lastIndexOf("/");
+    if (index < 0) {
+      return aPath;
+    }
+
+    // If the only part of the root that is left is the scheme (i.e. http://,
+    // file:///, etc.), one or more slashes (/), or simply nothing at all, we
+    // have exhausted all components, so the path is not relative to the root.
+    aRoot = aRoot.slice(0, index);
+    if (aRoot.match(/^([^\/]+:\/)?\/*$/)) {
+      return aPath;
+    }
+
+    ++level;
+  }
+
+  // Make sure we add a "../" for each component we removed from the root.
+  return Array(level + 1).join("../") + aPath.substr(aRoot.length + 1);
+}
+exports.relative = relative;
+
+var supportsNullProto = (function () {
+  var obj = Object.create(null);
+  return !('__proto__' in obj);
+}());
+
+function identity (s) {
+  return s;
+}
+
+/**
+ * Because behavior goes wacky when you set `__proto__` on objects, we
+ * have to prefix all the strings in our set with an arbitrary character.
+ *
+ * See https://github.com/mozilla/source-map/pull/31 and
+ * https://github.com/mozilla/source-map/issues/30
+ *
+ * @param String aStr
+ */
+function toSetString(aStr) {
+  if (isProtoString(aStr)) {
+    return '$' + aStr;
+  }
+
+  return aStr;
+}
+exports.toSetString = supportsNullProto ? identity : toSetString;
+
+function fromSetString(aStr) {
+  if (isProtoString(aStr)) {
+    return aStr.slice(1);
+  }
+
+  return aStr;
+}
+exports.fromSetString = supportsNullProto ? identity : fromSetString;
+
+function isProtoString(s) {
+  if (!s) {
+    return false;
+  }
+
+  var length = s.length;
+
+  if (length < 9 /* "__proto__".length */) {
+    return false;
+  }
+
+  if (s.charCodeAt(length - 1) !== 95  /* '_' */ ||
+      s.charCodeAt(length - 2) !== 95  /* '_' */ ||
+      s.charCodeAt(length - 3) !== 111 /* 'o' */ ||
+      s.charCodeAt(length - 4) !== 116 /* 't' */ ||
+      s.charCodeAt(length - 5) !== 111 /* 'o' */ ||
+      s.charCodeAt(length - 6) !== 114 /* 'r' */ ||
+      s.charCodeAt(length - 7) !== 112 /* 'p' */ ||
+      s.charCodeAt(length - 8) !== 95  /* '_' */ ||
+      s.charCodeAt(length - 9) !== 95  /* '_' */) {
+    return false;
+  }
+
+  for (var i = length - 10; i >= 0; i--) {
+    if (s.charCodeAt(i) !== 36 /* '$' */) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Comparator between two mappings where the original positions are compared.
+ *
+ * Optionally pass in `true` as `onlyCompareGenerated` to consider two
+ * mappings with the same original source/line/column, but different generated
+ * line and column the same. Useful when searching for a mapping with a
+ * stubbed out mapping.
+ */
+function compareByOriginalPositions(mappingA, mappingB, onlyCompareOriginal) {
+  var cmp = strcmp(mappingA.source, mappingB.source);
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalLine - mappingB.originalLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalColumn - mappingB.originalColumn;
+  if (cmp !== 0 || onlyCompareOriginal) {
+    return cmp;
+  }
+
+  cmp = mappingA.generatedColumn - mappingB.generatedColumn;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.generatedLine - mappingB.generatedLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  return strcmp(mappingA.name, mappingB.name);
+}
+exports.compareByOriginalPositions = compareByOriginalPositions;
+
+/**
+ * Comparator between two mappings with deflated source and name indices where
+ * the generated positions are compared.
+ *
+ * Optionally pass in `true` as `onlyCompareGenerated` to consider two
+ * mappings with the same generated line and column, but different
+ * source/name/original line and column the same. Useful when searching for a
+ * mapping with a stubbed out mapping.
+ */
+function compareByGeneratedPositionsDeflated(mappingA, mappingB, onlyCompareGenerated) {
+  var cmp = mappingA.generatedLine - mappingB.generatedLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.generatedColumn - mappingB.generatedColumn;
+  if (cmp !== 0 || onlyCompareGenerated) {
+    return cmp;
+  }
+
+  cmp = strcmp(mappingA.source, mappingB.source);
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalLine - mappingB.originalLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalColumn - mappingB.originalColumn;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  return strcmp(mappingA.name, mappingB.name);
+}
+exports.compareByGeneratedPositionsDeflated = compareByGeneratedPositionsDeflated;
+
+function strcmp(aStr1, aStr2) {
+  if (aStr1 === aStr2) {
+    return 0;
+  }
+
+  if (aStr1 === null) {
+    return 1; // aStr2 !== null
+  }
+
+  if (aStr2 === null) {
+    return -1; // aStr1 !== null
+  }
+
+  if (aStr1 > aStr2) {
+    return 1;
+  }
+
+  return -1;
+}
+
+/**
+ * Comparator between two mappings with inflated source and name strings where
+ * the generated positions are compared.
+ */
+function compareByGeneratedPositionsInflated(mappingA, mappingB) {
+  var cmp = mappingA.generatedLine - mappingB.generatedLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.generatedColumn - mappingB.generatedColumn;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = strcmp(mappingA.source, mappingB.source);
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalLine - mappingB.originalLine;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  cmp = mappingA.originalColumn - mappingB.originalColumn;
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  return strcmp(mappingA.name, mappingB.name);
+}
+exports.compareByGeneratedPositionsInflated = compareByGeneratedPositionsInflated;
+
+/**
+ * Strip any JSON XSSI avoidance prefix from the string (as documented
+ * in the source maps specification), and then parse the string as
+ * JSON.
+ */
+function parseSourceMapInput(str) {
+  return JSON.parse(str.replace(/^\)]}'[^\n]*\n/, ''));
+}
+exports.parseSourceMapInput = parseSourceMapInput;
+
+/**
+ * Compute the URL of a source given the the source root, the source's
+ * URL, and the source map's URL.
+ */
+function computeSourceURL(sourceRoot, sourceURL, sourceMapURL) {
+  sourceURL = sourceURL || '';
+
+  if (sourceRoot) {
+    // This follows what Chrome does.
+    if (sourceRoot[sourceRoot.length - 1] !== '/' && sourceURL[0] !== '/') {
+      sourceRoot += '/';
+    }
+    // The spec says:
+    //   Line 4: An optional source root, useful for relocating source
+    //   files on a server or removing repeated values in the
+    //   “sources” entry.  This value is prepended to the individual
+    //   entries in the “source” field.
+    sourceURL = sourceRoot + sourceURL;
+  }
+
+  // Historically, SourceMapConsumer did not take the sourceMapURL as
+  // a parameter.  This mode is still somewhat supported, which is why
+  // this code block is conditional.  However, it's preferable to pass
+  // the source map URL to SourceMapConsumer, so that this function
+  // can implement the source URL resolution algorithm as outlined in
+  // the spec.  This block is basically the equivalent of:
+  //    new URL(sourceURL, sourceMapURL).toString()
+  // ... except it avoids using URL, which wasn't available in the
+  // older releases of node still supported by this library.
+  //
+  // The spec says:
+  //   If the sources are not absolute URLs after prepending of the
+  //   “sourceRoot”, the sources are resolved relative to the
+  //   SourceMap (like resolving script src in a html document).
+  if (sourceMapURL) {
+    var parsed = urlParse(sourceMapURL);
+    if (!parsed) {
+      throw new Error("sourceMapURL could not be parsed");
+    }
+    if (parsed.path) {
+      // Strip the last path component, but keep the "/".
+      var index = parsed.path.lastIndexOf('/');
+      if (index >= 0) {
+        parsed.path = parsed.path.substring(0, index + 1);
+      }
+    }
+    sourceURL = join(urlGenerate(parsed), sourceURL);
+  }
+
+  return normalize(sourceURL);
+}
+exports.computeSourceURL = computeSourceURL;
+
+
+/***/ }),
+
+/***/ 6594:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+/*
+ * Copyright 2009-2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE.txt or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+/* unused reexport */ __nccwpck_require__(9425)/* .SourceMapGenerator */ .h;
+exports.SourceMapConsumer = __nccwpck_require__(5155).SourceMapConsumer;
+/* unused reexport */ __nccwpck_require__(2616);
+
+
+/***/ }),
+
 /***/ 4294:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -10307,7 +15137,7 @@ const {
   RequestAbortedError
 } = __nccwpck_require__(8045)
 const util = __nccwpck_require__(3983)
-const { getResolveErrorBodyCallback } = __nccwpck_require__(7474)
+const { getResolveErrorBodyCallback } = __nccwpck_require__(110)
 const { AsyncResource } = __nccwpck_require__(852)
 const { addSignal, removeSignal } = __nccwpck_require__(7032)
 
@@ -10496,7 +15326,7 @@ const {
   RequestAbortedError
 } = __nccwpck_require__(8045)
 const util = __nccwpck_require__(3983)
-const { getResolveErrorBodyCallback } = __nccwpck_require__(7474)
+const { getResolveErrorBodyCallback } = __nccwpck_require__(110)
 const { AsyncResource } = __nccwpck_require__(852)
 const { addSignal, removeSignal } = __nccwpck_require__(7032)
 
@@ -11169,7 +15999,7 @@ function consumeFinish (consume, err) {
 
 /***/ }),
 
-/***/ 7474:
+/***/ 110:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 const assert = __nccwpck_require__(9491)
@@ -29736,7 +34566,7 @@ const {
   kSentClose,
   kByteParser,
   kReceivedClose
-} = __nccwpck_require__(7578)
+} = __nccwpck_require__(5226)
 const { fireEvent, failWebsocketConnection } = __nccwpck_require__(5515)
 const { CloseEvent } = __nccwpck_require__(2611)
 const { makeRequest } = __nccwpck_require__(8359)
@@ -30482,7 +35312,7 @@ module.exports = {
 const { Writable } = __nccwpck_require__(2781)
 const diagnosticsChannel = __nccwpck_require__(7643)
 const { parserStates, opcodes, states, emptyBuffer } = __nccwpck_require__(9188)
-const { kReadyState, kSentClose, kResponse, kReceivedClose } = __nccwpck_require__(7578)
+const { kReadyState, kSentClose, kResponse, kReceivedClose } = __nccwpck_require__(5226)
 const { isValidStatusCode, failWebsocketConnection, websocketMessageReceived } = __nccwpck_require__(5515)
 const { WebsocketFrameSend } = __nccwpck_require__(5444)
 
@@ -30825,7 +35655,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 7578:
+/***/ 5226:
 /***/ ((module) => {
 
 "use strict";
@@ -30851,7 +35681,7 @@ module.exports = {
 "use strict";
 
 
-const { kReadyState, kController, kResponse, kBinaryType, kWebSocketURL } = __nccwpck_require__(7578)
+const { kReadyState, kController, kResponse, kBinaryType, kWebSocketURL } = __nccwpck_require__(5226)
 const { states, opcodes } = __nccwpck_require__(9188)
 const { MessageEvent, ErrorEvent } = __nccwpck_require__(2611)
 
@@ -31072,7 +35902,7 @@ const {
   kResponse,
   kSentClose,
   kByteParser
-} = __nccwpck_require__(7578)
+} = __nccwpck_require__(5226)
 const { isEstablished, isClosing, isValidSubprotocol, failWebsocketConnection, fireEvent } = __nccwpck_require__(5515)
 const { establishWebSocketConnection } = __nccwpck_require__(5354)
 const { WebsocketFrameSend } = __nccwpck_require__(5444)
@@ -31713,9 +36543,9 @@ const fs = __nccwpck_require__(7147);
 const os = __nccwpck_require__(2037);
 const path = __nccwpck_require__(1017);
 const core = __nccwpck_require__(2186);
-const unity_hub_1 = __nccwpck_require__(1723);
-const unity_version_1 = __nccwpck_require__(3331);
-const utilities_1 = __nccwpck_require__(9746);
+const unity_cli_1 = __nccwpck_require__(4858);
+const unity_cli_2 = __nccwpck_require__(4858);
+const unity_cli_3 = __nccwpck_require__(4858);
 async function ValidateInputs() {
     const modules = [];
     const architectureInput = core.getInput('architecture') || getInstallationArch();
@@ -31750,11 +36580,7 @@ async function ValidateInputs() {
             core.info(`  > ${module}`);
         }
     }
-    if (modules.length === 0) {
-        core.info(`  > None`);
-    }
-    core.info(`buildTargets:`);
-    const moduleMap = unity_hub_1.UnityHub.GetPlatformTargetModuleMap();
+    const moduleMap = unity_cli_1.UnityHub.GetPlatformTargetModuleMap();
     for (const target of buildTargets) {
         const module = moduleMap[target];
         if (module === undefined) {
@@ -31768,7 +36594,7 @@ async function ValidateInputs() {
             core.info(`  > ${target} -> ${module}`);
         }
     }
-    if (buildTargets.length == 0) {
+    if (modules.length === 0) {
         core.info(`  > None`);
     }
     const versions = getUnityVersionsFromInput(architecture);
@@ -31783,7 +36609,7 @@ async function ValidateInputs() {
         }
     }
     if (versions.length > 1) {
-        versions.sort(unity_version_1.UnityVersion.compare);
+        versions.sort(unity_cli_2.UnityVersion.compare);
     }
     core.info(`Unity Versions:`);
     for (const unityVersion of versions) {
@@ -31848,7 +36674,7 @@ async function getVersionFilePath() {
         return undefined;
     }
     if (!projectVersionPath) {
-        projectVersionPath = await (0, utilities_1.ResolveGlobToPath)([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
+        projectVersionPath = await (0, unity_cli_3.ResolveGlobToPath)([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
     }
     if (projectVersionPath) {
         try {
@@ -31865,7 +36691,7 @@ async function getVersionFilePath() {
             catch (error) {
                 core.error(error);
                 try {
-                    projectVersionPath = await (0, utilities_1.ResolveGlobToPath)([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
+                    projectVersionPath = await (0, unity_cli_3.ResolveGlobToPath)([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
                     await fs.promises.access(projectVersionPath, fs.constants.R_OK);
                     return projectVersionPath;
                 }
@@ -31905,7 +36731,7 @@ function getUnityVersionsFromInput(architecture) {
                 break;
         }
         const changeset = match.groups.changeset;
-        const unityVersion = new unity_version_1.UnityVersion(version, changeset, architecture);
+        const unityVersion = new unity_cli_2.UnityVersion(version, changeset, architecture);
         core.debug(`  > ${unityVersion.toString()}`);
         try {
             versions.push(unityVersion);
@@ -31932,7 +36758,7 @@ async function getUnityVersionFromFile(versionFilePath, architecture) {
     if (!match.groups.changeset) {
         throw Error(`No changeset group found!`);
     }
-    return new unity_version_1.UnityVersion(match.groups.version, match.groups.changeset, architecture);
+    return new unity_cli_2.UnityVersion(match.groups.version, match.groups.changeset, architecture);
 }
 
 
@@ -32050,6 +36876,14 @@ module.exports = require("net");
 
 /***/ }),
 
+/***/ 7718:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:child_process");
+
+/***/ }),
+
 /***/ 6005:
 /***/ ((module) => {
 
@@ -32087,6 +36921,14 @@ module.exports = require("node:fs/promises");
 
 "use strict";
 module.exports = require("node:path");
+
+/***/ }),
+
+/***/ 7742:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:process");
 
 /***/ }),
 
@@ -34136,18 +38978,4285 @@ function expand_(str, isTop) {
 
 /***/ }),
 
-/***/ 1871:
+/***/ 4379:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+const { Argument } = __nccwpck_require__(9414);
+const { Command } = __nccwpck_require__(552);
+const { CommanderError, InvalidArgumentError } = __nccwpck_require__(2625);
+const { Help } = __nccwpck_require__(5153);
+const { Option } = __nccwpck_require__(6558);
+
+exports.program = new Command();
+
+exports.createCommand = (name) => new Command(name);
+exports.createOption = (flags, description) => new Option(flags, description);
+exports.createArgument = (name, description) => new Argument(name, description);
+
+/**
+ * Expose classes
+ */
+
+exports.Command = Command;
+exports.Option = Option;
+exports.Argument = Argument;
+exports.Help = Help;
+
+exports.CommanderError = CommanderError;
+exports.InvalidArgumentError = InvalidArgumentError;
+exports.InvalidOptionArgumentError = InvalidArgumentError; // Deprecated
+
+
+/***/ }),
+
+/***/ 9414:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+const { InvalidArgumentError } = __nccwpck_require__(2625);
+
+class Argument {
+  /**
+   * Initialize a new command argument with the given name and description.
+   * The default is that the argument is required, and you can explicitly
+   * indicate this with <> around the name. Put [] around the name for an optional argument.
+   *
+   * @param {string} name
+   * @param {string} [description]
+   */
+
+  constructor(name, description) {
+    this.description = description || '';
+    this.variadic = false;
+    this.parseArg = undefined;
+    this.defaultValue = undefined;
+    this.defaultValueDescription = undefined;
+    this.argChoices = undefined;
+
+    switch (name[0]) {
+      case '<': // e.g. <required>
+        this.required = true;
+        this._name = name.slice(1, -1);
+        break;
+      case '[': // e.g. [optional]
+        this.required = false;
+        this._name = name.slice(1, -1);
+        break;
+      default:
+        this.required = true;
+        this._name = name;
+        break;
+    }
+
+    if (this._name.endsWith('...')) {
+      this.variadic = true;
+      this._name = this._name.slice(0, -3);
+    }
+  }
+
+  /**
+   * Return argument name.
+   *
+   * @return {string}
+   */
+
+  name() {
+    return this._name;
+  }
+
+  /**
+   * @package
+   */
+
+  _collectValue(value, previous) {
+    if (previous === this.defaultValue || !Array.isArray(previous)) {
+      return [value];
+    }
+
+    previous.push(value);
+    return previous;
+  }
+
+  /**
+   * Set the default value, and optionally supply the description to be displayed in the help.
+   *
+   * @param {*} value
+   * @param {string} [description]
+   * @return {Argument}
+   */
+
+  default(value, description) {
+    this.defaultValue = value;
+    this.defaultValueDescription = description;
+    return this;
+  }
+
+  /**
+   * Set the custom handler for processing CLI command arguments into argument values.
+   *
+   * @param {Function} [fn]
+   * @return {Argument}
+   */
+
+  argParser(fn) {
+    this.parseArg = fn;
+    return this;
+  }
+
+  /**
+   * Only allow argument value to be one of choices.
+   *
+   * @param {string[]} values
+   * @return {Argument}
+   */
+
+  choices(values) {
+    this.argChoices = values.slice();
+    this.parseArg = (arg, previous) => {
+      if (!this.argChoices.includes(arg)) {
+        throw new InvalidArgumentError(
+          `Allowed choices are ${this.argChoices.join(', ')}.`,
+        );
+      }
+      if (this.variadic) {
+        return this._collectValue(arg, previous);
+      }
+      return arg;
+    };
+    return this;
+  }
+
+  /**
+   * Make argument required.
+   *
+   * @returns {Argument}
+   */
+  argRequired() {
+    this.required = true;
+    return this;
+  }
+
+  /**
+   * Make argument optional.
+   *
+   * @returns {Argument}
+   */
+  argOptional() {
+    this.required = false;
+    return this;
+  }
+}
+
+/**
+ * Takes an argument and returns its human readable equivalent for help usage.
+ *
+ * @param {Argument} arg
+ * @return {string}
+ * @private
+ */
+
+function humanReadableArgName(arg) {
+  const nameOutput = arg.name() + (arg.variadic === true ? '...' : '');
+
+  return arg.required ? '<' + nameOutput + '>' : '[' + nameOutput + ']';
+}
+
+exports.Argument = Argument;
+exports.humanReadableArgName = humanReadableArgName;
+
+
+/***/ }),
+
+/***/ 552:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+const EventEmitter = (__nccwpck_require__(5673).EventEmitter);
+const childProcess = __nccwpck_require__(7718);
+const path = __nccwpck_require__(9411);
+const fs = __nccwpck_require__(7561);
+const process = __nccwpck_require__(7742);
+
+const { Argument, humanReadableArgName } = __nccwpck_require__(9414);
+const { CommanderError } = __nccwpck_require__(2625);
+const { Help, stripColor } = __nccwpck_require__(5153);
+const { Option, DualOptions } = __nccwpck_require__(6558);
+const { suggestSimilar } = __nccwpck_require__(7592);
+
+class Command extends EventEmitter {
+  /**
+   * Initialize a new `Command`.
+   *
+   * @param {string} [name]
+   */
+
+  constructor(name) {
+    super();
+    /** @type {Command[]} */
+    this.commands = [];
+    /** @type {Option[]} */
+    this.options = [];
+    this.parent = null;
+    this._allowUnknownOption = false;
+    this._allowExcessArguments = false;
+    /** @type {Argument[]} */
+    this.registeredArguments = [];
+    this._args = this.registeredArguments; // deprecated old name
+    /** @type {string[]} */
+    this.args = []; // cli args with options removed
+    this.rawArgs = [];
+    this.processedArgs = []; // like .args but after custom processing and collecting variadic
+    this._scriptPath = null;
+    this._name = name || '';
+    this._optionValues = {};
+    this._optionValueSources = {}; // default, env, cli etc
+    this._storeOptionsAsProperties = false;
+    this._actionHandler = null;
+    this._executableHandler = false;
+    this._executableFile = null; // custom name for executable
+    this._executableDir = null; // custom search directory for subcommands
+    this._defaultCommandName = null;
+    this._exitCallback = null;
+    this._aliases = [];
+    this._combineFlagAndOptionalValue = true;
+    this._description = '';
+    this._summary = '';
+    this._argsDescription = undefined; // legacy
+    this._enablePositionalOptions = false;
+    this._passThroughOptions = false;
+    this._lifeCycleHooks = {}; // a hash of arrays
+    /** @type {(boolean | string)} */
+    this._showHelpAfterError = false;
+    this._showSuggestionAfterError = true;
+    this._savedState = null; // used in save/restoreStateBeforeParse
+
+    // see configureOutput() for docs
+    this._outputConfiguration = {
+      writeOut: (str) => process.stdout.write(str),
+      writeErr: (str) => process.stderr.write(str),
+      outputError: (str, write) => write(str),
+      getOutHelpWidth: () =>
+        process.stdout.isTTY ? process.stdout.columns : undefined,
+      getErrHelpWidth: () =>
+        process.stderr.isTTY ? process.stderr.columns : undefined,
+      getOutHasColors: () =>
+        useColor() ?? (process.stdout.isTTY && process.stdout.hasColors?.()),
+      getErrHasColors: () =>
+        useColor() ?? (process.stderr.isTTY && process.stderr.hasColors?.()),
+      stripColor: (str) => stripColor(str),
+    };
+
+    this._hidden = false;
+    /** @type {(Option | null | undefined)} */
+    this._helpOption = undefined; // Lazy created on demand. May be null if help option is disabled.
+    this._addImplicitHelpCommand = undefined; // undecided whether true or false yet, not inherited
+    /** @type {Command} */
+    this._helpCommand = undefined; // lazy initialised, inherited
+    this._helpConfiguration = {};
+    /** @type {string | undefined} */
+    this._helpGroupHeading = undefined; // soft initialised when added to parent
+    /** @type {string | undefined} */
+    this._defaultCommandGroup = undefined;
+    /** @type {string | undefined} */
+    this._defaultOptionGroup = undefined;
+  }
+
+  /**
+   * Copy settings that are useful to have in common across root command and subcommands.
+   *
+   * (Used internally when adding a command using `.command()` so subcommands inherit parent settings.)
+   *
+   * @param {Command} sourceCommand
+   * @return {Command} `this` command for chaining
+   */
+  copyInheritedSettings(sourceCommand) {
+    this._outputConfiguration = sourceCommand._outputConfiguration;
+    this._helpOption = sourceCommand._helpOption;
+    this._helpCommand = sourceCommand._helpCommand;
+    this._helpConfiguration = sourceCommand._helpConfiguration;
+    this._exitCallback = sourceCommand._exitCallback;
+    this._storeOptionsAsProperties = sourceCommand._storeOptionsAsProperties;
+    this._combineFlagAndOptionalValue =
+      sourceCommand._combineFlagAndOptionalValue;
+    this._allowExcessArguments = sourceCommand._allowExcessArguments;
+    this._enablePositionalOptions = sourceCommand._enablePositionalOptions;
+    this._showHelpAfterError = sourceCommand._showHelpAfterError;
+    this._showSuggestionAfterError = sourceCommand._showSuggestionAfterError;
+
+    return this;
+  }
+
+  /**
+   * @returns {Command[]}
+   * @private
+   */
+
+  _getCommandAndAncestors() {
+    const result = [];
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    for (let command = this; command; command = command.parent) {
+      result.push(command);
+    }
+    return result;
+  }
+
+  /**
+   * Define a command.
+   *
+   * There are two styles of command: pay attention to where to put the description.
+   *
+   * @example
+   * // Command implemented using action handler (description is supplied separately to `.command`)
+   * program
+   *   .command('clone <source> [destination]')
+   *   .description('clone a repository into a newly created directory')
+   *   .action((source, destination) => {
+   *     console.log('clone command called');
+   *   });
+   *
+   * // Command implemented using separate executable file (description is second parameter to `.command`)
+   * program
+   *   .command('start <service>', 'start named service')
+   *   .command('stop [service]', 'stop named service, or all if no name supplied');
+   *
+   * @param {string} nameAndArgs - command name and arguments, args are `<required>` or `[optional]` and last may also be `variadic...`
+   * @param {(object | string)} [actionOptsOrExecDesc] - configuration options (for action), or description (for executable)
+   * @param {object} [execOpts] - configuration options (for executable)
+   * @return {Command} returns new command for action handler, or `this` for executable command
+   */
+
+  command(nameAndArgs, actionOptsOrExecDesc, execOpts) {
+    let desc = actionOptsOrExecDesc;
+    let opts = execOpts;
+    if (typeof desc === 'object' && desc !== null) {
+      opts = desc;
+      desc = null;
+    }
+    opts = opts || {};
+    const [, name, args] = nameAndArgs.match(/([^ ]+) *(.*)/);
+
+    const cmd = this.createCommand(name);
+    if (desc) {
+      cmd.description(desc);
+      cmd._executableHandler = true;
+    }
+    if (opts.isDefault) this._defaultCommandName = cmd._name;
+    cmd._hidden = !!(opts.noHelp || opts.hidden); // noHelp is deprecated old name for hidden
+    cmd._executableFile = opts.executableFile || null; // Custom name for executable file, set missing to null to match constructor
+    if (args) cmd.arguments(args);
+    this._registerCommand(cmd);
+    cmd.parent = this;
+    cmd.copyInheritedSettings(this);
+
+    if (desc) return this;
+    return cmd;
+  }
+
+  /**
+   * Factory routine to create a new unattached command.
+   *
+   * See .command() for creating an attached subcommand, which uses this routine to
+   * create the command. You can override createCommand to customise subcommands.
+   *
+   * @param {string} [name]
+   * @return {Command} new command
+   */
+
+  createCommand(name) {
+    return new Command(name);
+  }
+
+  /**
+   * You can customise the help with a subclass of Help by overriding createHelp,
+   * or by overriding Help properties using configureHelp().
+   *
+   * @return {Help}
+   */
+
+  createHelp() {
+    return Object.assign(new Help(), this.configureHelp());
+  }
+
+  /**
+   * You can customise the help by overriding Help properties using configureHelp(),
+   * or with a subclass of Help by overriding createHelp().
+   *
+   * @param {object} [configuration] - configuration options
+   * @return {(Command | object)} `this` command for chaining, or stored configuration
+   */
+
+  configureHelp(configuration) {
+    if (configuration === undefined) return this._helpConfiguration;
+
+    this._helpConfiguration = configuration;
+    return this;
+  }
+
+  /**
+   * The default output goes to stdout and stderr. You can customise this for special
+   * applications. You can also customise the display of errors by overriding outputError.
+   *
+   * The configuration properties are all functions:
+   *
+   *     // change how output being written, defaults to stdout and stderr
+   *     writeOut(str)
+   *     writeErr(str)
+   *     // change how output being written for errors, defaults to writeErr
+   *     outputError(str, write) // used for displaying errors and not used for displaying help
+   *     // specify width for wrapping help
+   *     getOutHelpWidth()
+   *     getErrHelpWidth()
+   *     // color support, currently only used with Help
+   *     getOutHasColors()
+   *     getErrHasColors()
+   *     stripColor() // used to remove ANSI escape codes if output does not have colors
+   *
+   * @param {object} [configuration] - configuration options
+   * @return {(Command | object)} `this` command for chaining, or stored configuration
+   */
+
+  configureOutput(configuration) {
+    if (configuration === undefined) return this._outputConfiguration;
+
+    this._outputConfiguration = {
+      ...this._outputConfiguration,
+      ...configuration,
+    };
+    return this;
+  }
+
+  /**
+   * Display the help or a custom message after an error occurs.
+   *
+   * @param {(boolean|string)} [displayHelp]
+   * @return {Command} `this` command for chaining
+   */
+  showHelpAfterError(displayHelp = true) {
+    if (typeof displayHelp !== 'string') displayHelp = !!displayHelp;
+    this._showHelpAfterError = displayHelp;
+    return this;
+  }
+
+  /**
+   * Display suggestion of similar commands for unknown commands, or options for unknown options.
+   *
+   * @param {boolean} [displaySuggestion]
+   * @return {Command} `this` command for chaining
+   */
+  showSuggestionAfterError(displaySuggestion = true) {
+    this._showSuggestionAfterError = !!displaySuggestion;
+    return this;
+  }
+
+  /**
+   * Add a prepared subcommand.
+   *
+   * See .command() for creating an attached subcommand which inherits settings from its parent.
+   *
+   * @param {Command} cmd - new subcommand
+   * @param {object} [opts] - configuration options
+   * @return {Command} `this` command for chaining
+   */
+
+  addCommand(cmd, opts) {
+    if (!cmd._name) {
+      throw new Error(`Command passed to .addCommand() must have a name
+- specify the name in Command constructor or using .name()`);
+    }
+
+    opts = opts || {};
+    if (opts.isDefault) this._defaultCommandName = cmd._name;
+    if (opts.noHelp || opts.hidden) cmd._hidden = true; // modifying passed command due to existing implementation
+
+    this._registerCommand(cmd);
+    cmd.parent = this;
+    cmd._checkForBrokenPassThrough();
+
+    return this;
+  }
+
+  /**
+   * Factory routine to create a new unattached argument.
+   *
+   * See .argument() for creating an attached argument, which uses this routine to
+   * create the argument. You can override createArgument to return a custom argument.
+   *
+   * @param {string} name
+   * @param {string} [description]
+   * @return {Argument} new argument
+   */
+
+  createArgument(name, description) {
+    return new Argument(name, description);
+  }
+
+  /**
+   * Define argument syntax for command.
+   *
+   * The default is that the argument is required, and you can explicitly
+   * indicate this with <> around the name. Put [] around the name for an optional argument.
+   *
+   * @example
+   * program.argument('<input-file>');
+   * program.argument('[output-file]');
+   *
+   * @param {string} name
+   * @param {string} [description]
+   * @param {(Function|*)} [parseArg] - custom argument processing function or default value
+   * @param {*} [defaultValue]
+   * @return {Command} `this` command for chaining
+   */
+  argument(name, description, parseArg, defaultValue) {
+    const argument = this.createArgument(name, description);
+    if (typeof parseArg === 'function') {
+      argument.default(defaultValue).argParser(parseArg);
+    } else {
+      argument.default(parseArg);
+    }
+    this.addArgument(argument);
+    return this;
+  }
+
+  /**
+   * Define argument syntax for command, adding multiple at once (without descriptions).
+   *
+   * See also .argument().
+   *
+   * @example
+   * program.arguments('<cmd> [env]');
+   *
+   * @param {string} names
+   * @return {Command} `this` command for chaining
+   */
+
+  arguments(names) {
+    names
+      .trim()
+      .split(/ +/)
+      .forEach((detail) => {
+        this.argument(detail);
+      });
+    return this;
+  }
+
+  /**
+   * Define argument syntax for command, adding a prepared argument.
+   *
+   * @param {Argument} argument
+   * @return {Command} `this` command for chaining
+   */
+  addArgument(argument) {
+    const previousArgument = this.registeredArguments.slice(-1)[0];
+    if (previousArgument?.variadic) {
+      throw new Error(
+        `only the last argument can be variadic '${previousArgument.name()}'`,
+      );
+    }
+    if (
+      argument.required &&
+      argument.defaultValue !== undefined &&
+      argument.parseArg === undefined
+    ) {
+      throw new Error(
+        `a default value for a required argument is never used: '${argument.name()}'`,
+      );
+    }
+    this.registeredArguments.push(argument);
+    return this;
+  }
+
+  /**
+   * Customise or override default help command. By default a help command is automatically added if your command has subcommands.
+   *
+   * @example
+   *    program.helpCommand('help [cmd]');
+   *    program.helpCommand('help [cmd]', 'show help');
+   *    program.helpCommand(false); // suppress default help command
+   *    program.helpCommand(true); // add help command even if no subcommands
+   *
+   * @param {string|boolean} enableOrNameAndArgs - enable with custom name and/or arguments, or boolean to override whether added
+   * @param {string} [description] - custom description
+   * @return {Command} `this` command for chaining
+   */
+
+  helpCommand(enableOrNameAndArgs, description) {
+    if (typeof enableOrNameAndArgs === 'boolean') {
+      this._addImplicitHelpCommand = enableOrNameAndArgs;
+      if (enableOrNameAndArgs && this._defaultCommandGroup) {
+        // make the command to store the group
+        this._initCommandGroup(this._getHelpCommand());
+      }
+      return this;
+    }
+
+    const nameAndArgs = enableOrNameAndArgs ?? 'help [command]';
+    const [, helpName, helpArgs] = nameAndArgs.match(/([^ ]+) *(.*)/);
+    const helpDescription = description ?? 'display help for command';
+
+    const helpCommand = this.createCommand(helpName);
+    helpCommand.helpOption(false);
+    if (helpArgs) helpCommand.arguments(helpArgs);
+    if (helpDescription) helpCommand.description(helpDescription);
+
+    this._addImplicitHelpCommand = true;
+    this._helpCommand = helpCommand;
+    // init group unless lazy create
+    if (enableOrNameAndArgs || description) this._initCommandGroup(helpCommand);
+
+    return this;
+  }
+
+  /**
+   * Add prepared custom help command.
+   *
+   * @param {(Command|string|boolean)} helpCommand - custom help command, or deprecated enableOrNameAndArgs as for `.helpCommand()`
+   * @param {string} [deprecatedDescription] - deprecated custom description used with custom name only
+   * @return {Command} `this` command for chaining
+   */
+  addHelpCommand(helpCommand, deprecatedDescription) {
+    // If not passed an object, call through to helpCommand for backwards compatibility,
+    // as addHelpCommand was originally used like helpCommand is now.
+    if (typeof helpCommand !== 'object') {
+      this.helpCommand(helpCommand, deprecatedDescription);
+      return this;
+    }
+
+    this._addImplicitHelpCommand = true;
+    this._helpCommand = helpCommand;
+    this._initCommandGroup(helpCommand);
+    return this;
+  }
+
+  /**
+   * Lazy create help command.
+   *
+   * @return {(Command|null)}
+   * @package
+   */
+  _getHelpCommand() {
+    const hasImplicitHelpCommand =
+      this._addImplicitHelpCommand ??
+      (this.commands.length &&
+        !this._actionHandler &&
+        !this._findCommand('help'));
+
+    if (hasImplicitHelpCommand) {
+      if (this._helpCommand === undefined) {
+        this.helpCommand(undefined, undefined); // use default name and description
+      }
+      return this._helpCommand;
+    }
+    return null;
+  }
+
+  /**
+   * Add hook for life cycle event.
+   *
+   * @param {string} event
+   * @param {Function} listener
+   * @return {Command} `this` command for chaining
+   */
+
+  hook(event, listener) {
+    const allowedValues = ['preSubcommand', 'preAction', 'postAction'];
+    if (!allowedValues.includes(event)) {
+      throw new Error(`Unexpected value for event passed to hook : '${event}'.
+Expecting one of '${allowedValues.join("', '")}'`);
+    }
+    if (this._lifeCycleHooks[event]) {
+      this._lifeCycleHooks[event].push(listener);
+    } else {
+      this._lifeCycleHooks[event] = [listener];
+    }
+    return this;
+  }
+
+  /**
+   * Register callback to use as replacement for calling process.exit.
+   *
+   * @param {Function} [fn] optional callback which will be passed a CommanderError, defaults to throwing
+   * @return {Command} `this` command for chaining
+   */
+
+  exitOverride(fn) {
+    if (fn) {
+      this._exitCallback = fn;
+    } else {
+      this._exitCallback = (err) => {
+        if (err.code !== 'commander.executeSubCommandAsync') {
+          throw err;
+        } else {
+          // Async callback from spawn events, not useful to throw.
+        }
+      };
+    }
+    return this;
+  }
+
+  /**
+   * Call process.exit, and _exitCallback if defined.
+   *
+   * @param {number} exitCode exit code for using with process.exit
+   * @param {string} code an id string representing the error
+   * @param {string} message human-readable description of the error
+   * @return never
+   * @private
+   */
+
+  _exit(exitCode, code, message) {
+    if (this._exitCallback) {
+      this._exitCallback(new CommanderError(exitCode, code, message));
+      // Expecting this line is not reached.
+    }
+    process.exit(exitCode);
+  }
+
+  /**
+   * Register callback `fn` for the command.
+   *
+   * @example
+   * program
+   *   .command('serve')
+   *   .description('start service')
+   *   .action(function() {
+   *      // do work here
+   *   });
+   *
+   * @param {Function} fn
+   * @return {Command} `this` command for chaining
+   */
+
+  action(fn) {
+    const listener = (args) => {
+      // The .action callback takes an extra parameter which is the command or options.
+      const expectedArgsCount = this.registeredArguments.length;
+      const actionArgs = args.slice(0, expectedArgsCount);
+      if (this._storeOptionsAsProperties) {
+        actionArgs[expectedArgsCount] = this; // backwards compatible "options"
+      } else {
+        actionArgs[expectedArgsCount] = this.opts();
+      }
+      actionArgs.push(this);
+
+      return fn.apply(this, actionArgs);
+    };
+    this._actionHandler = listener;
+    return this;
+  }
+
+  /**
+   * Factory routine to create a new unattached option.
+   *
+   * See .option() for creating an attached option, which uses this routine to
+   * create the option. You can override createOption to return a custom option.
+   *
+   * @param {string} flags
+   * @param {string} [description]
+   * @return {Option} new option
+   */
+
+  createOption(flags, description) {
+    return new Option(flags, description);
+  }
+
+  /**
+   * Wrap parseArgs to catch 'commander.invalidArgument'.
+   *
+   * @param {(Option | Argument)} target
+   * @param {string} value
+   * @param {*} previous
+   * @param {string} invalidArgumentMessage
+   * @private
+   */
+
+  _callParseArg(target, value, previous, invalidArgumentMessage) {
+    try {
+      return target.parseArg(value, previous);
+    } catch (err) {
+      if (err.code === 'commander.invalidArgument') {
+        const message = `${invalidArgumentMessage} ${err.message}`;
+        this.error(message, { exitCode: err.exitCode, code: err.code });
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Check for option flag conflicts.
+   * Register option if no conflicts found, or throw on conflict.
+   *
+   * @param {Option} option
+   * @private
+   */
+
+  _registerOption(option) {
+    const matchingOption =
+      (option.short && this._findOption(option.short)) ||
+      (option.long && this._findOption(option.long));
+    if (matchingOption) {
+      const matchingFlag =
+        option.long && this._findOption(option.long)
+          ? option.long
+          : option.short;
+      throw new Error(`Cannot add option '${option.flags}'${this._name && ` to command '${this._name}'`} due to conflicting flag '${matchingFlag}'
+-  already used by option '${matchingOption.flags}'`);
+    }
+
+    this._initOptionGroup(option);
+    this.options.push(option);
+  }
+
+  /**
+   * Check for command name and alias conflicts with existing commands.
+   * Register command if no conflicts found, or throw on conflict.
+   *
+   * @param {Command} command
+   * @private
+   */
+
+  _registerCommand(command) {
+    const knownBy = (cmd) => {
+      return [cmd.name()].concat(cmd.aliases());
+    };
+
+    const alreadyUsed = knownBy(command).find((name) =>
+      this._findCommand(name),
+    );
+    if (alreadyUsed) {
+      const existingCmd = knownBy(this._findCommand(alreadyUsed)).join('|');
+      const newCmd = knownBy(command).join('|');
+      throw new Error(
+        `cannot add command '${newCmd}' as already have command '${existingCmd}'`,
+      );
+    }
+
+    this._initCommandGroup(command);
+    this.commands.push(command);
+  }
+
+  /**
+   * Add an option.
+   *
+   * @param {Option} option
+   * @return {Command} `this` command for chaining
+   */
+  addOption(option) {
+    this._registerOption(option);
+
+    const oname = option.name();
+    const name = option.attributeName();
+
+    // store default value
+    if (option.negate) {
+      // --no-foo is special and defaults foo to true, unless a --foo option is already defined
+      const positiveLongFlag = option.long.replace(/^--no-/, '--');
+      if (!this._findOption(positiveLongFlag)) {
+        this.setOptionValueWithSource(
+          name,
+          option.defaultValue === undefined ? true : option.defaultValue,
+          'default',
+        );
+      }
+    } else if (option.defaultValue !== undefined) {
+      this.setOptionValueWithSource(name, option.defaultValue, 'default');
+    }
+
+    // handler for cli and env supplied values
+    const handleOptionValue = (val, invalidValueMessage, valueSource) => {
+      // val is null for optional option used without an optional-argument.
+      // val is undefined for boolean and negated option.
+      if (val == null && option.presetArg !== undefined) {
+        val = option.presetArg;
+      }
+
+      // custom processing
+      const oldValue = this.getOptionValue(name);
+      if (val !== null && option.parseArg) {
+        val = this._callParseArg(option, val, oldValue, invalidValueMessage);
+      } else if (val !== null && option.variadic) {
+        val = option._collectValue(val, oldValue);
+      }
+
+      // Fill-in appropriate missing values. Long winded but easy to follow.
+      if (val == null) {
+        if (option.negate) {
+          val = false;
+        } else if (option.isBoolean() || option.optional) {
+          val = true;
+        } else {
+          val = ''; // not normal, parseArg might have failed or be a mock function for testing
+        }
+      }
+      this.setOptionValueWithSource(name, val, valueSource);
+    };
+
+    this.on('option:' + oname, (val) => {
+      const invalidValueMessage = `error: option '${option.flags}' argument '${val}' is invalid.`;
+      handleOptionValue(val, invalidValueMessage, 'cli');
+    });
+
+    if (option.envVar) {
+      this.on('optionEnv:' + oname, (val) => {
+        const invalidValueMessage = `error: option '${option.flags}' value '${val}' from env '${option.envVar}' is invalid.`;
+        handleOptionValue(val, invalidValueMessage, 'env');
+      });
+    }
+
+    return this;
+  }
+
+  /**
+   * Internal implementation shared by .option() and .requiredOption()
+   *
+   * @return {Command} `this` command for chaining
+   * @private
+   */
+  _optionEx(config, flags, description, fn, defaultValue) {
+    if (typeof flags === 'object' && flags instanceof Option) {
+      throw new Error(
+        'To add an Option object use addOption() instead of option() or requiredOption()',
+      );
+    }
+    const option = this.createOption(flags, description);
+    option.makeOptionMandatory(!!config.mandatory);
+    if (typeof fn === 'function') {
+      option.default(defaultValue).argParser(fn);
+    } else if (fn instanceof RegExp) {
+      // deprecated
+      const regex = fn;
+      fn = (val, def) => {
+        const m = regex.exec(val);
+        return m ? m[0] : def;
+      };
+      option.default(defaultValue).argParser(fn);
+    } else {
+      option.default(fn);
+    }
+
+    return this.addOption(option);
+  }
+
+  /**
+   * Define option with `flags`, `description`, and optional argument parsing function or `defaultValue` or both.
+   *
+   * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space. A required
+   * option-argument is indicated by `<>` and an optional option-argument by `[]`.
+   *
+   * See the README for more details, and see also addOption() and requiredOption().
+   *
+   * @example
+   * program
+   *     .option('-p, --pepper', 'add pepper')
+   *     .option('--pt, --pizza-type <TYPE>', 'type of pizza') // required option-argument
+   *     .option('-c, --cheese [CHEESE]', 'add extra cheese', 'mozzarella') // optional option-argument with default
+   *     .option('-t, --tip <VALUE>', 'add tip to purchase cost', parseFloat) // custom parse function
+   *
+   * @param {string} flags
+   * @param {string} [description]
+   * @param {(Function|*)} [parseArg] - custom option processing function or default value
+   * @param {*} [defaultValue]
+   * @return {Command} `this` command for chaining
+   */
+
+  option(flags, description, parseArg, defaultValue) {
+    return this._optionEx({}, flags, description, parseArg, defaultValue);
+  }
+
+  /**
+   * Add a required option which must have a value after parsing. This usually means
+   * the option must be specified on the command line. (Otherwise the same as .option().)
+   *
+   * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space.
+   *
+   * @param {string} flags
+   * @param {string} [description]
+   * @param {(Function|*)} [parseArg] - custom option processing function or default value
+   * @param {*} [defaultValue]
+   * @return {Command} `this` command for chaining
+   */
+
+  requiredOption(flags, description, parseArg, defaultValue) {
+    return this._optionEx(
+      { mandatory: true },
+      flags,
+      description,
+      parseArg,
+      defaultValue,
+    );
+  }
+
+  /**
+   * Alter parsing of short flags with optional values.
+   *
+   * @example
+   * // for `.option('-f,--flag [value]'):
+   * program.combineFlagAndOptionalValue(true);  // `-f80` is treated like `--flag=80`, this is the default behaviour
+   * program.combineFlagAndOptionalValue(false) // `-fb` is treated like `-f -b`
+   *
+   * @param {boolean} [combine] - if `true` or omitted, an optional value can be specified directly after the flag.
+   * @return {Command} `this` command for chaining
+   */
+  combineFlagAndOptionalValue(combine = true) {
+    this._combineFlagAndOptionalValue = !!combine;
+    return this;
+  }
+
+  /**
+   * Allow unknown options on the command line.
+   *
+   * @param {boolean} [allowUnknown] - if `true` or omitted, no error will be thrown for unknown options.
+   * @return {Command} `this` command for chaining
+   */
+  allowUnknownOption(allowUnknown = true) {
+    this._allowUnknownOption = !!allowUnknown;
+    return this;
+  }
+
+  /**
+   * Allow excess command-arguments on the command line. Pass false to make excess arguments an error.
+   *
+   * @param {boolean} [allowExcess] - if `true` or omitted, no error will be thrown for excess arguments.
+   * @return {Command} `this` command for chaining
+   */
+  allowExcessArguments(allowExcess = true) {
+    this._allowExcessArguments = !!allowExcess;
+    return this;
+  }
+
+  /**
+   * Enable positional options. Positional means global options are specified before subcommands which lets
+   * subcommands reuse the same option names, and also enables subcommands to turn on passThroughOptions.
+   * The default behaviour is non-positional and global options may appear anywhere on the command line.
+   *
+   * @param {boolean} [positional]
+   * @return {Command} `this` command for chaining
+   */
+  enablePositionalOptions(positional = true) {
+    this._enablePositionalOptions = !!positional;
+    return this;
+  }
+
+  /**
+   * Pass through options that come after command-arguments rather than treat them as command-options,
+   * so actual command-options come before command-arguments. Turning this on for a subcommand requires
+   * positional options to have been enabled on the program (parent commands).
+   * The default behaviour is non-positional and options may appear before or after command-arguments.
+   *
+   * @param {boolean} [passThrough] for unknown options.
+   * @return {Command} `this` command for chaining
+   */
+  passThroughOptions(passThrough = true) {
+    this._passThroughOptions = !!passThrough;
+    this._checkForBrokenPassThrough();
+    return this;
+  }
+
+  /**
+   * @private
+   */
+
+  _checkForBrokenPassThrough() {
+    if (
+      this.parent &&
+      this._passThroughOptions &&
+      !this.parent._enablePositionalOptions
+    ) {
+      throw new Error(
+        `passThroughOptions cannot be used for '${this._name}' without turning on enablePositionalOptions for parent command(s)`,
+      );
+    }
+  }
+
+  /**
+   * Whether to store option values as properties on command object,
+   * or store separately (specify false). In both cases the option values can be accessed using .opts().
+   *
+   * @param {boolean} [storeAsProperties=true]
+   * @return {Command} `this` command for chaining
+   */
+
+  storeOptionsAsProperties(storeAsProperties = true) {
+    if (this.options.length) {
+      throw new Error('call .storeOptionsAsProperties() before adding options');
+    }
+    if (Object.keys(this._optionValues).length) {
+      throw new Error(
+        'call .storeOptionsAsProperties() before setting option values',
+      );
+    }
+    this._storeOptionsAsProperties = !!storeAsProperties;
+    return this;
+  }
+
+  /**
+   * Retrieve option value.
+   *
+   * @param {string} key
+   * @return {object} value
+   */
+
+  getOptionValue(key) {
+    if (this._storeOptionsAsProperties) {
+      return this[key];
+    }
+    return this._optionValues[key];
+  }
+
+  /**
+   * Store option value.
+   *
+   * @param {string} key
+   * @param {object} value
+   * @return {Command} `this` command for chaining
+   */
+
+  setOptionValue(key, value) {
+    return this.setOptionValueWithSource(key, value, undefined);
+  }
+
+  /**
+   * Store option value and where the value came from.
+   *
+   * @param {string} key
+   * @param {object} value
+   * @param {string} source - expected values are default/config/env/cli/implied
+   * @return {Command} `this` command for chaining
+   */
+
+  setOptionValueWithSource(key, value, source) {
+    if (this._storeOptionsAsProperties) {
+      this[key] = value;
+    } else {
+      this._optionValues[key] = value;
+    }
+    this._optionValueSources[key] = source;
+    return this;
+  }
+
+  /**
+   * Get source of option value.
+   * Expected values are default | config | env | cli | implied
+   *
+   * @param {string} key
+   * @return {string}
+   */
+
+  getOptionValueSource(key) {
+    return this._optionValueSources[key];
+  }
+
+  /**
+   * Get source of option value. See also .optsWithGlobals().
+   * Expected values are default | config | env | cli | implied
+   *
+   * @param {string} key
+   * @return {string}
+   */
+
+  getOptionValueSourceWithGlobals(key) {
+    // global overwrites local, like optsWithGlobals
+    let source;
+    this._getCommandAndAncestors().forEach((cmd) => {
+      if (cmd.getOptionValueSource(key) !== undefined) {
+        source = cmd.getOptionValueSource(key);
+      }
+    });
+    return source;
+  }
+
+  /**
+   * Get user arguments from implied or explicit arguments.
+   * Side-effects: set _scriptPath if args included script. Used for default program name, and subcommand searches.
+   *
+   * @private
+   */
+
+  _prepareUserArgs(argv, parseOptions) {
+    if (argv !== undefined && !Array.isArray(argv)) {
+      throw new Error('first parameter to parse must be array or undefined');
+    }
+    parseOptions = parseOptions || {};
+
+    // auto-detect argument conventions if nothing supplied
+    if (argv === undefined && parseOptions.from === undefined) {
+      if (process.versions?.electron) {
+        parseOptions.from = 'electron';
+      }
+      // check node specific options for scenarios where user CLI args follow executable without scriptname
+      const execArgv = process.execArgv ?? [];
+      if (
+        execArgv.includes('-e') ||
+        execArgv.includes('--eval') ||
+        execArgv.includes('-p') ||
+        execArgv.includes('--print')
+      ) {
+        parseOptions.from = 'eval'; // internal usage, not documented
+      }
+    }
+
+    // default to using process.argv
+    if (argv === undefined) {
+      argv = process.argv;
+    }
+    this.rawArgs = argv.slice();
+
+    // extract the user args and scriptPath
+    let userArgs;
+    switch (parseOptions.from) {
+      case undefined:
+      case 'node':
+        this._scriptPath = argv[1];
+        userArgs = argv.slice(2);
+        break;
+      case 'electron':
+        // @ts-ignore: because defaultApp is an unknown property
+        if (process.defaultApp) {
+          this._scriptPath = argv[1];
+          userArgs = argv.slice(2);
+        } else {
+          userArgs = argv.slice(1);
+        }
+        break;
+      case 'user':
+        userArgs = argv.slice(0);
+        break;
+      case 'eval':
+        userArgs = argv.slice(1);
+        break;
+      default:
+        throw new Error(
+          `unexpected parse option { from: '${parseOptions.from}' }`,
+        );
+    }
+
+    // Find default name for program from arguments.
+    if (!this._name && this._scriptPath)
+      this.nameFromFilename(this._scriptPath);
+    this._name = this._name || 'program';
+
+    return userArgs;
+  }
+
+  /**
+   * Parse `argv`, setting options and invoking commands when defined.
+   *
+   * Use parseAsync instead of parse if any of your action handlers are async.
+   *
+   * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
+   *
+   * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
+   * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
+   * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
+   * - `'user'`: just user arguments
+   *
+   * @example
+   * program.parse(); // parse process.argv and auto-detect electron and special node flags
+   * program.parse(process.argv); // assume argv[0] is app and argv[1] is script
+   * program.parse(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
+   *
+   * @param {string[]} [argv] - optional, defaults to process.argv
+   * @param {object} [parseOptions] - optionally specify style of options with from: node/user/electron
+   * @param {string} [parseOptions.from] - where the args are from: 'node', 'user', 'electron'
+   * @return {Command} `this` command for chaining
+   */
+
+  parse(argv, parseOptions) {
+    this._prepareForParse();
+    const userArgs = this._prepareUserArgs(argv, parseOptions);
+    this._parseCommand([], userArgs);
+
+    return this;
+  }
+
+  /**
+   * Parse `argv`, setting options and invoking commands when defined.
+   *
+   * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
+   *
+   * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
+   * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
+   * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
+   * - `'user'`: just user arguments
+   *
+   * @example
+   * await program.parseAsync(); // parse process.argv and auto-detect electron and special node flags
+   * await program.parseAsync(process.argv); // assume argv[0] is app and argv[1] is script
+   * await program.parseAsync(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
+   *
+   * @param {string[]} [argv]
+   * @param {object} [parseOptions]
+   * @param {string} parseOptions.from - where the args are from: 'node', 'user', 'electron'
+   * @return {Promise}
+   */
+
+  async parseAsync(argv, parseOptions) {
+    this._prepareForParse();
+    const userArgs = this._prepareUserArgs(argv, parseOptions);
+    await this._parseCommand([], userArgs);
+
+    return this;
+  }
+
+  _prepareForParse() {
+    if (this._savedState === null) {
+      this.saveStateBeforeParse();
+    } else {
+      this.restoreStateBeforeParse();
+    }
+  }
+
+  /**
+   * Called the first time parse is called to save state and allow a restore before subsequent calls to parse.
+   * Not usually called directly, but available for subclasses to save their custom state.
+   *
+   * This is called in a lazy way. Only commands used in parsing chain will have state saved.
+   */
+  saveStateBeforeParse() {
+    this._savedState = {
+      // name is stable if supplied by author, but may be unspecified for root command and deduced during parsing
+      _name: this._name,
+      // option values before parse have default values (including false for negated options)
+      // shallow clones
+      _optionValues: { ...this._optionValues },
+      _optionValueSources: { ...this._optionValueSources },
+    };
+  }
+
+  /**
+   * Restore state before parse for calls after the first.
+   * Not usually called directly, but available for subclasses to save their custom state.
+   *
+   * This is called in a lazy way. Only commands used in parsing chain will have state restored.
+   */
+  restoreStateBeforeParse() {
+    if (this._storeOptionsAsProperties)
+      throw new Error(`Can not call parse again when storeOptionsAsProperties is true.
+- either make a new Command for each call to parse, or stop storing options as properties`);
+
+    // clear state from _prepareUserArgs
+    this._name = this._savedState._name;
+    this._scriptPath = null;
+    this.rawArgs = [];
+    // clear state from setOptionValueWithSource
+    this._optionValues = { ...this._savedState._optionValues };
+    this._optionValueSources = { ...this._savedState._optionValueSources };
+    // clear state from _parseCommand
+    this.args = [];
+    // clear state from _processArguments
+    this.processedArgs = [];
+  }
+
+  /**
+   * Throw if expected executable is missing. Add lots of help for author.
+   *
+   * @param {string} executableFile
+   * @param {string} executableDir
+   * @param {string} subcommandName
+   */
+  _checkForMissingExecutable(executableFile, executableDir, subcommandName) {
+    if (fs.existsSync(executableFile)) return;
+
+    const executableDirMessage = executableDir
+      ? `searched for local subcommand relative to directory '${executableDir}'`
+      : 'no directory for search for local subcommand, use .executableDir() to supply a custom directory';
+    const executableMissing = `'${executableFile}' does not exist
+ - if '${subcommandName}' is not meant to be an executable command, remove description parameter from '.command()' and use '.description()' instead
+ - if the default executable name is not suitable, use the executableFile option to supply a custom name or path
+ - ${executableDirMessage}`;
+    throw new Error(executableMissing);
+  }
+
+  /**
+   * Execute a sub-command executable.
+   *
+   * @private
+   */
+
+  _executeSubCommand(subcommand, args) {
+    args = args.slice();
+    let launchWithNode = false; // Use node for source targets so do not need to get permissions correct, and on Windows.
+    const sourceExt = ['.js', '.ts', '.tsx', '.mjs', '.cjs'];
+
+    function findFile(baseDir, baseName) {
+      // Look for specified file
+      const localBin = path.resolve(baseDir, baseName);
+      if (fs.existsSync(localBin)) return localBin;
+
+      // Stop looking if candidate already has an expected extension.
+      if (sourceExt.includes(path.extname(baseName))) return undefined;
+
+      // Try all the extensions.
+      const foundExt = sourceExt.find((ext) =>
+        fs.existsSync(`${localBin}${ext}`),
+      );
+      if (foundExt) return `${localBin}${foundExt}`;
+
+      return undefined;
+    }
+
+    // Not checking for help first. Unlikely to have mandatory and executable, and can't robustly test for help flags in external command.
+    this._checkForMissingMandatoryOptions();
+    this._checkForConflictingOptions();
+
+    // executableFile and executableDir might be full path, or just a name
+    let executableFile =
+      subcommand._executableFile || `${this._name}-${subcommand._name}`;
+    let executableDir = this._executableDir || '';
+    if (this._scriptPath) {
+      let resolvedScriptPath; // resolve possible symlink for installed npm binary
+      try {
+        resolvedScriptPath = fs.realpathSync(this._scriptPath);
+      } catch {
+        resolvedScriptPath = this._scriptPath;
+      }
+      executableDir = path.resolve(
+        path.dirname(resolvedScriptPath),
+        executableDir,
+      );
+    }
+
+    // Look for a local file in preference to a command in PATH.
+    if (executableDir) {
+      let localFile = findFile(executableDir, executableFile);
+
+      // Legacy search using prefix of script name instead of command name
+      if (!localFile && !subcommand._executableFile && this._scriptPath) {
+        const legacyName = path.basename(
+          this._scriptPath,
+          path.extname(this._scriptPath),
+        );
+        if (legacyName !== this._name) {
+          localFile = findFile(
+            executableDir,
+            `${legacyName}-${subcommand._name}`,
+          );
+        }
+      }
+      executableFile = localFile || executableFile;
+    }
+
+    launchWithNode = sourceExt.includes(path.extname(executableFile));
+
+    let proc;
+    if (process.platform !== 'win32') {
+      if (launchWithNode) {
+        args.unshift(executableFile);
+        // add executable arguments to spawn
+        args = incrementNodeInspectorPort(process.execArgv).concat(args);
+
+        proc = childProcess.spawn(process.argv[0], args, { stdio: 'inherit' });
+      } else {
+        proc = childProcess.spawn(executableFile, args, { stdio: 'inherit' });
+      }
+    } else {
+      this._checkForMissingExecutable(
+        executableFile,
+        executableDir,
+        subcommand._name,
+      );
+      args.unshift(executableFile);
+      // add executable arguments to spawn
+      args = incrementNodeInspectorPort(process.execArgv).concat(args);
+      proc = childProcess.spawn(process.execPath, args, { stdio: 'inherit' });
+    }
+
+    if (!proc.killed) {
+      // testing mainly to avoid leak warnings during unit tests with mocked spawn
+      const signals = ['SIGUSR1', 'SIGUSR2', 'SIGTERM', 'SIGINT', 'SIGHUP'];
+      signals.forEach((signal) => {
+        process.on(signal, () => {
+          if (proc.killed === false && proc.exitCode === null) {
+            // @ts-ignore because signals not typed to known strings
+            proc.kill(signal);
+          }
+        });
+      });
+    }
+
+    // By default terminate process when spawned process terminates.
+    const exitCallback = this._exitCallback;
+    proc.on('close', (code) => {
+      code = code ?? 1; // code is null if spawned process terminated due to a signal
+      if (!exitCallback) {
+        process.exit(code);
+      } else {
+        exitCallback(
+          new CommanderError(
+            code,
+            'commander.executeSubCommandAsync',
+            '(close)',
+          ),
+        );
+      }
+    });
+    proc.on('error', (err) => {
+      // @ts-ignore: because err.code is an unknown property
+      if (err.code === 'ENOENT') {
+        this._checkForMissingExecutable(
+          executableFile,
+          executableDir,
+          subcommand._name,
+        );
+        // @ts-ignore: because err.code is an unknown property
+      } else if (err.code === 'EACCES') {
+        throw new Error(`'${executableFile}' not executable`);
+      }
+      if (!exitCallback) {
+        process.exit(1);
+      } else {
+        const wrappedError = new CommanderError(
+          1,
+          'commander.executeSubCommandAsync',
+          '(error)',
+        );
+        wrappedError.nestedError = err;
+        exitCallback(wrappedError);
+      }
+    });
+
+    // Store the reference to the child process
+    this.runningCommand = proc;
+  }
+
+  /**
+   * @private
+   */
+
+  _dispatchSubcommand(commandName, operands, unknown) {
+    const subCommand = this._findCommand(commandName);
+    if (!subCommand) this.help({ error: true });
+
+    subCommand._prepareForParse();
+    let promiseChain;
+    promiseChain = this._chainOrCallSubCommandHook(
+      promiseChain,
+      subCommand,
+      'preSubcommand',
+    );
+    promiseChain = this._chainOrCall(promiseChain, () => {
+      if (subCommand._executableHandler) {
+        this._executeSubCommand(subCommand, operands.concat(unknown));
+      } else {
+        return subCommand._parseCommand(operands, unknown);
+      }
+    });
+    return promiseChain;
+  }
+
+  /**
+   * Invoke help directly if possible, or dispatch if necessary.
+   * e.g. help foo
+   *
+   * @private
+   */
+
+  _dispatchHelpCommand(subcommandName) {
+    if (!subcommandName) {
+      this.help();
+    }
+    const subCommand = this._findCommand(subcommandName);
+    if (subCommand && !subCommand._executableHandler) {
+      subCommand.help();
+    }
+
+    // Fallback to parsing the help flag to invoke the help.
+    return this._dispatchSubcommand(
+      subcommandName,
+      [],
+      [this._getHelpOption()?.long ?? this._getHelpOption()?.short ?? '--help'],
+    );
+  }
+
+  /**
+   * Check this.args against expected this.registeredArguments.
+   *
+   * @private
+   */
+
+  _checkNumberOfArguments() {
+    // too few
+    this.registeredArguments.forEach((arg, i) => {
+      if (arg.required && this.args[i] == null) {
+        this.missingArgument(arg.name());
+      }
+    });
+    // too many
+    if (
+      this.registeredArguments.length > 0 &&
+      this.registeredArguments[this.registeredArguments.length - 1].variadic
+    ) {
+      return;
+    }
+    if (this.args.length > this.registeredArguments.length) {
+      this._excessArguments(this.args);
+    }
+  }
+
+  /**
+   * Process this.args using this.registeredArguments and save as this.processedArgs!
+   *
+   * @private
+   */
+
+  _processArguments() {
+    const myParseArg = (argument, value, previous) => {
+      // Extra processing for nice error message on parsing failure.
+      let parsedValue = value;
+      if (value !== null && argument.parseArg) {
+        const invalidValueMessage = `error: command-argument value '${value}' is invalid for argument '${argument.name()}'.`;
+        parsedValue = this._callParseArg(
+          argument,
+          value,
+          previous,
+          invalidValueMessage,
+        );
+      }
+      return parsedValue;
+    };
+
+    this._checkNumberOfArguments();
+
+    const processedArgs = [];
+    this.registeredArguments.forEach((declaredArg, index) => {
+      let value = declaredArg.defaultValue;
+      if (declaredArg.variadic) {
+        // Collect together remaining arguments for passing together as an array.
+        if (index < this.args.length) {
+          value = this.args.slice(index);
+          if (declaredArg.parseArg) {
+            value = value.reduce((processed, v) => {
+              return myParseArg(declaredArg, v, processed);
+            }, declaredArg.defaultValue);
+          }
+        } else if (value === undefined) {
+          value = [];
+        }
+      } else if (index < this.args.length) {
+        value = this.args[index];
+        if (declaredArg.parseArg) {
+          value = myParseArg(declaredArg, value, declaredArg.defaultValue);
+        }
+      }
+      processedArgs[index] = value;
+    });
+    this.processedArgs = processedArgs;
+  }
+
+  /**
+   * Once we have a promise we chain, but call synchronously until then.
+   *
+   * @param {(Promise|undefined)} promise
+   * @param {Function} fn
+   * @return {(Promise|undefined)}
+   * @private
+   */
+
+  _chainOrCall(promise, fn) {
+    // thenable
+    if (promise?.then && typeof promise.then === 'function') {
+      // already have a promise, chain callback
+      return promise.then(() => fn());
+    }
+    // callback might return a promise
+    return fn();
+  }
+
+  /**
+   *
+   * @param {(Promise|undefined)} promise
+   * @param {string} event
+   * @return {(Promise|undefined)}
+   * @private
+   */
+
+  _chainOrCallHooks(promise, event) {
+    let result = promise;
+    const hooks = [];
+    this._getCommandAndAncestors()
+      .reverse()
+      .filter((cmd) => cmd._lifeCycleHooks[event] !== undefined)
+      .forEach((hookedCommand) => {
+        hookedCommand._lifeCycleHooks[event].forEach((callback) => {
+          hooks.push({ hookedCommand, callback });
+        });
+      });
+    if (event === 'postAction') {
+      hooks.reverse();
+    }
+
+    hooks.forEach((hookDetail) => {
+      result = this._chainOrCall(result, () => {
+        return hookDetail.callback(hookDetail.hookedCommand, this);
+      });
+    });
+    return result;
+  }
+
+  /**
+   *
+   * @param {(Promise|undefined)} promise
+   * @param {Command} subCommand
+   * @param {string} event
+   * @return {(Promise|undefined)}
+   * @private
+   */
+
+  _chainOrCallSubCommandHook(promise, subCommand, event) {
+    let result = promise;
+    if (this._lifeCycleHooks[event] !== undefined) {
+      this._lifeCycleHooks[event].forEach((hook) => {
+        result = this._chainOrCall(result, () => {
+          return hook(this, subCommand);
+        });
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Process arguments in context of this command.
+   * Returns action result, in case it is a promise.
+   *
+   * @private
+   */
+
+  _parseCommand(operands, unknown) {
+    const parsed = this.parseOptions(unknown);
+    this._parseOptionsEnv(); // after cli, so parseArg not called on both cli and env
+    this._parseOptionsImplied();
+    operands = operands.concat(parsed.operands);
+    unknown = parsed.unknown;
+    this.args = operands.concat(unknown);
+
+    if (operands && this._findCommand(operands[0])) {
+      return this._dispatchSubcommand(operands[0], operands.slice(1), unknown);
+    }
+    if (
+      this._getHelpCommand() &&
+      operands[0] === this._getHelpCommand().name()
+    ) {
+      return this._dispatchHelpCommand(operands[1]);
+    }
+    if (this._defaultCommandName) {
+      this._outputHelpIfRequested(unknown); // Run the help for default command from parent rather than passing to default command
+      return this._dispatchSubcommand(
+        this._defaultCommandName,
+        operands,
+        unknown,
+      );
+    }
+    if (
+      this.commands.length &&
+      this.args.length === 0 &&
+      !this._actionHandler &&
+      !this._defaultCommandName
+    ) {
+      // probably missing subcommand and no handler, user needs help (and exit)
+      this.help({ error: true });
+    }
+
+    this._outputHelpIfRequested(parsed.unknown);
+    this._checkForMissingMandatoryOptions();
+    this._checkForConflictingOptions();
+
+    // We do not always call this check to avoid masking a "better" error, like unknown command.
+    const checkForUnknownOptions = () => {
+      if (parsed.unknown.length > 0) {
+        this.unknownOption(parsed.unknown[0]);
+      }
+    };
+
+    const commandEvent = `command:${this.name()}`;
+    if (this._actionHandler) {
+      checkForUnknownOptions();
+      this._processArguments();
+
+      let promiseChain;
+      promiseChain = this._chainOrCallHooks(promiseChain, 'preAction');
+      promiseChain = this._chainOrCall(promiseChain, () =>
+        this._actionHandler(this.processedArgs),
+      );
+      if (this.parent) {
+        promiseChain = this._chainOrCall(promiseChain, () => {
+          this.parent.emit(commandEvent, operands, unknown); // legacy
+        });
+      }
+      promiseChain = this._chainOrCallHooks(promiseChain, 'postAction');
+      return promiseChain;
+    }
+    if (this.parent?.listenerCount(commandEvent)) {
+      checkForUnknownOptions();
+      this._processArguments();
+      this.parent.emit(commandEvent, operands, unknown); // legacy
+    } else if (operands.length) {
+      if (this._findCommand('*')) {
+        // legacy default command
+        return this._dispatchSubcommand('*', operands, unknown);
+      }
+      if (this.listenerCount('command:*')) {
+        // skip option check, emit event for possible misspelling suggestion
+        this.emit('command:*', operands, unknown);
+      } else if (this.commands.length) {
+        this.unknownCommand();
+      } else {
+        checkForUnknownOptions();
+        this._processArguments();
+      }
+    } else if (this.commands.length) {
+      checkForUnknownOptions();
+      // This command has subcommands and nothing hooked up at this level, so display help (and exit).
+      this.help({ error: true });
+    } else {
+      checkForUnknownOptions();
+      this._processArguments();
+      // fall through for caller to handle after calling .parse()
+    }
+  }
+
+  /**
+   * Find matching command.
+   *
+   * @private
+   * @return {Command | undefined}
+   */
+  _findCommand(name) {
+    if (!name) return undefined;
+    return this.commands.find(
+      (cmd) => cmd._name === name || cmd._aliases.includes(name),
+    );
+  }
+
+  /**
+   * Return an option matching `arg` if any.
+   *
+   * @param {string} arg
+   * @return {Option}
+   * @package
+   */
+
+  _findOption(arg) {
+    return this.options.find((option) => option.is(arg));
+  }
+
+  /**
+   * Display an error message if a mandatory option does not have a value.
+   * Called after checking for help flags in leaf subcommand.
+   *
+   * @private
+   */
+
+  _checkForMissingMandatoryOptions() {
+    // Walk up hierarchy so can call in subcommand after checking for displaying help.
+    this._getCommandAndAncestors().forEach((cmd) => {
+      cmd.options.forEach((anOption) => {
+        if (
+          anOption.mandatory &&
+          cmd.getOptionValue(anOption.attributeName()) === undefined
+        ) {
+          cmd.missingMandatoryOptionValue(anOption);
+        }
+      });
+    });
+  }
+
+  /**
+   * Display an error message if conflicting options are used together in this.
+   *
+   * @private
+   */
+  _checkForConflictingLocalOptions() {
+    const definedNonDefaultOptions = this.options.filter((option) => {
+      const optionKey = option.attributeName();
+      if (this.getOptionValue(optionKey) === undefined) {
+        return false;
+      }
+      return this.getOptionValueSource(optionKey) !== 'default';
+    });
+
+    const optionsWithConflicting = definedNonDefaultOptions.filter(
+      (option) => option.conflictsWith.length > 0,
+    );
+
+    optionsWithConflicting.forEach((option) => {
+      const conflictingAndDefined = definedNonDefaultOptions.find((defined) =>
+        option.conflictsWith.includes(defined.attributeName()),
+      );
+      if (conflictingAndDefined) {
+        this._conflictingOption(option, conflictingAndDefined);
+      }
+    });
+  }
+
+  /**
+   * Display an error message if conflicting options are used together.
+   * Called after checking for help flags in leaf subcommand.
+   *
+   * @private
+   */
+  _checkForConflictingOptions() {
+    // Walk up hierarchy so can call in subcommand after checking for displaying help.
+    this._getCommandAndAncestors().forEach((cmd) => {
+      cmd._checkForConflictingLocalOptions();
+    });
+  }
+
+  /**
+   * Parse options from `argv` removing known options,
+   * and return argv split into operands and unknown arguments.
+   *
+   * Side effects: modifies command by storing options. Does not reset state if called again.
+   *
+   * Examples:
+   *
+   *     argv => operands, unknown
+   *     --known kkk op => [op], []
+   *     op --known kkk => [op], []
+   *     sub --unknown uuu op => [sub], [--unknown uuu op]
+   *     sub -- --unknown uuu op => [sub --unknown uuu op], []
+   *
+   * @param {string[]} args
+   * @return {{operands: string[], unknown: string[]}}
+   */
+
+  parseOptions(args) {
+    const operands = []; // operands, not options or values
+    const unknown = []; // first unknown option and remaining unknown args
+    let dest = operands;
+
+    function maybeOption(arg) {
+      return arg.length > 1 && arg[0] === '-';
+    }
+
+    const negativeNumberArg = (arg) => {
+      // return false if not a negative number
+      if (!/^-\d*\.?\d+(e[+-]?\d+)?$/.test(arg)) return false;
+      // negative number is ok unless digit used as an option in command hierarchy
+      return !this._getCommandAndAncestors().some((cmd) =>
+        cmd.options
+          .map((opt) => opt.short)
+          .some((short) => /^-\d$/.test(short)),
+      );
+    };
+
+    // parse options
+    let activeVariadicOption = null;
+    let activeGroup = null; // working through group of short options, like -abc
+    let i = 0;
+    while (i < args.length || activeGroup) {
+      const arg = activeGroup ?? args[i++];
+      activeGroup = null;
+
+      // literal
+      if (arg === '--') {
+        if (dest === unknown) dest.push(arg);
+        dest.push(...args.slice(i));
+        break;
+      }
+
+      if (
+        activeVariadicOption &&
+        (!maybeOption(arg) || negativeNumberArg(arg))
+      ) {
+        this.emit(`option:${activeVariadicOption.name()}`, arg);
+        continue;
+      }
+      activeVariadicOption = null;
+
+      if (maybeOption(arg)) {
+        const option = this._findOption(arg);
+        // recognised option, call listener to assign value with possible custom processing
+        if (option) {
+          if (option.required) {
+            const value = args[i++];
+            if (value === undefined) this.optionMissingArgument(option);
+            this.emit(`option:${option.name()}`, value);
+          } else if (option.optional) {
+            let value = null;
+            // historical behaviour is optional value is following arg unless an option
+            if (
+              i < args.length &&
+              (!maybeOption(args[i]) || negativeNumberArg(args[i]))
+            ) {
+              value = args[i++];
+            }
+            this.emit(`option:${option.name()}`, value);
+          } else {
+            // boolean flag
+            this.emit(`option:${option.name()}`);
+          }
+          activeVariadicOption = option.variadic ? option : null;
+          continue;
+        }
+      }
+
+      // Look for combo options following single dash, eat first one if known.
+      if (arg.length > 2 && arg[0] === '-' && arg[1] !== '-') {
+        const option = this._findOption(`-${arg[1]}`);
+        if (option) {
+          if (
+            option.required ||
+            (option.optional && this._combineFlagAndOptionalValue)
+          ) {
+            // option with value following in same argument
+            this.emit(`option:${option.name()}`, arg.slice(2));
+          } else {
+            // boolean option
+            this.emit(`option:${option.name()}`);
+            // remove the processed option and keep processing group
+            activeGroup = `-${arg.slice(2)}`;
+          }
+          continue;
+        }
+      }
+
+      // Look for known long flag with value, like --foo=bar
+      if (/^--[^=]+=/.test(arg)) {
+        const index = arg.indexOf('=');
+        const option = this._findOption(arg.slice(0, index));
+        if (option && (option.required || option.optional)) {
+          this.emit(`option:${option.name()}`, arg.slice(index + 1));
+          continue;
+        }
+      }
+
+      // Not a recognised option by this command.
+      // Might be a command-argument, or subcommand option, or unknown option, or help command or option.
+
+      // An unknown option means further arguments also classified as unknown so can be reprocessed by subcommands.
+      // A negative number in a leaf command is not an unknown option.
+      if (
+        dest === operands &&
+        maybeOption(arg) &&
+        !(this.commands.length === 0 && negativeNumberArg(arg))
+      ) {
+        dest = unknown;
+      }
+
+      // If using positionalOptions, stop processing our options at subcommand.
+      if (
+        (this._enablePositionalOptions || this._passThroughOptions) &&
+        operands.length === 0 &&
+        unknown.length === 0
+      ) {
+        if (this._findCommand(arg)) {
+          operands.push(arg);
+          unknown.push(...args.slice(i));
+          break;
+        } else if (
+          this._getHelpCommand() &&
+          arg === this._getHelpCommand().name()
+        ) {
+          operands.push(arg, ...args.slice(i));
+          break;
+        } else if (this._defaultCommandName) {
+          unknown.push(arg, ...args.slice(i));
+          break;
+        }
+      }
+
+      // If using passThroughOptions, stop processing options at first command-argument.
+      if (this._passThroughOptions) {
+        dest.push(arg, ...args.slice(i));
+        break;
+      }
+
+      // add arg
+      dest.push(arg);
+    }
+
+    return { operands, unknown };
+  }
+
+  /**
+   * Return an object containing local option values as key-value pairs.
+   *
+   * @return {object}
+   */
+  opts() {
+    if (this._storeOptionsAsProperties) {
+      // Preserve original behaviour so backwards compatible when still using properties
+      const result = {};
+      const len = this.options.length;
+
+      for (let i = 0; i < len; i++) {
+        const key = this.options[i].attributeName();
+        result[key] =
+          key === this._versionOptionName ? this._version : this[key];
+      }
+      return result;
+    }
+
+    return this._optionValues;
+  }
+
+  /**
+   * Return an object containing merged local and global option values as key-value pairs.
+   *
+   * @return {object}
+   */
+  optsWithGlobals() {
+    // globals overwrite locals
+    return this._getCommandAndAncestors().reduce(
+      (combinedOptions, cmd) => Object.assign(combinedOptions, cmd.opts()),
+      {},
+    );
+  }
+
+  /**
+   * Display error message and exit (or call exitOverride).
+   *
+   * @param {string} message
+   * @param {object} [errorOptions]
+   * @param {string} [errorOptions.code] - an id string representing the error
+   * @param {number} [errorOptions.exitCode] - used with process.exit
+   */
+  error(message, errorOptions) {
+    // output handling
+    this._outputConfiguration.outputError(
+      `${message}\n`,
+      this._outputConfiguration.writeErr,
+    );
+    if (typeof this._showHelpAfterError === 'string') {
+      this._outputConfiguration.writeErr(`${this._showHelpAfterError}\n`);
+    } else if (this._showHelpAfterError) {
+      this._outputConfiguration.writeErr('\n');
+      this.outputHelp({ error: true });
+    }
+
+    // exit handling
+    const config = errorOptions || {};
+    const exitCode = config.exitCode || 1;
+    const code = config.code || 'commander.error';
+    this._exit(exitCode, code, message);
+  }
+
+  /**
+   * Apply any option related environment variables, if option does
+   * not have a value from cli or client code.
+   *
+   * @private
+   */
+  _parseOptionsEnv() {
+    this.options.forEach((option) => {
+      if (option.envVar && option.envVar in process.env) {
+        const optionKey = option.attributeName();
+        // Priority check. Do not overwrite cli or options from unknown source (client-code).
+        if (
+          this.getOptionValue(optionKey) === undefined ||
+          ['default', 'config', 'env'].includes(
+            this.getOptionValueSource(optionKey),
+          )
+        ) {
+          if (option.required || option.optional) {
+            // option can take a value
+            // keep very simple, optional always takes value
+            this.emit(`optionEnv:${option.name()}`, process.env[option.envVar]);
+          } else {
+            // boolean
+            // keep very simple, only care that envVar defined and not the value
+            this.emit(`optionEnv:${option.name()}`);
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Apply any implied option values, if option is undefined or default value.
+   *
+   * @private
+   */
+  _parseOptionsImplied() {
+    const dualHelper = new DualOptions(this.options);
+    const hasCustomOptionValue = (optionKey) => {
+      return (
+        this.getOptionValue(optionKey) !== undefined &&
+        !['default', 'implied'].includes(this.getOptionValueSource(optionKey))
+      );
+    };
+    this.options
+      .filter(
+        (option) =>
+          option.implied !== undefined &&
+          hasCustomOptionValue(option.attributeName()) &&
+          dualHelper.valueFromOption(
+            this.getOptionValue(option.attributeName()),
+            option,
+          ),
+      )
+      .forEach((option) => {
+        Object.keys(option.implied)
+          .filter((impliedKey) => !hasCustomOptionValue(impliedKey))
+          .forEach((impliedKey) => {
+            this.setOptionValueWithSource(
+              impliedKey,
+              option.implied[impliedKey],
+              'implied',
+            );
+          });
+      });
+  }
+
+  /**
+   * Argument `name` is missing.
+   *
+   * @param {string} name
+   * @private
+   */
+
+  missingArgument(name) {
+    const message = `error: missing required argument '${name}'`;
+    this.error(message, { code: 'commander.missingArgument' });
+  }
+
+  /**
+   * `Option` is missing an argument.
+   *
+   * @param {Option} option
+   * @private
+   */
+
+  optionMissingArgument(option) {
+    const message = `error: option '${option.flags}' argument missing`;
+    this.error(message, { code: 'commander.optionMissingArgument' });
+  }
+
+  /**
+   * `Option` does not have a value, and is a mandatory option.
+   *
+   * @param {Option} option
+   * @private
+   */
+
+  missingMandatoryOptionValue(option) {
+    const message = `error: required option '${option.flags}' not specified`;
+    this.error(message, { code: 'commander.missingMandatoryOptionValue' });
+  }
+
+  /**
+   * `Option` conflicts with another option.
+   *
+   * @param {Option} option
+   * @param {Option} conflictingOption
+   * @private
+   */
+  _conflictingOption(option, conflictingOption) {
+    // The calling code does not know whether a negated option is the source of the
+    // value, so do some work to take an educated guess.
+    const findBestOptionFromValue = (option) => {
+      const optionKey = option.attributeName();
+      const optionValue = this.getOptionValue(optionKey);
+      const negativeOption = this.options.find(
+        (target) => target.negate && optionKey === target.attributeName(),
+      );
+      const positiveOption = this.options.find(
+        (target) => !target.negate && optionKey === target.attributeName(),
+      );
+      if (
+        negativeOption &&
+        ((negativeOption.presetArg === undefined && optionValue === false) ||
+          (negativeOption.presetArg !== undefined &&
+            optionValue === negativeOption.presetArg))
+      ) {
+        return negativeOption;
+      }
+      return positiveOption || option;
+    };
+
+    const getErrorMessage = (option) => {
+      const bestOption = findBestOptionFromValue(option);
+      const optionKey = bestOption.attributeName();
+      const source = this.getOptionValueSource(optionKey);
+      if (source === 'env') {
+        return `environment variable '${bestOption.envVar}'`;
+      }
+      return `option '${bestOption.flags}'`;
+    };
+
+    const message = `error: ${getErrorMessage(option)} cannot be used with ${getErrorMessage(conflictingOption)}`;
+    this.error(message, { code: 'commander.conflictingOption' });
+  }
+
+  /**
+   * Unknown option `flag`.
+   *
+   * @param {string} flag
+   * @private
+   */
+
+  unknownOption(flag) {
+    if (this._allowUnknownOption) return;
+    let suggestion = '';
+
+    if (flag.startsWith('--') && this._showSuggestionAfterError) {
+      // Looping to pick up the global options too
+      let candidateFlags = [];
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
+      let command = this;
+      do {
+        const moreFlags = command
+          .createHelp()
+          .visibleOptions(command)
+          .filter((option) => option.long)
+          .map((option) => option.long);
+        candidateFlags = candidateFlags.concat(moreFlags);
+        command = command.parent;
+      } while (command && !command._enablePositionalOptions);
+      suggestion = suggestSimilar(flag, candidateFlags);
+    }
+
+    const message = `error: unknown option '${flag}'${suggestion}`;
+    this.error(message, { code: 'commander.unknownOption' });
+  }
+
+  /**
+   * Excess arguments, more than expected.
+   *
+   * @param {string[]} receivedArgs
+   * @private
+   */
+
+  _excessArguments(receivedArgs) {
+    if (this._allowExcessArguments) return;
+
+    const expected = this.registeredArguments.length;
+    const s = expected === 1 ? '' : 's';
+    const forSubcommand = this.parent ? ` for '${this.name()}'` : '';
+    const message = `error: too many arguments${forSubcommand}. Expected ${expected} argument${s} but got ${receivedArgs.length}.`;
+    this.error(message, { code: 'commander.excessArguments' });
+  }
+
+  /**
+   * Unknown command.
+   *
+   * @private
+   */
+
+  unknownCommand() {
+    const unknownName = this.args[0];
+    let suggestion = '';
+
+    if (this._showSuggestionAfterError) {
+      const candidateNames = [];
+      this.createHelp()
+        .visibleCommands(this)
+        .forEach((command) => {
+          candidateNames.push(command.name());
+          // just visible alias
+          if (command.alias()) candidateNames.push(command.alias());
+        });
+      suggestion = suggestSimilar(unknownName, candidateNames);
+    }
+
+    const message = `error: unknown command '${unknownName}'${suggestion}`;
+    this.error(message, { code: 'commander.unknownCommand' });
+  }
+
+  /**
+   * Get or set the program version.
+   *
+   * This method auto-registers the "-V, --version" option which will print the version number.
+   *
+   * You can optionally supply the flags and description to override the defaults.
+   *
+   * @param {string} [str]
+   * @param {string} [flags]
+   * @param {string} [description]
+   * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
+   */
+
+  version(str, flags, description) {
+    if (str === undefined) return this._version;
+    this._version = str;
+    flags = flags || '-V, --version';
+    description = description || 'output the version number';
+    const versionOption = this.createOption(flags, description);
+    this._versionOptionName = versionOption.attributeName();
+    this._registerOption(versionOption);
+
+    this.on('option:' + versionOption.name(), () => {
+      this._outputConfiguration.writeOut(`${str}\n`);
+      this._exit(0, 'commander.version', str);
+    });
+    return this;
+  }
+
+  /**
+   * Set the description.
+   *
+   * @param {string} [str]
+   * @param {object} [argsDescription]
+   * @return {(string|Command)}
+   */
+  description(str, argsDescription) {
+    if (str === undefined && argsDescription === undefined)
+      return this._description;
+    this._description = str;
+    if (argsDescription) {
+      this._argsDescription = argsDescription;
+    }
+    return this;
+  }
+
+  /**
+   * Set the summary. Used when listed as subcommand of parent.
+   *
+   * @param {string} [str]
+   * @return {(string|Command)}
+   */
+  summary(str) {
+    if (str === undefined) return this._summary;
+    this._summary = str;
+    return this;
+  }
+
+  /**
+   * Set an alias for the command.
+   *
+   * You may call more than once to add multiple aliases. Only the first alias is shown in the auto-generated help.
+   *
+   * @param {string} [alias]
+   * @return {(string|Command)}
+   */
+
+  alias(alias) {
+    if (alias === undefined) return this._aliases[0]; // just return first, for backwards compatibility
+
+    /** @type {Command} */
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    let command = this;
+    if (
+      this.commands.length !== 0 &&
+      this.commands[this.commands.length - 1]._executableHandler
+    ) {
+      // assume adding alias for last added executable subcommand, rather than this
+      command = this.commands[this.commands.length - 1];
+    }
+
+    if (alias === command._name)
+      throw new Error("Command alias can't be the same as its name");
+    const matchingCommand = this.parent?._findCommand(alias);
+    if (matchingCommand) {
+      // c.f. _registerCommand
+      const existingCmd = [matchingCommand.name()]
+        .concat(matchingCommand.aliases())
+        .join('|');
+      throw new Error(
+        `cannot add alias '${alias}' to command '${this.name()}' as already have command '${existingCmd}'`,
+      );
+    }
+
+    command._aliases.push(alias);
+    return this;
+  }
+
+  /**
+   * Set aliases for the command.
+   *
+   * Only the first alias is shown in the auto-generated help.
+   *
+   * @param {string[]} [aliases]
+   * @return {(string[]|Command)}
+   */
+
+  aliases(aliases) {
+    // Getter for the array of aliases is the main reason for having aliases() in addition to alias().
+    if (aliases === undefined) return this._aliases;
+
+    aliases.forEach((alias) => this.alias(alias));
+    return this;
+  }
+
+  /**
+   * Set / get the command usage `str`.
+   *
+   * @param {string} [str]
+   * @return {(string|Command)}
+   */
+
+  usage(str) {
+    if (str === undefined) {
+      if (this._usage) return this._usage;
+
+      const args = this.registeredArguments.map((arg) => {
+        return humanReadableArgName(arg);
+      });
+      return []
+        .concat(
+          this.options.length || this._helpOption !== null ? '[options]' : [],
+          this.commands.length ? '[command]' : [],
+          this.registeredArguments.length ? args : [],
+        )
+        .join(' ');
+    }
+
+    this._usage = str;
+    return this;
+  }
+
+  /**
+   * Get or set the name of the command.
+   *
+   * @param {string} [str]
+   * @return {(string|Command)}
+   */
+
+  name(str) {
+    if (str === undefined) return this._name;
+    this._name = str;
+    return this;
+  }
+
+  /**
+   * Set/get the help group heading for this subcommand in parent command's help.
+   *
+   * @param {string} [heading]
+   * @return {Command | string}
+   */
+
+  helpGroup(heading) {
+    if (heading === undefined) return this._helpGroupHeading ?? '';
+    this._helpGroupHeading = heading;
+    return this;
+  }
+
+  /**
+   * Set/get the default help group heading for subcommands added to this command.
+   * (This does not override a group set directly on the subcommand using .helpGroup().)
+   *
+   * @example
+   * program.commandsGroup('Development Commands:);
+   * program.command('watch')...
+   * program.command('lint')...
+   * ...
+   *
+   * @param {string} [heading]
+   * @returns {Command | string}
+   */
+  commandsGroup(heading) {
+    if (heading === undefined) return this._defaultCommandGroup ?? '';
+    this._defaultCommandGroup = heading;
+    return this;
+  }
+
+  /**
+   * Set/get the default help group heading for options added to this command.
+   * (This does not override a group set directly on the option using .helpGroup().)
+   *
+   * @example
+   * program
+   *   .optionsGroup('Development Options:')
+   *   .option('-d, --debug', 'output extra debugging')
+   *   .option('-p, --profile', 'output profiling information')
+   *
+   * @param {string} [heading]
+   * @returns {Command | string}
+   */
+  optionsGroup(heading) {
+    if (heading === undefined) return this._defaultOptionGroup ?? '';
+    this._defaultOptionGroup = heading;
+    return this;
+  }
+
+  /**
+   * @param {Option} option
+   * @private
+   */
+  _initOptionGroup(option) {
+    if (this._defaultOptionGroup && !option.helpGroupHeading)
+      option.helpGroup(this._defaultOptionGroup);
+  }
+
+  /**
+   * @param {Command} cmd
+   * @private
+   */
+  _initCommandGroup(cmd) {
+    if (this._defaultCommandGroup && !cmd.helpGroup())
+      cmd.helpGroup(this._defaultCommandGroup);
+  }
+
+  /**
+   * Set the name of the command from script filename, such as process.argv[1],
+   * or require.main.filename, or __filename.
+   *
+   * (Used internally and public although not documented in README.)
+   *
+   * @example
+   * program.nameFromFilename(require.main.filename);
+   *
+   * @param {string} filename
+   * @return {Command}
+   */
+
+  nameFromFilename(filename) {
+    this._name = path.basename(filename, path.extname(filename));
+
+    return this;
+  }
+
+  /**
+   * Get or set the directory for searching for executable subcommands of this command.
+   *
+   * @example
+   * program.executableDir(__dirname);
+   * // or
+   * program.executableDir('subcommands');
+   *
+   * @param {string} [path]
+   * @return {(string|null|Command)}
+   */
+
+  executableDir(path) {
+    if (path === undefined) return this._executableDir;
+    this._executableDir = path;
+    return this;
+  }
+
+  /**
+   * Return program help documentation.
+   *
+   * @param {{ error: boolean }} [contextOptions] - pass {error:true} to wrap for stderr instead of stdout
+   * @return {string}
+   */
+
+  helpInformation(contextOptions) {
+    const helper = this.createHelp();
+    const context = this._getOutputContext(contextOptions);
+    helper.prepareContext({
+      error: context.error,
+      helpWidth: context.helpWidth,
+      outputHasColors: context.hasColors,
+    });
+    const text = helper.formatHelp(this, helper);
+    if (context.hasColors) return text;
+    return this._outputConfiguration.stripColor(text);
+  }
+
+  /**
+   * @typedef HelpContext
+   * @type {object}
+   * @property {boolean} error
+   * @property {number} helpWidth
+   * @property {boolean} hasColors
+   * @property {function} write - includes stripColor if needed
+   *
+   * @returns {HelpContext}
+   * @private
+   */
+
+  _getOutputContext(contextOptions) {
+    contextOptions = contextOptions || {};
+    const error = !!contextOptions.error;
+    let baseWrite;
+    let hasColors;
+    let helpWidth;
+    if (error) {
+      baseWrite = (str) => this._outputConfiguration.writeErr(str);
+      hasColors = this._outputConfiguration.getErrHasColors();
+      helpWidth = this._outputConfiguration.getErrHelpWidth();
+    } else {
+      baseWrite = (str) => this._outputConfiguration.writeOut(str);
+      hasColors = this._outputConfiguration.getOutHasColors();
+      helpWidth = this._outputConfiguration.getOutHelpWidth();
+    }
+    const write = (str) => {
+      if (!hasColors) str = this._outputConfiguration.stripColor(str);
+      return baseWrite(str);
+    };
+    return { error, write, hasColors, helpWidth };
+  }
+
+  /**
+   * Output help information for this command.
+   *
+   * Outputs built-in help, and custom text added using `.addHelpText()`.
+   *
+   * @param {{ error: boolean } | Function} [contextOptions] - pass {error:true} to write to stderr instead of stdout
+   */
+
+  outputHelp(contextOptions) {
+    let deprecatedCallback;
+    if (typeof contextOptions === 'function') {
+      deprecatedCallback = contextOptions;
+      contextOptions = undefined;
+    }
+
+    const outputContext = this._getOutputContext(contextOptions);
+    /** @type {HelpTextEventContext} */
+    const eventContext = {
+      error: outputContext.error,
+      write: outputContext.write,
+      command: this,
+    };
+
+    this._getCommandAndAncestors()
+      .reverse()
+      .forEach((command) => command.emit('beforeAllHelp', eventContext));
+    this.emit('beforeHelp', eventContext);
+
+    let helpInformation = this.helpInformation({ error: outputContext.error });
+    if (deprecatedCallback) {
+      helpInformation = deprecatedCallback(helpInformation);
+      if (
+        typeof helpInformation !== 'string' &&
+        !Buffer.isBuffer(helpInformation)
+      ) {
+        throw new Error('outputHelp callback must return a string or a Buffer');
+      }
+    }
+    outputContext.write(helpInformation);
+
+    if (this._getHelpOption()?.long) {
+      this.emit(this._getHelpOption().long); // deprecated
+    }
+    this.emit('afterHelp', eventContext);
+    this._getCommandAndAncestors().forEach((command) =>
+      command.emit('afterAllHelp', eventContext),
+    );
+  }
+
+  /**
+   * You can pass in flags and a description to customise the built-in help option.
+   * Pass in false to disable the built-in help option.
+   *
+   * @example
+   * program.helpOption('-?, --help' 'show help'); // customise
+   * program.helpOption(false); // disable
+   *
+   * @param {(string | boolean)} flags
+   * @param {string} [description]
+   * @return {Command} `this` command for chaining
+   */
+
+  helpOption(flags, description) {
+    // Support enabling/disabling built-in help option.
+    if (typeof flags === 'boolean') {
+      if (flags) {
+        if (this._helpOption === null) this._helpOption = undefined; // reenable
+        if (this._defaultOptionGroup) {
+          // make the option to store the group
+          this._initOptionGroup(this._getHelpOption());
+        }
+      } else {
+        this._helpOption = null; // disable
+      }
+      return this;
+    }
+
+    // Customise flags and description.
+    this._helpOption = this.createOption(
+      flags ?? '-h, --help',
+      description ?? 'display help for command',
+    );
+    // init group unless lazy create
+    if (flags || description) this._initOptionGroup(this._helpOption);
+
+    return this;
+  }
+
+  /**
+   * Lazy create help option.
+   * Returns null if has been disabled with .helpOption(false).
+   *
+   * @returns {(Option | null)} the help option
+   * @package
+   */
+  _getHelpOption() {
+    // Lazy create help option on demand.
+    if (this._helpOption === undefined) {
+      this.helpOption(undefined, undefined);
+    }
+    return this._helpOption;
+  }
+
+  /**
+   * Supply your own option to use for the built-in help option.
+   * This is an alternative to using helpOption() to customise the flags and description etc.
+   *
+   * @param {Option} option
+   * @return {Command} `this` command for chaining
+   */
+  addHelpOption(option) {
+    this._helpOption = option;
+    this._initOptionGroup(option);
+    return this;
+  }
+
+  /**
+   * Output help information and exit.
+   *
+   * Outputs built-in help, and custom text added using `.addHelpText()`.
+   *
+   * @param {{ error: boolean }} [contextOptions] - pass {error:true} to write to stderr instead of stdout
+   */
+
+  help(contextOptions) {
+    this.outputHelp(contextOptions);
+    let exitCode = Number(process.exitCode ?? 0); // process.exitCode does allow a string or an integer, but we prefer just a number
+    if (
+      exitCode === 0 &&
+      contextOptions &&
+      typeof contextOptions !== 'function' &&
+      contextOptions.error
+    ) {
+      exitCode = 1;
+    }
+    // message: do not have all displayed text available so only passing placeholder.
+    this._exit(exitCode, 'commander.help', '(outputHelp)');
+  }
+
+  /**
+   * // Do a little typing to coordinate emit and listener for the help text events.
+   * @typedef HelpTextEventContext
+   * @type {object}
+   * @property {boolean} error
+   * @property {Command} command
+   * @property {function} write
+   */
+
+  /**
+   * Add additional text to be displayed with the built-in help.
+   *
+   * Position is 'before' or 'after' to affect just this command,
+   * and 'beforeAll' or 'afterAll' to affect this command and all its subcommands.
+   *
+   * @param {string} position - before or after built-in help
+   * @param {(string | Function)} text - string to add, or a function returning a string
+   * @return {Command} `this` command for chaining
+   */
+
+  addHelpText(position, text) {
+    const allowedValues = ['beforeAll', 'before', 'after', 'afterAll'];
+    if (!allowedValues.includes(position)) {
+      throw new Error(`Unexpected value for position to addHelpText.
+Expecting one of '${allowedValues.join("', '")}'`);
+    }
+
+    const helpEvent = `${position}Help`;
+    this.on(helpEvent, (/** @type {HelpTextEventContext} */ context) => {
+      let helpStr;
+      if (typeof text === 'function') {
+        helpStr = text({ error: context.error, command: context.command });
+      } else {
+        helpStr = text;
+      }
+      // Ignore falsy value when nothing to output.
+      if (helpStr) {
+        context.write(`${helpStr}\n`);
+      }
+    });
+    return this;
+  }
+
+  /**
+   * Output help information if help flags specified
+   *
+   * @param {Array} args - array of options to search for help flags
+   * @private
+   */
+
+  _outputHelpIfRequested(args) {
+    const helpOption = this._getHelpOption();
+    const helpRequested = helpOption && args.find((arg) => helpOption.is(arg));
+    if (helpRequested) {
+      this.outputHelp();
+      // (Do not have all displayed text available so only passing placeholder.)
+      this._exit(0, 'commander.helpDisplayed', '(outputHelp)');
+    }
+  }
+}
+
+/**
+ * Scan arguments and increment port number for inspect calls (to avoid conflicts when spawning new command).
+ *
+ * @param {string[]} args - array of arguments from node.execArgv
+ * @returns {string[]}
+ * @private
+ */
+
+function incrementNodeInspectorPort(args) {
+  // Testing for these options:
+  //  --inspect[=[host:]port]
+  //  --inspect-brk[=[host:]port]
+  //  --inspect-port=[host:]port
+  return args.map((arg) => {
+    if (!arg.startsWith('--inspect')) {
+      return arg;
+    }
+    let debugOption;
+    let debugHost = '127.0.0.1';
+    let debugPort = '9229';
+    let match;
+    if ((match = arg.match(/^(--inspect(-brk)?)$/)) !== null) {
+      // e.g. --inspect
+      debugOption = match[1];
+    } else if (
+      (match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+)$/)) !== null
+    ) {
+      debugOption = match[1];
+      if (/^\d+$/.test(match[3])) {
+        // e.g. --inspect=1234
+        debugPort = match[3];
+      } else {
+        // e.g. --inspect=localhost
+        debugHost = match[3];
+      }
+    } else if (
+      (match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+):(\d+)$/)) !== null
+    ) {
+      // e.g. --inspect=localhost:1234
+      debugOption = match[1];
+      debugHost = match[3];
+      debugPort = match[4];
+    }
+
+    if (debugOption && debugPort !== '0') {
+      return `${debugOption}=${debugHost}:${parseInt(debugPort) + 1}`;
+    }
+    return arg;
+  });
+}
+
+/**
+ * @returns {boolean | undefined}
+ * @package
+ */
+function useColor() {
+  // Test for common conventions.
+  // NB: the observed behaviour is in combination with how author adds color! For example:
+  //   - we do not test NODE_DISABLE_COLORS, but util:styletext does
+  //   - we do test NO_COLOR, but Chalk does not
+  //
+  // References:
+  // https://no-color.org
+  // https://bixense.com/clicolors/
+  // https://github.com/nodejs/node/blob/0a00217a5f67ef4a22384cfc80eb6dd9a917fdc1/lib/internal/tty.js#L109
+  // https://github.com/chalk/supports-color/blob/c214314a14bcb174b12b3014b2b0a8de375029ae/index.js#L33
+  // (https://force-color.org recent web page from 2023, does not match major javascript implementations)
+
+  if (
+    process.env.NO_COLOR ||
+    process.env.FORCE_COLOR === '0' ||
+    process.env.FORCE_COLOR === 'false'
+  )
+    return false;
+  if (process.env.FORCE_COLOR || process.env.CLICOLOR_FORCE !== undefined)
+    return true;
+  return undefined;
+}
+
+exports.Command = Command;
+exports.useColor = useColor; // exporting for tests
+
+
+/***/ }),
+
+/***/ 2625:
+/***/ ((__unused_webpack_module, exports) => {
+
+/**
+ * CommanderError class
+ */
+class CommanderError extends Error {
+  /**
+   * Constructs the CommanderError class
+   * @param {number} exitCode suggested exit code which could be used with process.exit
+   * @param {string} code an id string representing the error
+   * @param {string} message human-readable description of the error
+   */
+  constructor(exitCode, code, message) {
+    super(message);
+    // properly capture stack trace in Node.js
+    Error.captureStackTrace(this, this.constructor);
+    this.name = this.constructor.name;
+    this.code = code;
+    this.exitCode = exitCode;
+    this.nestedError = undefined;
+  }
+}
+
+/**
+ * InvalidArgumentError class
+ */
+class InvalidArgumentError extends CommanderError {
+  /**
+   * Constructs the InvalidArgumentError class
+   * @param {string} [message] explanation of why argument is invalid
+   */
+  constructor(message) {
+    super(1, 'commander.invalidArgument', message);
+    // properly capture stack trace in Node.js
+    Error.captureStackTrace(this, this.constructor);
+    this.name = this.constructor.name;
+  }
+}
+
+exports.CommanderError = CommanderError;
+exports.InvalidArgumentError = InvalidArgumentError;
+
+
+/***/ }),
+
+/***/ 5153:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+const { humanReadableArgName } = __nccwpck_require__(9414);
+
+/**
+ * TypeScript import types for JSDoc, used by Visual Studio Code IntelliSense and `npm run typescript-checkJS`
+ * https://www.typescriptlang.org/docs/handbook/jsdoc-supported-types.html#import-types
+ * @typedef { import("./argument.js").Argument } Argument
+ * @typedef { import("./command.js").Command } Command
+ * @typedef { import("./option.js").Option } Option
+ */
+
+// Although this is a class, methods are static in style to allow override using subclass or just functions.
+class Help {
+  constructor() {
+    this.helpWidth = undefined;
+    this.minWidthToWrap = 40;
+    this.sortSubcommands = false;
+    this.sortOptions = false;
+    this.showGlobalOptions = false;
+  }
+
+  /**
+   * prepareContext is called by Commander after applying overrides from `Command.configureHelp()`
+   * and just before calling `formatHelp()`.
+   *
+   * Commander just uses the helpWidth and the rest is provided for optional use by more complex subclasses.
+   *
+   * @param {{ error?: boolean, helpWidth?: number, outputHasColors?: boolean }} contextOptions
+   */
+  prepareContext(contextOptions) {
+    this.helpWidth = this.helpWidth ?? contextOptions.helpWidth ?? 80;
+  }
+
+  /**
+   * Get an array of the visible subcommands. Includes a placeholder for the implicit help command, if there is one.
+   *
+   * @param {Command} cmd
+   * @returns {Command[]}
+   */
+
+  visibleCommands(cmd) {
+    const visibleCommands = cmd.commands.filter((cmd) => !cmd._hidden);
+    const helpCommand = cmd._getHelpCommand();
+    if (helpCommand && !helpCommand._hidden) {
+      visibleCommands.push(helpCommand);
+    }
+    if (this.sortSubcommands) {
+      visibleCommands.sort((a, b) => {
+        // @ts-ignore: because overloaded return type
+        return a.name().localeCompare(b.name());
+      });
+    }
+    return visibleCommands;
+  }
+
+  /**
+   * Compare options for sort.
+   *
+   * @param {Option} a
+   * @param {Option} b
+   * @returns {number}
+   */
+  compareOptions(a, b) {
+    const getSortKey = (option) => {
+      // WYSIWYG for order displayed in help. Short used for comparison if present. No special handling for negated.
+      return option.short
+        ? option.short.replace(/^-/, '')
+        : option.long.replace(/^--/, '');
+    };
+    return getSortKey(a).localeCompare(getSortKey(b));
+  }
+
+  /**
+   * Get an array of the visible options. Includes a placeholder for the implicit help option, if there is one.
+   *
+   * @param {Command} cmd
+   * @returns {Option[]}
+   */
+
+  visibleOptions(cmd) {
+    const visibleOptions = cmd.options.filter((option) => !option.hidden);
+    // Built-in help option.
+    const helpOption = cmd._getHelpOption();
+    if (helpOption && !helpOption.hidden) {
+      // Automatically hide conflicting flags. Bit dubious but a historical behaviour that is convenient for single-command programs.
+      const removeShort = helpOption.short && cmd._findOption(helpOption.short);
+      const removeLong = helpOption.long && cmd._findOption(helpOption.long);
+      if (!removeShort && !removeLong) {
+        visibleOptions.push(helpOption); // no changes needed
+      } else if (helpOption.long && !removeLong) {
+        visibleOptions.push(
+          cmd.createOption(helpOption.long, helpOption.description),
+        );
+      } else if (helpOption.short && !removeShort) {
+        visibleOptions.push(
+          cmd.createOption(helpOption.short, helpOption.description),
+        );
+      }
+    }
+    if (this.sortOptions) {
+      visibleOptions.sort(this.compareOptions);
+    }
+    return visibleOptions;
+  }
+
+  /**
+   * Get an array of the visible global options. (Not including help.)
+   *
+   * @param {Command} cmd
+   * @returns {Option[]}
+   */
+
+  visibleGlobalOptions(cmd) {
+    if (!this.showGlobalOptions) return [];
+
+    const globalOptions = [];
+    for (
+      let ancestorCmd = cmd.parent;
+      ancestorCmd;
+      ancestorCmd = ancestorCmd.parent
+    ) {
+      const visibleOptions = ancestorCmd.options.filter(
+        (option) => !option.hidden,
+      );
+      globalOptions.push(...visibleOptions);
+    }
+    if (this.sortOptions) {
+      globalOptions.sort(this.compareOptions);
+    }
+    return globalOptions;
+  }
+
+  /**
+   * Get an array of the arguments if any have a description.
+   *
+   * @param {Command} cmd
+   * @returns {Argument[]}
+   */
+
+  visibleArguments(cmd) {
+    // Side effect! Apply the legacy descriptions before the arguments are displayed.
+    if (cmd._argsDescription) {
+      cmd.registeredArguments.forEach((argument) => {
+        argument.description =
+          argument.description || cmd._argsDescription[argument.name()] || '';
+      });
+    }
+
+    // If there are any arguments with a description then return all the arguments.
+    if (cmd.registeredArguments.find((argument) => argument.description)) {
+      return cmd.registeredArguments;
+    }
+    return [];
+  }
+
+  /**
+   * Get the command term to show in the list of subcommands.
+   *
+   * @param {Command} cmd
+   * @returns {string}
+   */
+
+  subcommandTerm(cmd) {
+    // Legacy. Ignores custom usage string, and nested commands.
+    const args = cmd.registeredArguments
+      .map((arg) => humanReadableArgName(arg))
+      .join(' ');
+    return (
+      cmd._name +
+      (cmd._aliases[0] ? '|' + cmd._aliases[0] : '') +
+      (cmd.options.length ? ' [options]' : '') + // simplistic check for non-help option
+      (args ? ' ' + args : '')
+    );
+  }
+
+  /**
+   * Get the option term to show in the list of options.
+   *
+   * @param {Option} option
+   * @returns {string}
+   */
+
+  optionTerm(option) {
+    return option.flags;
+  }
+
+  /**
+   * Get the argument term to show in the list of arguments.
+   *
+   * @param {Argument} argument
+   * @returns {string}
+   */
+
+  argumentTerm(argument) {
+    return argument.name();
+  }
+
+  /**
+   * Get the longest command term length.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {number}
+   */
+
+  longestSubcommandTermLength(cmd, helper) {
+    return helper.visibleCommands(cmd).reduce((max, command) => {
+      return Math.max(
+        max,
+        this.displayWidth(
+          helper.styleSubcommandTerm(helper.subcommandTerm(command)),
+        ),
+      );
+    }, 0);
+  }
+
+  /**
+   * Get the longest option term length.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {number}
+   */
+
+  longestOptionTermLength(cmd, helper) {
+    return helper.visibleOptions(cmd).reduce((max, option) => {
+      return Math.max(
+        max,
+        this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option))),
+      );
+    }, 0);
+  }
+
+  /**
+   * Get the longest global option term length.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {number}
+   */
+
+  longestGlobalOptionTermLength(cmd, helper) {
+    return helper.visibleGlobalOptions(cmd).reduce((max, option) => {
+      return Math.max(
+        max,
+        this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option))),
+      );
+    }, 0);
+  }
+
+  /**
+   * Get the longest argument term length.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {number}
+   */
+
+  longestArgumentTermLength(cmd, helper) {
+    return helper.visibleArguments(cmd).reduce((max, argument) => {
+      return Math.max(
+        max,
+        this.displayWidth(
+          helper.styleArgumentTerm(helper.argumentTerm(argument)),
+        ),
+      );
+    }, 0);
+  }
+
+  /**
+   * Get the command usage to be displayed at the top of the built-in help.
+   *
+   * @param {Command} cmd
+   * @returns {string}
+   */
+
+  commandUsage(cmd) {
+    // Usage
+    let cmdName = cmd._name;
+    if (cmd._aliases[0]) {
+      cmdName = cmdName + '|' + cmd._aliases[0];
+    }
+    let ancestorCmdNames = '';
+    for (
+      let ancestorCmd = cmd.parent;
+      ancestorCmd;
+      ancestorCmd = ancestorCmd.parent
+    ) {
+      ancestorCmdNames = ancestorCmd.name() + ' ' + ancestorCmdNames;
+    }
+    return ancestorCmdNames + cmdName + ' ' + cmd.usage();
+  }
+
+  /**
+   * Get the description for the command.
+   *
+   * @param {Command} cmd
+   * @returns {string}
+   */
+
+  commandDescription(cmd) {
+    // @ts-ignore: because overloaded return type
+    return cmd.description();
+  }
+
+  /**
+   * Get the subcommand summary to show in the list of subcommands.
+   * (Fallback to description for backwards compatibility.)
+   *
+   * @param {Command} cmd
+   * @returns {string}
+   */
+
+  subcommandDescription(cmd) {
+    // @ts-ignore: because overloaded return type
+    return cmd.summary() || cmd.description();
+  }
+
+  /**
+   * Get the option description to show in the list of options.
+   *
+   * @param {Option} option
+   * @return {string}
+   */
+
+  optionDescription(option) {
+    const extraInfo = [];
+
+    if (option.argChoices) {
+      extraInfo.push(
+        // use stringify to match the display of the default value
+        `choices: ${option.argChoices.map((choice) => JSON.stringify(choice)).join(', ')}`,
+      );
+    }
+    if (option.defaultValue !== undefined) {
+      // default for boolean and negated more for programmer than end user,
+      // but show true/false for boolean option as may be for hand-rolled env or config processing.
+      const showDefault =
+        option.required ||
+        option.optional ||
+        (option.isBoolean() && typeof option.defaultValue === 'boolean');
+      if (showDefault) {
+        extraInfo.push(
+          `default: ${option.defaultValueDescription || JSON.stringify(option.defaultValue)}`,
+        );
+      }
+    }
+    // preset for boolean and negated are more for programmer than end user
+    if (option.presetArg !== undefined && option.optional) {
+      extraInfo.push(`preset: ${JSON.stringify(option.presetArg)}`);
+    }
+    if (option.envVar !== undefined) {
+      extraInfo.push(`env: ${option.envVar}`);
+    }
+    if (extraInfo.length > 0) {
+      const extraDescription = `(${extraInfo.join(', ')})`;
+      if (option.description) {
+        return `${option.description} ${extraDescription}`;
+      }
+      return extraDescription;
+    }
+
+    return option.description;
+  }
+
+  /**
+   * Get the argument description to show in the list of arguments.
+   *
+   * @param {Argument} argument
+   * @return {string}
+   */
+
+  argumentDescription(argument) {
+    const extraInfo = [];
+    if (argument.argChoices) {
+      extraInfo.push(
+        // use stringify to match the display of the default value
+        `choices: ${argument.argChoices.map((choice) => JSON.stringify(choice)).join(', ')}`,
+      );
+    }
+    if (argument.defaultValue !== undefined) {
+      extraInfo.push(
+        `default: ${argument.defaultValueDescription || JSON.stringify(argument.defaultValue)}`,
+      );
+    }
+    if (extraInfo.length > 0) {
+      const extraDescription = `(${extraInfo.join(', ')})`;
+      if (argument.description) {
+        return `${argument.description} ${extraDescription}`;
+      }
+      return extraDescription;
+    }
+    return argument.description;
+  }
+
+  /**
+   * Format a list of items, given a heading and an array of formatted items.
+   *
+   * @param {string} heading
+   * @param {string[]} items
+   * @param {Help} helper
+   * @returns string[]
+   */
+  formatItemList(heading, items, helper) {
+    if (items.length === 0) return [];
+
+    return [helper.styleTitle(heading), ...items, ''];
+  }
+
+  /**
+   * Group items by their help group heading.
+   *
+   * @param {Command[] | Option[]} unsortedItems
+   * @param {Command[] | Option[]} visibleItems
+   * @param {Function} getGroup
+   * @returns {Map<string, Command[] | Option[]>}
+   */
+  groupItems(unsortedItems, visibleItems, getGroup) {
+    const result = new Map();
+    // Add groups in order of appearance in unsortedItems.
+    unsortedItems.forEach((item) => {
+      const group = getGroup(item);
+      if (!result.has(group)) result.set(group, []);
+    });
+    // Add items in order of appearance in visibleItems.
+    visibleItems.forEach((item) => {
+      const group = getGroup(item);
+      if (!result.has(group)) {
+        result.set(group, []);
+      }
+      result.get(group).push(item);
+    });
+    return result;
+  }
+
+  /**
+   * Generate the built-in help text.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {string}
+   */
+
+  formatHelp(cmd, helper) {
+    const termWidth = helper.padWidth(cmd, helper);
+    const helpWidth = helper.helpWidth ?? 80; // in case prepareContext() was not called
+
+    function callFormatItem(term, description) {
+      return helper.formatItem(term, termWidth, description, helper);
+    }
+
+    // Usage
+    let output = [
+      `${helper.styleTitle('Usage:')} ${helper.styleUsage(helper.commandUsage(cmd))}`,
+      '',
+    ];
+
+    // Description
+    const commandDescription = helper.commandDescription(cmd);
+    if (commandDescription.length > 0) {
+      output = output.concat([
+        helper.boxWrap(
+          helper.styleCommandDescription(commandDescription),
+          helpWidth,
+        ),
+        '',
+      ]);
+    }
+
+    // Arguments
+    const argumentList = helper.visibleArguments(cmd).map((argument) => {
+      return callFormatItem(
+        helper.styleArgumentTerm(helper.argumentTerm(argument)),
+        helper.styleArgumentDescription(helper.argumentDescription(argument)),
+      );
+    });
+    output = output.concat(
+      this.formatItemList('Arguments:', argumentList, helper),
+    );
+
+    // Options
+    const optionGroups = this.groupItems(
+      cmd.options,
+      helper.visibleOptions(cmd),
+      (option) => option.helpGroupHeading ?? 'Options:',
+    );
+    optionGroups.forEach((options, group) => {
+      const optionList = options.map((option) => {
+        return callFormatItem(
+          helper.styleOptionTerm(helper.optionTerm(option)),
+          helper.styleOptionDescription(helper.optionDescription(option)),
+        );
+      });
+      output = output.concat(this.formatItemList(group, optionList, helper));
+    });
+
+    if (helper.showGlobalOptions) {
+      const globalOptionList = helper
+        .visibleGlobalOptions(cmd)
+        .map((option) => {
+          return callFormatItem(
+            helper.styleOptionTerm(helper.optionTerm(option)),
+            helper.styleOptionDescription(helper.optionDescription(option)),
+          );
+        });
+      output = output.concat(
+        this.formatItemList('Global Options:', globalOptionList, helper),
+      );
+    }
+
+    // Commands
+    const commandGroups = this.groupItems(
+      cmd.commands,
+      helper.visibleCommands(cmd),
+      (sub) => sub.helpGroup() || 'Commands:',
+    );
+    commandGroups.forEach((commands, group) => {
+      const commandList = commands.map((sub) => {
+        return callFormatItem(
+          helper.styleSubcommandTerm(helper.subcommandTerm(sub)),
+          helper.styleSubcommandDescription(helper.subcommandDescription(sub)),
+        );
+      });
+      output = output.concat(this.formatItemList(group, commandList, helper));
+    });
+
+    return output.join('\n');
+  }
+
+  /**
+   * Return display width of string, ignoring ANSI escape sequences. Used in padding and wrapping calculations.
+   *
+   * @param {string} str
+   * @returns {number}
+   */
+  displayWidth(str) {
+    return stripColor(str).length;
+  }
+
+  /**
+   * Style the title for displaying in the help. Called with 'Usage:', 'Options:', etc.
+   *
+   * @param {string} str
+   * @returns {string}
+   */
+  styleTitle(str) {
+    return str;
+  }
+
+  styleUsage(str) {
+    // Usage has lots of parts the user might like to color separately! Assume default usage string which is formed like:
+    //    command subcommand [options] [command] <foo> [bar]
+    return str
+      .split(' ')
+      .map((word) => {
+        if (word === '[options]') return this.styleOptionText(word);
+        if (word === '[command]') return this.styleSubcommandText(word);
+        if (word[0] === '[' || word[0] === '<')
+          return this.styleArgumentText(word);
+        return this.styleCommandText(word); // Restrict to initial words?
+      })
+      .join(' ');
+  }
+  styleCommandDescription(str) {
+    return this.styleDescriptionText(str);
+  }
+  styleOptionDescription(str) {
+    return this.styleDescriptionText(str);
+  }
+  styleSubcommandDescription(str) {
+    return this.styleDescriptionText(str);
+  }
+  styleArgumentDescription(str) {
+    return this.styleDescriptionText(str);
+  }
+  styleDescriptionText(str) {
+    return str;
+  }
+  styleOptionTerm(str) {
+    return this.styleOptionText(str);
+  }
+  styleSubcommandTerm(str) {
+    // This is very like usage with lots of parts! Assume default string which is formed like:
+    //    subcommand [options] <foo> [bar]
+    return str
+      .split(' ')
+      .map((word) => {
+        if (word === '[options]') return this.styleOptionText(word);
+        if (word[0] === '[' || word[0] === '<')
+          return this.styleArgumentText(word);
+        return this.styleSubcommandText(word); // Restrict to initial words?
+      })
+      .join(' ');
+  }
+  styleArgumentTerm(str) {
+    return this.styleArgumentText(str);
+  }
+  styleOptionText(str) {
+    return str;
+  }
+  styleArgumentText(str) {
+    return str;
+  }
+  styleSubcommandText(str) {
+    return str;
+  }
+  styleCommandText(str) {
+    return str;
+  }
+
+  /**
+   * Calculate the pad width from the maximum term length.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {number}
+   */
+
+  padWidth(cmd, helper) {
+    return Math.max(
+      helper.longestOptionTermLength(cmd, helper),
+      helper.longestGlobalOptionTermLength(cmd, helper),
+      helper.longestSubcommandTermLength(cmd, helper),
+      helper.longestArgumentTermLength(cmd, helper),
+    );
+  }
+
+  /**
+   * Detect manually wrapped and indented strings by checking for line break followed by whitespace.
+   *
+   * @param {string} str
+   * @returns {boolean}
+   */
+  preformatted(str) {
+    return /\n[^\S\r\n]/.test(str);
+  }
+
+  /**
+   * Format the "item", which consists of a term and description. Pad the term and wrap the description, indenting the following lines.
+   *
+   * So "TTT", 5, "DDD DDDD DD DDD" might be formatted for this.helpWidth=17 like so:
+   *   TTT  DDD DDDD
+   *        DD DDD
+   *
+   * @param {string} term
+   * @param {number} termWidth
+   * @param {string} description
+   * @param {Help} helper
+   * @returns {string}
+   */
+  formatItem(term, termWidth, description, helper) {
+    const itemIndent = 2;
+    const itemIndentStr = ' '.repeat(itemIndent);
+    if (!description) return itemIndentStr + term;
+
+    // Pad the term out to a consistent width, so descriptions are aligned.
+    const paddedTerm = term.padEnd(
+      termWidth + term.length - helper.displayWidth(term),
+    );
+
+    // Format the description.
+    const spacerWidth = 2; // between term and description
+    const helpWidth = this.helpWidth ?? 80; // in case prepareContext() was not called
+    const remainingWidth = helpWidth - termWidth - spacerWidth - itemIndent;
+    let formattedDescription;
+    if (
+      remainingWidth < this.minWidthToWrap ||
+      helper.preformatted(description)
+    ) {
+      formattedDescription = description;
+    } else {
+      const wrappedDescription = helper.boxWrap(description, remainingWidth);
+      formattedDescription = wrappedDescription.replace(
+        /\n/g,
+        '\n' + ' '.repeat(termWidth + spacerWidth),
+      );
+    }
+
+    // Construct and overall indent.
+    return (
+      itemIndentStr +
+      paddedTerm +
+      ' '.repeat(spacerWidth) +
+      formattedDescription.replace(/\n/g, `\n${itemIndentStr}`)
+    );
+  }
+
+  /**
+   * Wrap a string at whitespace, preserving existing line breaks.
+   * Wrapping is skipped if the width is less than `minWidthToWrap`.
+   *
+   * @param {string} str
+   * @param {number} width
+   * @returns {string}
+   */
+  boxWrap(str, width) {
+    if (width < this.minWidthToWrap) return str;
+
+    const rawLines = str.split(/\r\n|\n/);
+    // split up text by whitespace
+    const chunkPattern = /[\s]*[^\s]+/g;
+    const wrappedLines = [];
+    rawLines.forEach((line) => {
+      const chunks = line.match(chunkPattern);
+      if (chunks === null) {
+        wrappedLines.push('');
+        return;
+      }
+
+      let sumChunks = [chunks.shift()];
+      let sumWidth = this.displayWidth(sumChunks[0]);
+      chunks.forEach((chunk) => {
+        const visibleWidth = this.displayWidth(chunk);
+        // Accumulate chunks while they fit into width.
+        if (sumWidth + visibleWidth <= width) {
+          sumChunks.push(chunk);
+          sumWidth += visibleWidth;
+          return;
+        }
+        wrappedLines.push(sumChunks.join(''));
+
+        const nextChunk = chunk.trimStart(); // trim space at line break
+        sumChunks = [nextChunk];
+        sumWidth = this.displayWidth(nextChunk);
+      });
+      wrappedLines.push(sumChunks.join(''));
+    });
+
+    return wrappedLines.join('\n');
+  }
+}
+
+/**
+ * Strip style ANSI escape sequences from the string. In particular, SGR (Select Graphic Rendition) codes.
+ *
+ * @param {string} str
+ * @returns {string}
+ * @package
+ */
+
+function stripColor(str) {
+  // eslint-disable-next-line no-control-regex
+  const sgrPattern = /\x1b\[\d*(;\d*)*m/g;
+  return str.replace(sgrPattern, '');
+}
+
+exports.Help = Help;
+exports.stripColor = stripColor;
+
+
+/***/ }),
+
+/***/ 6558:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+const { InvalidArgumentError } = __nccwpck_require__(2625);
+
+class Option {
+  /**
+   * Initialize a new `Option` with the given `flags` and `description`.
+   *
+   * @param {string} flags
+   * @param {string} [description]
+   */
+
+  constructor(flags, description) {
+    this.flags = flags;
+    this.description = description || '';
+
+    this.required = flags.includes('<'); // A value must be supplied when the option is specified.
+    this.optional = flags.includes('['); // A value is optional when the option is specified.
+    // variadic test ignores <value,...> et al which might be used to describe custom splitting of single argument
+    this.variadic = /\w\.\.\.[>\]]$/.test(flags); // The option can take multiple values.
+    this.mandatory = false; // The option must have a value after parsing, which usually means it must be specified on command line.
+    const optionFlags = splitOptionFlags(flags);
+    this.short = optionFlags.shortFlag; // May be a short flag, undefined, or even a long flag (if option has two long flags).
+    this.long = optionFlags.longFlag;
+    this.negate = false;
+    if (this.long) {
+      this.negate = this.long.startsWith('--no-');
+    }
+    this.defaultValue = undefined;
+    this.defaultValueDescription = undefined;
+    this.presetArg = undefined;
+    this.envVar = undefined;
+    this.parseArg = undefined;
+    this.hidden = false;
+    this.argChoices = undefined;
+    this.conflictsWith = [];
+    this.implied = undefined;
+    this.helpGroupHeading = undefined; // soft initialised when option added to command
+  }
+
+  /**
+   * Set the default value, and optionally supply the description to be displayed in the help.
+   *
+   * @param {*} value
+   * @param {string} [description]
+   * @return {Option}
+   */
+
+  default(value, description) {
+    this.defaultValue = value;
+    this.defaultValueDescription = description;
+    return this;
+  }
+
+  /**
+   * Preset to use when option used without option-argument, especially optional but also boolean and negated.
+   * The custom processing (parseArg) is called.
+   *
+   * @example
+   * new Option('--color').default('GREYSCALE').preset('RGB');
+   * new Option('--donate [amount]').preset('20').argParser(parseFloat);
+   *
+   * @param {*} arg
+   * @return {Option}
+   */
+
+  preset(arg) {
+    this.presetArg = arg;
+    return this;
+  }
+
+  /**
+   * Add option name(s) that conflict with this option.
+   * An error will be displayed if conflicting options are found during parsing.
+   *
+   * @example
+   * new Option('--rgb').conflicts('cmyk');
+   * new Option('--js').conflicts(['ts', 'jsx']);
+   *
+   * @param {(string | string[])} names
+   * @return {Option}
+   */
+
+  conflicts(names) {
+    this.conflictsWith = this.conflictsWith.concat(names);
+    return this;
+  }
+
+  /**
+   * Specify implied option values for when this option is set and the implied options are not.
+   *
+   * The custom processing (parseArg) is not called on the implied values.
+   *
+   * @example
+   * program
+   *   .addOption(new Option('--log', 'write logging information to file'))
+   *   .addOption(new Option('--trace', 'log extra details').implies({ log: 'trace.txt' }));
+   *
+   * @param {object} impliedOptionValues
+   * @return {Option}
+   */
+  implies(impliedOptionValues) {
+    let newImplied = impliedOptionValues;
+    if (typeof impliedOptionValues === 'string') {
+      // string is not documented, but easy mistake and we can do what user probably intended.
+      newImplied = { [impliedOptionValues]: true };
+    }
+    this.implied = Object.assign(this.implied || {}, newImplied);
+    return this;
+  }
+
+  /**
+   * Set environment variable to check for option value.
+   *
+   * An environment variable is only used if when processed the current option value is
+   * undefined, or the source of the current value is 'default' or 'config' or 'env'.
+   *
+   * @param {string} name
+   * @return {Option}
+   */
+
+  env(name) {
+    this.envVar = name;
+    return this;
+  }
+
+  /**
+   * Set the custom handler for processing CLI option arguments into option values.
+   *
+   * @param {Function} [fn]
+   * @return {Option}
+   */
+
+  argParser(fn) {
+    this.parseArg = fn;
+    return this;
+  }
+
+  /**
+   * Whether the option is mandatory and must have a value after parsing.
+   *
+   * @param {boolean} [mandatory=true]
+   * @return {Option}
+   */
+
+  makeOptionMandatory(mandatory = true) {
+    this.mandatory = !!mandatory;
+    return this;
+  }
+
+  /**
+   * Hide option in help.
+   *
+   * @param {boolean} [hide=true]
+   * @return {Option}
+   */
+
+  hideHelp(hide = true) {
+    this.hidden = !!hide;
+    return this;
+  }
+
+  /**
+   * @package
+   */
+
+  _collectValue(value, previous) {
+    if (previous === this.defaultValue || !Array.isArray(previous)) {
+      return [value];
+    }
+
+    previous.push(value);
+    return previous;
+  }
+
+  /**
+   * Only allow option value to be one of choices.
+   *
+   * @param {string[]} values
+   * @return {Option}
+   */
+
+  choices(values) {
+    this.argChoices = values.slice();
+    this.parseArg = (arg, previous) => {
+      if (!this.argChoices.includes(arg)) {
+        throw new InvalidArgumentError(
+          `Allowed choices are ${this.argChoices.join(', ')}.`,
+        );
+      }
+      if (this.variadic) {
+        return this._collectValue(arg, previous);
+      }
+      return arg;
+    };
+    return this;
+  }
+
+  /**
+   * Return option name.
+   *
+   * @return {string}
+   */
+
+  name() {
+    if (this.long) {
+      return this.long.replace(/^--/, '');
+    }
+    return this.short.replace(/^-/, '');
+  }
+
+  /**
+   * Return option name, in a camelcase format that can be used
+   * as an object attribute key.
+   *
+   * @return {string}
+   */
+
+  attributeName() {
+    if (this.negate) {
+      return camelcase(this.name().replace(/^no-/, ''));
+    }
+    return camelcase(this.name());
+  }
+
+  /**
+   * Set the help group heading.
+   *
+   * @param {string} heading
+   * @return {Option}
+   */
+  helpGroup(heading) {
+    this.helpGroupHeading = heading;
+    return this;
+  }
+
+  /**
+   * Check if `arg` matches the short or long flag.
+   *
+   * @param {string} arg
+   * @return {boolean}
+   * @package
+   */
+
+  is(arg) {
+    return this.short === arg || this.long === arg;
+  }
+
+  /**
+   * Return whether a boolean option.
+   *
+   * Options are one of boolean, negated, required argument, or optional argument.
+   *
+   * @return {boolean}
+   * @package
+   */
+
+  isBoolean() {
+    return !this.required && !this.optional && !this.negate;
+  }
+}
+
+/**
+ * This class is to make it easier to work with dual options, without changing the existing
+ * implementation. We support separate dual options for separate positive and negative options,
+ * like `--build` and `--no-build`, which share a single option value. This works nicely for some
+ * use cases, but is tricky for others where we want separate behaviours despite
+ * the single shared option value.
+ */
+class DualOptions {
+  /**
+   * @param {Option[]} options
+   */
+  constructor(options) {
+    this.positiveOptions = new Map();
+    this.negativeOptions = new Map();
+    this.dualOptions = new Set();
+    options.forEach((option) => {
+      if (option.negate) {
+        this.negativeOptions.set(option.attributeName(), option);
+      } else {
+        this.positiveOptions.set(option.attributeName(), option);
+      }
+    });
+    this.negativeOptions.forEach((value, key) => {
+      if (this.positiveOptions.has(key)) {
+        this.dualOptions.add(key);
+      }
+    });
+  }
+
+  /**
+   * Did the value come from the option, and not from possible matching dual option?
+   *
+   * @param {*} value
+   * @param {Option} option
+   * @returns {boolean}
+   */
+  valueFromOption(value, option) {
+    const optionKey = option.attributeName();
+    if (!this.dualOptions.has(optionKey)) return true;
+
+    // Use the value to deduce if (probably) came from the option.
+    const preset = this.negativeOptions.get(optionKey).presetArg;
+    const negativeValue = preset !== undefined ? preset : false;
+    return option.negate === (negativeValue === value);
+  }
+}
+
+/**
+ * Convert string from kebab-case to camelCase.
+ *
+ * @param {string} str
+ * @return {string}
+ * @private
+ */
+
+function camelcase(str) {
+  return str.split('-').reduce((str, word) => {
+    return str + word[0].toUpperCase() + word.slice(1);
+  });
+}
+
+/**
+ * Split the short and long flag out of something like '-m,--mixed <value>'
+ *
+ * @private
+ */
+
+function splitOptionFlags(flags) {
+  let shortFlag;
+  let longFlag;
+  // short flag, single dash and single character
+  const shortFlagExp = /^-[^-]$/;
+  // long flag, double dash and at least one character
+  const longFlagExp = /^--[^-]/;
+
+  const flagParts = flags.split(/[ |,]+/).concat('guard');
+  // Normal is short and/or long.
+  if (shortFlagExp.test(flagParts[0])) shortFlag = flagParts.shift();
+  if (longFlagExp.test(flagParts[0])) longFlag = flagParts.shift();
+  // Long then short. Rarely used but fine.
+  if (!shortFlag && shortFlagExp.test(flagParts[0]))
+    shortFlag = flagParts.shift();
+  // Allow two long flags, like '--ws, --workspace'
+  // This is the supported way to have a shortish option flag.
+  if (!shortFlag && longFlagExp.test(flagParts[0])) {
+    shortFlag = longFlag;
+    longFlag = flagParts.shift();
+  }
+
+  // Check for unprocessed flag. Fail noisily rather than silently ignore.
+  if (flagParts[0].startsWith('-')) {
+    const unsupportedFlag = flagParts[0];
+    const baseError = `option creation failed due to '${unsupportedFlag}' in option flags '${flags}'`;
+    if (/^-[^-][^-]/.test(unsupportedFlag))
+      throw new Error(
+        `${baseError}
+- a short flag is a single dash and a single character
+  - either use a single dash and a single character (for a short flag)
+  - or use a double dash for a long option (and can have two, like '--ws, --workspace')`,
+      );
+    if (shortFlagExp.test(unsupportedFlag))
+      throw new Error(`${baseError}
+- too many short flags`);
+    if (longFlagExp.test(unsupportedFlag))
+      throw new Error(`${baseError}
+- too many long flags`);
+
+    throw new Error(`${baseError}
+- unrecognised flag format`);
+  }
+  if (shortFlag === undefined && longFlag === undefined)
+    throw new Error(
+      `option creation failed due to no flags found in '${flags}'.`,
+    );
+
+  return { shortFlag, longFlag };
+}
+
+exports.Option = Option;
+exports.DualOptions = DualOptions;
+
+
+/***/ }),
+
+/***/ 7592:
+/***/ ((__unused_webpack_module, exports) => {
+
+const maxDistance = 3;
+
+function editDistance(a, b) {
+  // https://en.wikipedia.org/wiki/Damerau–Levenshtein_distance
+  // Calculating optimal string alignment distance, no substring is edited more than once.
+  // (Simple implementation.)
+
+  // Quick early exit, return worst case.
+  if (Math.abs(a.length - b.length) > maxDistance)
+    return Math.max(a.length, b.length);
+
+  // distance between prefix substrings of a and b
+  const d = [];
+
+  // pure deletions turn a into empty string
+  for (let i = 0; i <= a.length; i++) {
+    d[i] = [i];
+  }
+  // pure insertions turn empty string into b
+  for (let j = 0; j <= b.length; j++) {
+    d[0][j] = j;
+  }
+
+  // fill matrix
+  for (let j = 1; j <= b.length; j++) {
+    for (let i = 1; i <= a.length; i++) {
+      let cost = 1;
+      if (a[i - 1] === b[j - 1]) {
+        cost = 0;
+      } else {
+        cost = 1;
+      }
+      d[i][j] = Math.min(
+        d[i - 1][j] + 1, // deletion
+        d[i][j - 1] + 1, // insertion
+        d[i - 1][j - 1] + cost, // substitution
+      );
+      // transposition
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+
+  return d[a.length][b.length];
+}
+
+/**
+ * Find close matches, restricted to same number of edits.
+ *
+ * @param {string} word
+ * @param {string[]} candidates
+ * @returns {string}
+ */
+
+function suggestSimilar(word, candidates) {
+  if (!candidates || candidates.length === 0) return '';
+  // remove possible duplicates
+  candidates = Array.from(new Set(candidates));
+
+  const searchingOptions = word.startsWith('--');
+  if (searchingOptions) {
+    word = word.slice(2);
+    candidates = candidates.map((candidate) => candidate.slice(2));
+  }
+
+  let similar = [];
+  let bestDistance = maxDistance;
+  const minSimilarity = 0.4;
+  candidates.forEach((candidate) => {
+    if (candidate.length <= 1) return; // no one character guesses
+
+    const distance = editDistance(word, candidate);
+    const length = Math.max(word.length, candidate.length);
+    const similarity = (length - distance) / length;
+    if (similarity > minSimilarity) {
+      if (distance < bestDistance) {
+        // better edit distance, throw away previous worse matches
+        bestDistance = distance;
+        similar = [candidate];
+      } else if (distance === bestDistance) {
+        similar.push(candidate);
+      }
+    }
+  });
+
+  similar.sort((a, b) => a.localeCompare(b));
+  if (searchingOptions) {
+    similar = similar.map((candidate) => `--${candidate}`);
+  }
+
+  if (similar.length > 1) {
+    return `\n(Did you mean one of ${similar.join(', ')}?)`;
+  }
+  if (similar.length === 1) {
+    return `\n(Did you mean ${similar[0]}?)`;
+  }
+  return '';
+}
+
+exports.suggestSimilar = suggestSimilar;
+
+
+/***/ }),
+
+/***/ 2487:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Glob = void 0;
-const minimatch_1 = __nccwpck_require__(849);
+const minimatch_1 = __nccwpck_require__(658);
 const node_url_1 = __nccwpck_require__(1041);
 const path_scurry_1 = __nccwpck_require__(1081);
-const pattern_js_1 = __nccwpck_require__(5749);
-const walker_js_1 = __nccwpck_require__(1734);
+const pattern_js_1 = __nccwpck_require__(6866);
+const walker_js_1 = __nccwpck_require__(153);
 // if no process global, just call it linux.
 // so we default to case-sensitive, / separators
 const defaultPlatform = (typeof process === 'object' &&
@@ -34390,14 +43499,14 @@ exports.Glob = Glob;
 
 /***/ }),
 
-/***/ 8609:
+/***/ 3133:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.hasMagic = void 0;
-const minimatch_1 = __nccwpck_require__(849);
+const minimatch_1 = __nccwpck_require__(658);
 /**
  * Return true if the patterns provided contain any magic glob characters,
  * given the options provided.
@@ -34424,7 +43533,7 @@ exports.hasMagic = hasMagic;
 
 /***/ }),
 
-/***/ 4808:
+/***/ 9703:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -34435,8 +43544,8 @@ exports.hasMagic = hasMagic;
 // Ignores are always parsed in dot:true mode
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Ignore = void 0;
-const minimatch_1 = __nccwpck_require__(849);
-const pattern_js_1 = __nccwpck_require__(5749);
+const minimatch_1 = __nccwpck_require__(658);
+const pattern_js_1 = __nccwpck_require__(6866);
 const defaultPlatform = (typeof process === 'object' &&
     process &&
     typeof process.platform === 'string') ?
@@ -34550,7 +43659,7 @@ exports.Ignore = Ignore;
 
 /***/ }),
 
-/***/ 1473:
+/***/ 8211:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -34562,17 +43671,17 @@ exports.globStream = globStream;
 exports.globSync = globSync;
 exports.globIterateSync = globIterateSync;
 exports.globIterate = globIterate;
-const minimatch_1 = __nccwpck_require__(849);
-const glob_js_1 = __nccwpck_require__(1871);
-const has_magic_js_1 = __nccwpck_require__(8609);
-var minimatch_2 = __nccwpck_require__(849);
+const minimatch_1 = __nccwpck_require__(658);
+const glob_js_1 = __nccwpck_require__(2487);
+const has_magic_js_1 = __nccwpck_require__(3133);
+var minimatch_2 = __nccwpck_require__(658);
 Object.defineProperty(exports, "escape", ({ enumerable: true, get: function () { return minimatch_2.escape; } }));
 Object.defineProperty(exports, "unescape", ({ enumerable: true, get: function () { return minimatch_2.unescape; } }));
-var glob_js_2 = __nccwpck_require__(1871);
+var glob_js_2 = __nccwpck_require__(2487);
 Object.defineProperty(exports, "Glob", ({ enumerable: true, get: function () { return glob_js_2.Glob; } }));
-var has_magic_js_2 = __nccwpck_require__(8609);
+var has_magic_js_2 = __nccwpck_require__(3133);
 Object.defineProperty(exports, "hasMagic", ({ enumerable: true, get: function () { return has_magic_js_2.hasMagic; } }));
-var ignore_js_1 = __nccwpck_require__(4808);
+var ignore_js_1 = __nccwpck_require__(9703);
 Object.defineProperty(exports, "Ignore", ({ enumerable: true, get: function () { return ignore_js_1.Ignore; } }));
 function globStreamSync(pattern, options = {}) {
     return new glob_js_1.Glob(pattern, options).streamSync();
@@ -34625,7 +43734,7 @@ exports.glob.glob = exports.glob;
 
 /***/ }),
 
-/***/ 5749:
+/***/ 6866:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -34633,7 +43742,7 @@ exports.glob.glob = exports.glob;
 // this is just a very light wrapper around 2 arrays with an offset index
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Pattern = void 0;
-const minimatch_1 = __nccwpck_require__(849);
+const minimatch_1 = __nccwpck_require__(658);
 const isPatternList = (pl) => pl.length >= 1;
 const isGlobList = (gl) => gl.length >= 1;
 /**
@@ -34851,7 +43960,7 @@ exports.Pattern = Pattern;
 
 /***/ }),
 
-/***/ 6202:
+/***/ 4628:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -34859,7 +43968,7 @@ exports.Pattern = Pattern;
 // synchronous utility for filtering entries and calculating subwalks
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Processor = exports.SubWalks = exports.MatchRecord = exports.HasWalkedCache = void 0;
-const minimatch_1 = __nccwpck_require__(849);
+const minimatch_1 = __nccwpck_require__(658);
 /**
  * A cache of which patterns have been processed for a given Path
  */
@@ -35159,7 +44268,7 @@ exports.Processor = Processor;
 
 /***/ }),
 
-/***/ 1734:
+/***/ 153:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -35173,8 +44282,8 @@ exports.GlobStream = exports.GlobWalker = exports.GlobUtil = void 0;
  * @module
  */
 const minipass_1 = __nccwpck_require__(4968);
-const ignore_js_1 = __nccwpck_require__(4808);
-const processor_js_1 = __nccwpck_require__(6202);
+const ignore_js_1 = __nccwpck_require__(9703);
+const processor_js_1 = __nccwpck_require__(4628);
 const makeIgnore = (ignore, opts) => typeof ignore === 'string' ? new ignore_js_1.Ignore([ignore], opts)
     : Array.isArray(ignore) ? new ignore_js_1.Ignore(ignore, opts)
         : ignore;
@@ -35553,7 +44662,7 @@ exports.GlobStream = GlobStream;
 
 /***/ }),
 
-/***/ 995:
+/***/ 2401:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -35574,7 +44683,7 @@ exports.assertValidPattern = assertValidPattern;
 
 /***/ }),
 
-/***/ 7312:
+/***/ 6034:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -35582,8 +44691,8 @@ exports.assertValidPattern = assertValidPattern;
 // parse a single path portion
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AST = void 0;
-const brace_expressions_js_1 = __nccwpck_require__(3951);
-const unescape_js_1 = __nccwpck_require__(7255);
+const brace_expressions_js_1 = __nccwpck_require__(3096);
+const unescape_js_1 = __nccwpck_require__(7226);
 const types = new Set(['!', '?', '+', '*', '@']);
 const isExtglobType = (c) => types.has(c);
 // Patterns that get prepended to bind to the start of either the
@@ -36173,7 +45282,7 @@ exports.AST = AST;
 
 /***/ }),
 
-/***/ 3951:
+/***/ 3096:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -36332,7 +45441,7 @@ exports.parseClass = parseClass;
 
 /***/ }),
 
-/***/ 9698:
+/***/ 1496:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -36361,7 +45470,7 @@ exports.escape = escape;
 
 /***/ }),
 
-/***/ 849:
+/***/ 658:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -36369,10 +45478,10 @@ exports.escape = escape;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.unescape = exports.escape = exports.AST = exports.Minimatch = exports.match = exports.makeRe = exports.braceExpand = exports.defaults = exports.filter = exports.GLOBSTAR = exports.sep = exports.minimatch = void 0;
 const brace_expansion_1 = __nccwpck_require__(8709);
-const assert_valid_pattern_js_1 = __nccwpck_require__(995);
-const ast_js_1 = __nccwpck_require__(7312);
-const escape_js_1 = __nccwpck_require__(9698);
-const unescape_js_1 = __nccwpck_require__(7255);
+const assert_valid_pattern_js_1 = __nccwpck_require__(2401);
+const ast_js_1 = __nccwpck_require__(6034);
+const escape_js_1 = __nccwpck_require__(1496);
+const unescape_js_1 = __nccwpck_require__(7226);
 const minimatch = (p, pattern, options = {}) => {
     (0, assert_valid_pattern_js_1.assertValidPattern)(pattern);
     // shortcut: comments match nothing.
@@ -37367,11 +46476,11 @@ class Minimatch {
 }
 exports.Minimatch = Minimatch;
 /* c8 ignore start */
-var ast_js_2 = __nccwpck_require__(7312);
+var ast_js_2 = __nccwpck_require__(6034);
 Object.defineProperty(exports, "AST", ({ enumerable: true, get: function () { return ast_js_2.AST; } }));
-var escape_js_2 = __nccwpck_require__(9698);
+var escape_js_2 = __nccwpck_require__(1496);
 Object.defineProperty(exports, "escape", ({ enumerable: true, get: function () { return escape_js_2.escape; } }));
-var unescape_js_2 = __nccwpck_require__(7255);
+var unescape_js_2 = __nccwpck_require__(7226);
 Object.defineProperty(exports, "unescape", ({ enumerable: true, get: function () { return unescape_js_2.unescape; } }));
 /* c8 ignore stop */
 exports.minimatch.AST = ast_js_1.AST;
@@ -37382,7 +46491,7 @@ exports.minimatch.unescape = unescape_js_1.unescape;
 
 /***/ }),
 
-/***/ 7255:
+/***/ 7226:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -42319,7 +51428,7 @@ exports.composeNode = composeNode;
 var identity = __nccwpck_require__(5589);
 var Scalar = __nccwpck_require__(9338);
 var resolveBlockScalar = __nccwpck_require__(9485);
-var resolveFlowScalar = __nccwpck_require__(261);
+var resolveFlowScalar = __nccwpck_require__(7578);
 
 function composeScalar(ctx, token, tagToken, onError) {
     const { value, type, comment, range } = token.type === 'block-scalar'
@@ -43292,7 +52401,7 @@ exports.resolveFlowCollection = resolveFlowCollection;
 
 /***/ }),
 
-/***/ 261:
+/***/ 7578:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -45621,7 +54730,7 @@ exports.toJS = toJS;
 
 
 var resolveBlockScalar = __nccwpck_require__(9485);
-var resolveFlowScalar = __nccwpck_require__(261);
+var resolveFlowScalar = __nccwpck_require__(7578);
 var errors = __nccwpck_require__(4236);
 var stringifyString = __nccwpck_require__(6226);
 
@@ -50641,7 +59750,7 @@ exports.visitAsync = visitAsync;
 
 /***/ }),
 
-/***/ 3756:
+/***/ 9735:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
 "use strict";
@@ -53327,6 +62436,1797 @@ async function createSymlink(dest, filepath, link) {
     });
 }
 //# sourceMappingURL=disk.js.map
+;// CONCATENATED MODULE: ./node_modules/glob/node_modules/minimatch/dist/esm/assert-valid-pattern.js
+const assert_valid_pattern_MAX_PATTERN_LENGTH = 1024 * 64;
+const assert_valid_pattern_assertValidPattern = (pattern) => {
+    if (typeof pattern !== 'string') {
+        throw new TypeError('invalid pattern');
+    }
+    if (pattern.length > assert_valid_pattern_MAX_PATTERN_LENGTH) {
+        throw new TypeError('pattern is too long');
+    }
+};
+//# sourceMappingURL=assert-valid-pattern.js.map
+;// CONCATENATED MODULE: ./node_modules/glob/node_modules/minimatch/dist/esm/brace-expressions.js
+// translate the various posix character classes into unicode properties
+// this works across all unicode locales
+// { <posix class>: [<translation>, /u flag required, negated]
+const brace_expressions_posixClasses = {
+    '[:alnum:]': ['\\p{L}\\p{Nl}\\p{Nd}', true],
+    '[:alpha:]': ['\\p{L}\\p{Nl}', true],
+    '[:ascii:]': ['\\x' + '00-\\x' + '7f', false],
+    '[:blank:]': ['\\p{Zs}\\t', true],
+    '[:cntrl:]': ['\\p{Cc}', true],
+    '[:digit:]': ['\\p{Nd}', true],
+    '[:graph:]': ['\\p{Z}\\p{C}', true, true],
+    '[:lower:]': ['\\p{Ll}', true],
+    '[:print:]': ['\\p{C}', true],
+    '[:punct:]': ['\\p{P}', true],
+    '[:space:]': ['\\p{Z}\\t\\r\\n\\v\\f', true],
+    '[:upper:]': ['\\p{Lu}', true],
+    '[:word:]': ['\\p{L}\\p{Nl}\\p{Nd}\\p{Pc}', true],
+    '[:xdigit:]': ['A-Fa-f0-9', false],
+};
+// only need to escape a few things inside of brace expressions
+// escapes: [ \ ] -
+const brace_expressions_braceEscape = (s) => s.replace(/[[\]\\-]/g, '\\$&');
+// escape all regexp magic characters
+const brace_expressions_regexpEscape = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+// everything has already been escaped, we just have to join
+const brace_expressions_rangesToString = (ranges) => ranges.join('');
+// takes a glob string at a posix brace expression, and returns
+// an equivalent regular expression source, and boolean indicating
+// whether the /u flag needs to be applied, and the number of chars
+// consumed to parse the character class.
+// This also removes out of order ranges, and returns ($.) if the
+// entire class just no good.
+const brace_expressions_parseClass = (glob, position) => {
+    const pos = position;
+    /* c8 ignore start */
+    if (glob.charAt(pos) !== '[') {
+        throw new Error('not in a brace expression');
+    }
+    /* c8 ignore stop */
+    const ranges = [];
+    const negs = [];
+    let i = pos + 1;
+    let sawStart = false;
+    let uflag = false;
+    let escaping = false;
+    let negate = false;
+    let endPos = pos;
+    let rangeStart = '';
+    WHILE: while (i < glob.length) {
+        const c = glob.charAt(i);
+        if ((c === '!' || c === '^') && i === pos + 1) {
+            negate = true;
+            i++;
+            continue;
+        }
+        if (c === ']' && sawStart && !escaping) {
+            endPos = i + 1;
+            break;
+        }
+        sawStart = true;
+        if (c === '\\') {
+            if (!escaping) {
+                escaping = true;
+                i++;
+                continue;
+            }
+            // escaped \ char, fall through and treat like normal char
+        }
+        if (c === '[' && !escaping) {
+            // either a posix class, a collation equivalent, or just a [
+            for (const [cls, [unip, u, neg]] of Object.entries(brace_expressions_posixClasses)) {
+                if (glob.startsWith(cls, i)) {
+                    // invalid, [a-[] is fine, but not [a-[:alpha]]
+                    if (rangeStart) {
+                        return ['$.', false, glob.length - pos, true];
+                    }
+                    i += cls.length;
+                    if (neg)
+                        negs.push(unip);
+                    else
+                        ranges.push(unip);
+                    uflag = uflag || u;
+                    continue WHILE;
+                }
+            }
+        }
+        // now it's just a normal character, effectively
+        escaping = false;
+        if (rangeStart) {
+            // throw this range away if it's not valid, but others
+            // can still match.
+            if (c > rangeStart) {
+                ranges.push(brace_expressions_braceEscape(rangeStart) + '-' + brace_expressions_braceEscape(c));
+            }
+            else if (c === rangeStart) {
+                ranges.push(brace_expressions_braceEscape(c));
+            }
+            rangeStart = '';
+            i++;
+            continue;
+        }
+        // now might be the start of a range.
+        // can be either c-d or c-] or c<more...>] or c] at this point
+        if (glob.startsWith('-]', i + 1)) {
+            ranges.push(brace_expressions_braceEscape(c + '-'));
+            i += 2;
+            continue;
+        }
+        if (glob.startsWith('-', i + 1)) {
+            rangeStart = c;
+            i += 2;
+            continue;
+        }
+        // not the start of a range, just a single character
+        ranges.push(brace_expressions_braceEscape(c));
+        i++;
+    }
+    if (endPos < i) {
+        // didn't see the end of the class, not a valid class,
+        // but might still be valid as a literal match.
+        return ['', false, 0, false];
+    }
+    // if we got no ranges and no negates, then we have a range that
+    // cannot possibly match anything, and that poisons the whole glob
+    if (!ranges.length && !negs.length) {
+        return ['$.', false, glob.length - pos, true];
+    }
+    // if we got one positive range, and it's a single character, then that's
+    // not actually a magic pattern, it's just that one literal character.
+    // we should not treat that as "magic", we should just return the literal
+    // character. [_] is a perfectly valid way to escape glob magic chars.
+    if (negs.length === 0 &&
+        ranges.length === 1 &&
+        /^\\?.$/.test(ranges[0]) &&
+        !negate) {
+        const r = ranges[0].length === 2 ? ranges[0].slice(-1) : ranges[0];
+        return [brace_expressions_regexpEscape(r), false, endPos - pos, false];
+    }
+    const sranges = '[' + (negate ? '^' : '') + brace_expressions_rangesToString(ranges) + ']';
+    const snegs = '[' + (negate ? '' : '^') + brace_expressions_rangesToString(negs) + ']';
+    const comb = ranges.length && negs.length
+        ? '(' + sranges + '|' + snegs + ')'
+        : ranges.length
+            ? sranges
+            : snegs;
+    return [comb, uflag, endPos - pos, true];
+};
+//# sourceMappingURL=brace-expressions.js.map
+;// CONCATENATED MODULE: ./node_modules/glob/node_modules/minimatch/dist/esm/unescape.js
+/**
+ * Un-escape a string that has been escaped with {@link escape}.
+ *
+ * If the {@link windowsPathsNoEscape} option is used, then square-brace
+ * escapes are removed, but not backslash escapes.  For example, it will turn
+ * the string `'[*]'` into `*`, but it will not turn `'\\*'` into `'*'`,
+ * becuase `\` is a path separator in `windowsPathsNoEscape` mode.
+ *
+ * When `windowsPathsNoEscape` is not set, then both brace escapes and
+ * backslash escapes are removed.
+ *
+ * Slashes (and backslashes in `windowsPathsNoEscape` mode) cannot be escaped
+ * or unescaped.
+ */
+const esm_unescape_unescape = (s, { windowsPathsNoEscape = false, } = {}) => {
+    return windowsPathsNoEscape
+        ? s.replace(/\[([^\/\\])\]/g, '$1')
+        : s.replace(/((?!\\).|^)\[([^\/\\])\]/g, '$1$2').replace(/\\([^\/])/g, '$1');
+};
+//# sourceMappingURL=unescape.js.map
+;// CONCATENATED MODULE: ./node_modules/glob/node_modules/minimatch/dist/esm/ast.js
+// parse a single path portion
+
+
+const ast_types = new Set(['!', '?', '+', '*', '@']);
+const ast_isExtglobType = (c) => ast_types.has(c);
+// Patterns that get prepended to bind to the start of either the
+// entire string, or just a single path portion, to prevent dots
+// and/or traversal patterns, when needed.
+// Exts don't need the ^ or / bit, because the root binds that already.
+const ast_startNoTraversal = '(?!(?:^|/)\\.\\.?(?:$|/))';
+const ast_startNoDot = '(?!\\.)';
+// characters that indicate a start of pattern needs the "no dots" bit,
+// because a dot *might* be matched. ( is not in the list, because in
+// the case of a child extglob, it will handle the prevention itself.
+const ast_addPatternStart = new Set(['[', '.']);
+// cases where traversal is A-OK, no dot prevention needed
+const ast_justDots = new Set(['..', '.']);
+const ast_reSpecials = new Set('().*{}+?[]^$\\!');
+const ast_regExpEscape = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+// any single thing other than /
+const ast_qmark = '[^/]';
+// * => any number of characters
+const ast_star = ast_qmark + '*?';
+// use + when we need to ensure that *something* matches, because the * is
+// the only thing in the path portion.
+const ast_starNoEmpty = ast_qmark + '+?';
+// remove the \ chars that we added if we end up doing a nonmagic compare
+// const deslash = (s: string) => s.replace(/\\(.)/g, '$1')
+class ast_AST {
+    type;
+    #root;
+    #hasMagic;
+    #uflag = false;
+    #parts = [];
+    #parent;
+    #parentIndex;
+    #negs;
+    #filledNegs = false;
+    #options;
+    #toString;
+    // set to true if it's an extglob with no children
+    // (which really means one child of '')
+    #emptyExt = false;
+    constructor(type, parent, options = {}) {
+        this.type = type;
+        // extglobs are inherently magical
+        if (type)
+            this.#hasMagic = true;
+        this.#parent = parent;
+        this.#root = this.#parent ? this.#parent.#root : this;
+        this.#options = this.#root === this ? options : this.#root.#options;
+        this.#negs = this.#root === this ? [] : this.#root.#negs;
+        if (type === '!' && !this.#root.#filledNegs)
+            this.#negs.push(this);
+        this.#parentIndex = this.#parent ? this.#parent.#parts.length : 0;
+    }
+    get hasMagic() {
+        /* c8 ignore start */
+        if (this.#hasMagic !== undefined)
+            return this.#hasMagic;
+        /* c8 ignore stop */
+        for (const p of this.#parts) {
+            if (typeof p === 'string')
+                continue;
+            if (p.type || p.hasMagic)
+                return (this.#hasMagic = true);
+        }
+        // note: will be undefined until we generate the regexp src and find out
+        return this.#hasMagic;
+    }
+    // reconstructs the pattern
+    toString() {
+        if (this.#toString !== undefined)
+            return this.#toString;
+        if (!this.type) {
+            return (this.#toString = this.#parts.map(p => String(p)).join(''));
+        }
+        else {
+            return (this.#toString =
+                this.type + '(' + this.#parts.map(p => String(p)).join('|') + ')');
+        }
+    }
+    #fillNegs() {
+        /* c8 ignore start */
+        if (this !== this.#root)
+            throw new Error('should only call on root');
+        if (this.#filledNegs)
+            return this;
+        /* c8 ignore stop */
+        // call toString() once to fill this out
+        this.toString();
+        this.#filledNegs = true;
+        let n;
+        while ((n = this.#negs.pop())) {
+            if (n.type !== '!')
+                continue;
+            // walk up the tree, appending everthing that comes AFTER parentIndex
+            let p = n;
+            let pp = p.#parent;
+            while (pp) {
+                for (let i = p.#parentIndex + 1; !pp.type && i < pp.#parts.length; i++) {
+                    for (const part of n.#parts) {
+                        /* c8 ignore start */
+                        if (typeof part === 'string') {
+                            throw new Error('string part in extglob AST??');
+                        }
+                        /* c8 ignore stop */
+                        part.copyIn(pp.#parts[i]);
+                    }
+                }
+                p = pp;
+                pp = p.#parent;
+            }
+        }
+        return this;
+    }
+    push(...parts) {
+        for (const p of parts) {
+            if (p === '')
+                continue;
+            /* c8 ignore start */
+            if (typeof p !== 'string' && !(p instanceof ast_AST && p.#parent === this)) {
+                throw new Error('invalid part: ' + p);
+            }
+            /* c8 ignore stop */
+            this.#parts.push(p);
+        }
+    }
+    toJSON() {
+        const ret = this.type === null
+            ? this.#parts.slice().map(p => (typeof p === 'string' ? p : p.toJSON()))
+            : [this.type, ...this.#parts.map(p => p.toJSON())];
+        if (this.isStart() && !this.type)
+            ret.unshift([]);
+        if (this.isEnd() &&
+            (this === this.#root ||
+                (this.#root.#filledNegs && this.#parent?.type === '!'))) {
+            ret.push({});
+        }
+        return ret;
+    }
+    isStart() {
+        if (this.#root === this)
+            return true;
+        // if (this.type) return !!this.#parent?.isStart()
+        if (!this.#parent?.isStart())
+            return false;
+        if (this.#parentIndex === 0)
+            return true;
+        // if everything AHEAD of this is a negation, then it's still the "start"
+        const p = this.#parent;
+        for (let i = 0; i < this.#parentIndex; i++) {
+            const pp = p.#parts[i];
+            if (!(pp instanceof ast_AST && pp.type === '!')) {
+                return false;
+            }
+        }
+        return true;
+    }
+    isEnd() {
+        if (this.#root === this)
+            return true;
+        if (this.#parent?.type === '!')
+            return true;
+        if (!this.#parent?.isEnd())
+            return false;
+        if (!this.type)
+            return this.#parent?.isEnd();
+        // if not root, it'll always have a parent
+        /* c8 ignore start */
+        const pl = this.#parent ? this.#parent.#parts.length : 0;
+        /* c8 ignore stop */
+        return this.#parentIndex === pl - 1;
+    }
+    copyIn(part) {
+        if (typeof part === 'string')
+            this.push(part);
+        else
+            this.push(part.clone(this));
+    }
+    clone(parent) {
+        const c = new ast_AST(this.type, parent);
+        for (const p of this.#parts) {
+            c.copyIn(p);
+        }
+        return c;
+    }
+    static #parseAST(str, ast, pos, opt) {
+        let escaping = false;
+        let inBrace = false;
+        let braceStart = -1;
+        let braceNeg = false;
+        if (ast.type === null) {
+            // outside of a extglob, append until we find a start
+            let i = pos;
+            let acc = '';
+            while (i < str.length) {
+                const c = str.charAt(i++);
+                // still accumulate escapes at this point, but we do ignore
+                // starts that are escaped
+                if (escaping || c === '\\') {
+                    escaping = !escaping;
+                    acc += c;
+                    continue;
+                }
+                if (inBrace) {
+                    if (i === braceStart + 1) {
+                        if (c === '^' || c === '!') {
+                            braceNeg = true;
+                        }
+                    }
+                    else if (c === ']' && !(i === braceStart + 2 && braceNeg)) {
+                        inBrace = false;
+                    }
+                    acc += c;
+                    continue;
+                }
+                else if (c === '[') {
+                    inBrace = true;
+                    braceStart = i;
+                    braceNeg = false;
+                    acc += c;
+                    continue;
+                }
+                if (!opt.noext && ast_isExtglobType(c) && str.charAt(i) === '(') {
+                    ast.push(acc);
+                    acc = '';
+                    const ext = new ast_AST(c, ast);
+                    i = ast_AST.#parseAST(str, ext, i, opt);
+                    ast.push(ext);
+                    continue;
+                }
+                acc += c;
+            }
+            ast.push(acc);
+            return i;
+        }
+        // some kind of extglob, pos is at the (
+        // find the next | or )
+        let i = pos + 1;
+        let part = new ast_AST(null, ast);
+        const parts = [];
+        let acc = '';
+        while (i < str.length) {
+            const c = str.charAt(i++);
+            // still accumulate escapes at this point, but we do ignore
+            // starts that are escaped
+            if (escaping || c === '\\') {
+                escaping = !escaping;
+                acc += c;
+                continue;
+            }
+            if (inBrace) {
+                if (i === braceStart + 1) {
+                    if (c === '^' || c === '!') {
+                        braceNeg = true;
+                    }
+                }
+                else if (c === ']' && !(i === braceStart + 2 && braceNeg)) {
+                    inBrace = false;
+                }
+                acc += c;
+                continue;
+            }
+            else if (c === '[') {
+                inBrace = true;
+                braceStart = i;
+                braceNeg = false;
+                acc += c;
+                continue;
+            }
+            if (ast_isExtglobType(c) && str.charAt(i) === '(') {
+                part.push(acc);
+                acc = '';
+                const ext = new ast_AST(c, part);
+                part.push(ext);
+                i = ast_AST.#parseAST(str, ext, i, opt);
+                continue;
+            }
+            if (c === '|') {
+                part.push(acc);
+                acc = '';
+                parts.push(part);
+                part = new ast_AST(null, ast);
+                continue;
+            }
+            if (c === ')') {
+                if (acc === '' && ast.#parts.length === 0) {
+                    ast.#emptyExt = true;
+                }
+                part.push(acc);
+                acc = '';
+                ast.push(...parts, part);
+                return i;
+            }
+            acc += c;
+        }
+        // unfinished extglob
+        // if we got here, it was a malformed extglob! not an extglob, but
+        // maybe something else in there.
+        ast.type = null;
+        ast.#hasMagic = undefined;
+        ast.#parts = [str.substring(pos - 1)];
+        return i;
+    }
+    static fromGlob(pattern, options = {}) {
+        const ast = new ast_AST(null, undefined, options);
+        ast_AST.#parseAST(pattern, ast, 0, options);
+        return ast;
+    }
+    // returns the regular expression if there's magic, or the unescaped
+    // string if not.
+    toMMPattern() {
+        // should only be called on root
+        /* c8 ignore start */
+        if (this !== this.#root)
+            return this.#root.toMMPattern();
+        /* c8 ignore stop */
+        const glob = this.toString();
+        const [re, body, hasMagic, uflag] = this.toRegExpSource();
+        // if we're in nocase mode, and not nocaseMagicOnly, then we do
+        // still need a regular expression if we have to case-insensitively
+        // match capital/lowercase characters.
+        const anyMagic = hasMagic ||
+            this.#hasMagic ||
+            (this.#options.nocase &&
+                !this.#options.nocaseMagicOnly &&
+                glob.toUpperCase() !== glob.toLowerCase());
+        if (!anyMagic) {
+            return body;
+        }
+        const flags = (this.#options.nocase ? 'i' : '') + (uflag ? 'u' : '');
+        return Object.assign(new RegExp(`^${re}$`, flags), {
+            _src: re,
+            _glob: glob,
+        });
+    }
+    get options() {
+        return this.#options;
+    }
+    // returns the string match, the regexp source, whether there's magic
+    // in the regexp (so a regular expression is required) and whether or
+    // not the uflag is needed for the regular expression (for posix classes)
+    // TODO: instead of injecting the start/end at this point, just return
+    // the BODY of the regexp, along with the start/end portions suitable
+    // for binding the start/end in either a joined full-path makeRe context
+    // (where we bind to (^|/), or a standalone matchPart context (where
+    // we bind to ^, and not /).  Otherwise slashes get duped!
+    //
+    // In part-matching mode, the start is:
+    // - if not isStart: nothing
+    // - if traversal possible, but not allowed: ^(?!\.\.?$)
+    // - if dots allowed or not possible: ^
+    // - if dots possible and not allowed: ^(?!\.)
+    // end is:
+    // - if not isEnd(): nothing
+    // - else: $
+    //
+    // In full-path matching mode, we put the slash at the START of the
+    // pattern, so start is:
+    // - if first pattern: same as part-matching mode
+    // - if not isStart(): nothing
+    // - if traversal possible, but not allowed: /(?!\.\.?(?:$|/))
+    // - if dots allowed or not possible: /
+    // - if dots possible and not allowed: /(?!\.)
+    // end is:
+    // - if last pattern, same as part-matching mode
+    // - else nothing
+    //
+    // Always put the (?:$|/) on negated tails, though, because that has to be
+    // there to bind the end of the negated pattern portion, and it's easier to
+    // just stick it in now rather than try to inject it later in the middle of
+    // the pattern.
+    //
+    // We can just always return the same end, and leave it up to the caller
+    // to know whether it's going to be used joined or in parts.
+    // And, if the start is adjusted slightly, can do the same there:
+    // - if not isStart: nothing
+    // - if traversal possible, but not allowed: (?:/|^)(?!\.\.?$)
+    // - if dots allowed or not possible: (?:/|^)
+    // - if dots possible and not allowed: (?:/|^)(?!\.)
+    //
+    // But it's better to have a simpler binding without a conditional, for
+    // performance, so probably better to return both start options.
+    //
+    // Then the caller just ignores the end if it's not the first pattern,
+    // and the start always gets applied.
+    //
+    // But that's always going to be $ if it's the ending pattern, or nothing,
+    // so the caller can just attach $ at the end of the pattern when building.
+    //
+    // So the todo is:
+    // - better detect what kind of start is needed
+    // - return both flavors of starting pattern
+    // - attach $ at the end of the pattern when creating the actual RegExp
+    //
+    // Ah, but wait, no, that all only applies to the root when the first pattern
+    // is not an extglob. If the first pattern IS an extglob, then we need all
+    // that dot prevention biz to live in the extglob portions, because eg
+    // +(*|.x*) can match .xy but not .yx.
+    //
+    // So, return the two flavors if it's #root and the first child is not an
+    // AST, otherwise leave it to the child AST to handle it, and there,
+    // use the (?:^|/) style of start binding.
+    //
+    // Even simplified further:
+    // - Since the start for a join is eg /(?!\.) and the start for a part
+    // is ^(?!\.), we can just prepend (?!\.) to the pattern (either root
+    // or start or whatever) and prepend ^ or / at the Regexp construction.
+    toRegExpSource(allowDot) {
+        const dot = allowDot ?? !!this.#options.dot;
+        if (this.#root === this)
+            this.#fillNegs();
+        if (!this.type) {
+            const noEmpty = this.isStart() && this.isEnd();
+            const src = this.#parts
+                .map(p => {
+                const [re, _, hasMagic, uflag] = typeof p === 'string'
+                    ? ast_AST.#parseGlob(p, this.#hasMagic, noEmpty)
+                    : p.toRegExpSource(allowDot);
+                this.#hasMagic = this.#hasMagic || hasMagic;
+                this.#uflag = this.#uflag || uflag;
+                return re;
+            })
+                .join('');
+            let start = '';
+            if (this.isStart()) {
+                if (typeof this.#parts[0] === 'string') {
+                    // this is the string that will match the start of the pattern,
+                    // so we need to protect against dots and such.
+                    // '.' and '..' cannot match unless the pattern is that exactly,
+                    // even if it starts with . or dot:true is set.
+                    const dotTravAllowed = this.#parts.length === 1 && ast_justDots.has(this.#parts[0]);
+                    if (!dotTravAllowed) {
+                        const aps = ast_addPatternStart;
+                        // check if we have a possibility of matching . or ..,
+                        // and prevent that.
+                        const needNoTrav = 
+                        // dots are allowed, and the pattern starts with [ or .
+                        (dot && aps.has(src.charAt(0))) ||
+                            // the pattern starts with \., and then [ or .
+                            (src.startsWith('\\.') && aps.has(src.charAt(2))) ||
+                            // the pattern starts with \.\., and then [ or .
+                            (src.startsWith('\\.\\.') && aps.has(src.charAt(4)));
+                        // no need to prevent dots if it can't match a dot, or if a
+                        // sub-pattern will be preventing it anyway.
+                        const needNoDot = !dot && !allowDot && aps.has(src.charAt(0));
+                        start = needNoTrav ? ast_startNoTraversal : needNoDot ? ast_startNoDot : '';
+                    }
+                }
+            }
+            // append the "end of path portion" pattern to negation tails
+            let end = '';
+            if (this.isEnd() &&
+                this.#root.#filledNegs &&
+                this.#parent?.type === '!') {
+                end = '(?:$|\\/)';
+            }
+            const final = start + src + end;
+            return [
+                final,
+                esm_unescape_unescape(src),
+                (this.#hasMagic = !!this.#hasMagic),
+                this.#uflag,
+            ];
+        }
+        // We need to calculate the body *twice* if it's a repeat pattern
+        // at the start, once in nodot mode, then again in dot mode, so a
+        // pattern like *(?) can match 'x.y'
+        const repeated = this.type === '*' || this.type === '+';
+        // some kind of extglob
+        const start = this.type === '!' ? '(?:(?!(?:' : '(?:';
+        let body = this.#partsToRegExp(dot);
+        if (this.isStart() && this.isEnd() && !body && this.type !== '!') {
+            // invalid extglob, has to at least be *something* present, if it's
+            // the entire path portion.
+            const s = this.toString();
+            this.#parts = [s];
+            this.type = null;
+            this.#hasMagic = undefined;
+            return [s, esm_unescape_unescape(this.toString()), false, false];
+        }
+        // XXX abstract out this map method
+        let bodyDotAllowed = !repeated || allowDot || dot || !ast_startNoDot
+            ? ''
+            : this.#partsToRegExp(true);
+        if (bodyDotAllowed === body) {
+            bodyDotAllowed = '';
+        }
+        if (bodyDotAllowed) {
+            body = `(?:${body})(?:${bodyDotAllowed})*?`;
+        }
+        // an empty !() is exactly equivalent to a starNoEmpty
+        let final = '';
+        if (this.type === '!' && this.#emptyExt) {
+            final = (this.isStart() && !dot ? ast_startNoDot : '') + ast_starNoEmpty;
+        }
+        else {
+            const close = this.type === '!'
+                ? // !() must match something,but !(x) can match ''
+                    '))' +
+                        (this.isStart() && !dot && !allowDot ? ast_startNoDot : '') +
+                        ast_star +
+                        ')'
+                : this.type === '@'
+                    ? ')'
+                    : this.type === '?'
+                        ? ')?'
+                        : this.type === '+' && bodyDotAllowed
+                            ? ')'
+                            : this.type === '*' && bodyDotAllowed
+                                ? `)?`
+                                : `)${this.type}`;
+            final = start + body + close;
+        }
+        return [
+            final,
+            esm_unescape_unescape(body),
+            (this.#hasMagic = !!this.#hasMagic),
+            this.#uflag,
+        ];
+    }
+    #partsToRegExp(dot) {
+        return this.#parts
+            .map(p => {
+            // extglob ASTs should only contain parent ASTs
+            /* c8 ignore start */
+            if (typeof p === 'string') {
+                throw new Error('string type in extglob ast??');
+            }
+            /* c8 ignore stop */
+            // can ignore hasMagic, because extglobs are already always magic
+            const [re, _, _hasMagic, uflag] = p.toRegExpSource(dot);
+            this.#uflag = this.#uflag || uflag;
+            return re;
+        })
+            .filter(p => !(this.isStart() && this.isEnd()) || !!p)
+            .join('|');
+    }
+    static #parseGlob(glob, hasMagic, noEmpty = false) {
+        let escaping = false;
+        let re = '';
+        let uflag = false;
+        for (let i = 0; i < glob.length; i++) {
+            const c = glob.charAt(i);
+            if (escaping) {
+                escaping = false;
+                re += (ast_reSpecials.has(c) ? '\\' : '') + c;
+                continue;
+            }
+            if (c === '\\') {
+                if (i === glob.length - 1) {
+                    re += '\\\\';
+                }
+                else {
+                    escaping = true;
+                }
+                continue;
+            }
+            if (c === '[') {
+                const [src, needUflag, consumed, magic] = brace_expressions_parseClass(glob, i);
+                if (consumed) {
+                    re += src;
+                    uflag = uflag || needUflag;
+                    i += consumed - 1;
+                    hasMagic = hasMagic || magic;
+                    continue;
+                }
+            }
+            if (c === '*') {
+                if (noEmpty && glob === '*')
+                    re += ast_starNoEmpty;
+                else
+                    re += ast_star;
+                hasMagic = true;
+                continue;
+            }
+            if (c === '?') {
+                re += ast_qmark;
+                hasMagic = true;
+                continue;
+            }
+            re += ast_regExpEscape(c);
+        }
+        return [re, esm_unescape_unescape(glob), !!hasMagic, uflag];
+    }
+}
+//# sourceMappingURL=ast.js.map
+;// CONCATENATED MODULE: ./node_modules/glob/node_modules/minimatch/dist/esm/escape.js
+/**
+ * Escape all magic characters in a glob pattern.
+ *
+ * If the {@link windowsPathsNoEscape | GlobOptions.windowsPathsNoEscape}
+ * option is used, then characters are escaped by wrapping in `[]`, because
+ * a magic character wrapped in a character class can only be satisfied by
+ * that exact character.  In this mode, `\` is _not_ escaped, because it is
+ * not interpreted as a magic character, but instead as a path separator.
+ */
+const esm_escape_escape = (s, { windowsPathsNoEscape = false, } = {}) => {
+    // don't need to escape +@! because we escape the parens
+    // that make those magic, and escaping ! as [!] isn't valid,
+    // because [!]] is a valid glob class meaning not ']'.
+    return windowsPathsNoEscape
+        ? s.replace(/[?*()[\]]/g, '[$&]')
+        : s.replace(/[?*()[\]\\]/g, '\\$&');
+};
+//# sourceMappingURL=escape.js.map
+;// CONCATENATED MODULE: ./node_modules/glob/node_modules/minimatch/dist/esm/index.js
+
+
+
+
+
+const esm_minimatch = (p, pattern, options = {}) => {
+    assert_valid_pattern_assertValidPattern(pattern);
+    // shortcut: comments match nothing.
+    if (!options.nocomment && pattern.charAt(0) === '#') {
+        return false;
+    }
+    return new esm_Minimatch(pattern, options).match(p);
+};
+// Optimized checking for the most common glob patterns.
+const esm_starDotExtRE = /^\*+([^+@!?\*\[\(]*)$/;
+const esm_starDotExtTest = (ext) => (f) => !f.startsWith('.') && f.endsWith(ext);
+const esm_starDotExtTestDot = (ext) => (f) => f.endsWith(ext);
+const esm_starDotExtTestNocase = (ext) => {
+    ext = ext.toLowerCase();
+    return (f) => !f.startsWith('.') && f.toLowerCase().endsWith(ext);
+};
+const esm_starDotExtTestNocaseDot = (ext) => {
+    ext = ext.toLowerCase();
+    return (f) => f.toLowerCase().endsWith(ext);
+};
+const esm_starDotStarRE = /^\*+\.\*+$/;
+const esm_starDotStarTest = (f) => !f.startsWith('.') && f.includes('.');
+const esm_starDotStarTestDot = (f) => f !== '.' && f !== '..' && f.includes('.');
+const esm_dotStarRE = /^\.\*+$/;
+const esm_dotStarTest = (f) => f !== '.' && f !== '..' && f.startsWith('.');
+const esm_starRE = /^\*+$/;
+const esm_starTest = (f) => f.length !== 0 && !f.startsWith('.');
+const esm_starTestDot = (f) => f.length !== 0 && f !== '.' && f !== '..';
+const esm_qmarksRE = /^\?+([^+@!?\*\[\(]*)?$/;
+const esm_qmarksTestNocase = ([$0, ext = '']) => {
+    const noext = esm_qmarksTestNoExt([$0]);
+    if (!ext)
+        return noext;
+    ext = ext.toLowerCase();
+    return (f) => noext(f) && f.toLowerCase().endsWith(ext);
+};
+const esm_qmarksTestNocaseDot = ([$0, ext = '']) => {
+    const noext = esm_qmarksTestNoExtDot([$0]);
+    if (!ext)
+        return noext;
+    ext = ext.toLowerCase();
+    return (f) => noext(f) && f.toLowerCase().endsWith(ext);
+};
+const esm_qmarksTestDot = ([$0, ext = '']) => {
+    const noext = esm_qmarksTestNoExtDot([$0]);
+    return !ext ? noext : (f) => noext(f) && f.endsWith(ext);
+};
+const esm_qmarksTest = ([$0, ext = '']) => {
+    const noext = esm_qmarksTestNoExt([$0]);
+    return !ext ? noext : (f) => noext(f) && f.endsWith(ext);
+};
+const esm_qmarksTestNoExt = ([$0]) => {
+    const len = $0.length;
+    return (f) => f.length === len && !f.startsWith('.');
+};
+const esm_qmarksTestNoExtDot = ([$0]) => {
+    const len = $0.length;
+    return (f) => f.length === len && f !== '.' && f !== '..';
+};
+/* c8 ignore start */
+const esm_defaultPlatform = (typeof process === 'object' && process
+    ? (typeof process.env === 'object' &&
+        process.env &&
+        process.env.__MINIMATCH_TESTING_PLATFORM__) ||
+        process.platform
+    : 'posix');
+const esm_path = {
+    win32: { sep: '\\' },
+    posix: { sep: '/' },
+};
+/* c8 ignore stop */
+const esm_sep = esm_defaultPlatform === 'win32' ? esm_path.win32.sep : esm_path.posix.sep;
+esm_minimatch.sep = esm_sep;
+const esm_GLOBSTAR = Symbol('globstar **');
+esm_minimatch.GLOBSTAR = esm_GLOBSTAR;
+// any single thing other than /
+// don't need to escape / when using new RegExp()
+const dist_esm_qmark = '[^/]';
+// * => any number of characters
+const dist_esm_star = dist_esm_qmark + '*?';
+// ** when dots are allowed.  Anything goes, except .. and .
+// not (^ or / followed by one or two dots followed by $ or /),
+// followed by anything, any number of times.
+const esm_twoStarDot = '(?:(?!(?:\\/|^)(?:\\.{1,2})($|\\/)).)*?';
+// not a ^ or / followed by a dot,
+// followed by anything, any number of times.
+const esm_twoStarNoDot = '(?:(?!(?:\\/|^)\\.).)*?';
+const esm_filter = (pattern, options = {}) => (p) => esm_minimatch(p, pattern, options);
+esm_minimatch.filter = esm_filter;
+const esm_ext = (a, b = {}) => Object.assign({}, a, b);
+const esm_defaults = (def) => {
+    if (!def || typeof def !== 'object' || !Object.keys(def).length) {
+        return esm_minimatch;
+    }
+    const orig = esm_minimatch;
+    const m = (p, pattern, options = {}) => orig(p, pattern, esm_ext(def, options));
+    return Object.assign(m, {
+        Minimatch: class Minimatch extends orig.Minimatch {
+            constructor(pattern, options = {}) {
+                super(pattern, esm_ext(def, options));
+            }
+            static defaults(options) {
+                return orig.defaults(esm_ext(def, options)).Minimatch;
+            }
+        },
+        AST: class AST extends orig.AST {
+            /* c8 ignore start */
+            constructor(type, parent, options = {}) {
+                super(type, parent, esm_ext(def, options));
+            }
+            /* c8 ignore stop */
+            static fromGlob(pattern, options = {}) {
+                return orig.AST.fromGlob(pattern, esm_ext(def, options));
+            }
+        },
+        unescape: (s, options = {}) => orig.unescape(s, esm_ext(def, options)),
+        escape: (s, options = {}) => orig.escape(s, esm_ext(def, options)),
+        filter: (pattern, options = {}) => orig.filter(pattern, esm_ext(def, options)),
+        defaults: (options) => orig.defaults(esm_ext(def, options)),
+        makeRe: (pattern, options = {}) => orig.makeRe(pattern, esm_ext(def, options)),
+        braceExpand: (pattern, options = {}) => orig.braceExpand(pattern, esm_ext(def, options)),
+        match: (list, pattern, options = {}) => orig.match(list, pattern, esm_ext(def, options)),
+        sep: orig.sep,
+        GLOBSTAR: esm_GLOBSTAR,
+    });
+};
+esm_minimatch.defaults = esm_defaults;
+// Brace expansion:
+// a{b,c}d -> abd acd
+// a{b,}c -> abc ac
+// a{0..3}d -> a0d a1d a2d a3d
+// a{b,c{d,e}f}g -> abg acdfg acefg
+// a{b,c}d{e,f}g -> abdeg acdeg abdeg abdfg
+//
+// Invalid sets are not expanded.
+// a{2..}b -> a{2..}b
+// a{b}c -> a{b}c
+const esm_braceExpand = (pattern, options = {}) => {
+    assert_valid_pattern_assertValidPattern(pattern);
+    // Thanks to Yeting Li <https://github.com/yetingli> for
+    // improving this regexp to avoid a ReDOS vulnerability.
+    if (options.nobrace || !/\{(?:(?!\{).)*\}/.test(pattern)) {
+        // shortcut. no need to expand.
+        return [pattern];
+    }
+    return expand(pattern);
+};
+esm_minimatch.braceExpand = esm_braceExpand;
+// parse a component of the expanded set.
+// At this point, no pattern may contain "/" in it
+// so we're going to return a 2d array, where each entry is the full
+// pattern, split on '/', and then turned into a regular expression.
+// A regexp is made at the end which joins each array with an
+// escaped /, and another full one which joins each regexp with |.
+//
+// Following the lead of Bash 4.1, note that "**" only has special meaning
+// when it is the *only* thing in a path portion.  Otherwise, any series
+// of * is equivalent to a single *.  Globstar behavior is enabled by
+// default, and can be disabled by setting options.noglobstar.
+const esm_makeRe = (pattern, options = {}) => new esm_Minimatch(pattern, options).makeRe();
+esm_minimatch.makeRe = esm_makeRe;
+const esm_match = (list, pattern, options = {}) => {
+    const mm = new esm_Minimatch(pattern, options);
+    list = list.filter(f => mm.match(f));
+    if (mm.options.nonull && !list.length) {
+        list.push(pattern);
+    }
+    return list;
+};
+esm_minimatch.match = esm_match;
+// replace stuff like \* with *
+const esm_globMagic = /[?*]|[+@!]\(.*?\)|\[|\]/;
+const dist_esm_regExpEscape = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+class esm_Minimatch {
+    options;
+    set;
+    pattern;
+    windowsPathsNoEscape;
+    nonegate;
+    negate;
+    comment;
+    empty;
+    preserveMultipleSlashes;
+    partial;
+    globSet;
+    globParts;
+    nocase;
+    isWindows;
+    platform;
+    windowsNoMagicRoot;
+    regexp;
+    constructor(pattern, options = {}) {
+        assert_valid_pattern_assertValidPattern(pattern);
+        options = options || {};
+        this.options = options;
+        this.pattern = pattern;
+        this.platform = options.platform || esm_defaultPlatform;
+        this.isWindows = this.platform === 'win32';
+        this.windowsPathsNoEscape =
+            !!options.windowsPathsNoEscape || options.allowWindowsEscape === false;
+        if (this.windowsPathsNoEscape) {
+            this.pattern = this.pattern.replace(/\\/g, '/');
+        }
+        this.preserveMultipleSlashes = !!options.preserveMultipleSlashes;
+        this.regexp = null;
+        this.negate = false;
+        this.nonegate = !!options.nonegate;
+        this.comment = false;
+        this.empty = false;
+        this.partial = !!options.partial;
+        this.nocase = !!this.options.nocase;
+        this.windowsNoMagicRoot =
+            options.windowsNoMagicRoot !== undefined
+                ? options.windowsNoMagicRoot
+                : !!(this.isWindows && this.nocase);
+        this.globSet = [];
+        this.globParts = [];
+        this.set = [];
+        // make the set of regexps etc.
+        this.make();
+    }
+    hasMagic() {
+        if (this.options.magicalBraces && this.set.length > 1) {
+            return true;
+        }
+        for (const pattern of this.set) {
+            for (const part of pattern) {
+                if (typeof part !== 'string')
+                    return true;
+            }
+        }
+        return false;
+    }
+    debug(..._) { }
+    make() {
+        const pattern = this.pattern;
+        const options = this.options;
+        // empty patterns and comments match nothing.
+        if (!options.nocomment && pattern.charAt(0) === '#') {
+            this.comment = true;
+            return;
+        }
+        if (!pattern) {
+            this.empty = true;
+            return;
+        }
+        // step 1: figure out negation, etc.
+        this.parseNegate();
+        // step 2: expand braces
+        this.globSet = [...new Set(this.braceExpand())];
+        if (options.debug) {
+            this.debug = (...args) => console.error(...args);
+        }
+        this.debug(this.pattern, this.globSet);
+        // step 3: now we have a set, so turn each one into a series of
+        // path-portion matching patterns.
+        // These will be regexps, except in the case of "**", which is
+        // set to the GLOBSTAR object for globstar behavior,
+        // and will not contain any / characters
+        //
+        // First, we preprocess to make the glob pattern sets a bit simpler
+        // and deduped.  There are some perf-killing patterns that can cause
+        // problems with a glob walk, but we can simplify them down a bit.
+        const rawGlobParts = this.globSet.map(s => this.slashSplit(s));
+        this.globParts = this.preprocess(rawGlobParts);
+        this.debug(this.pattern, this.globParts);
+        // glob --> regexps
+        let set = this.globParts.map((s, _, __) => {
+            if (this.isWindows && this.windowsNoMagicRoot) {
+                // check if it's a drive or unc path.
+                const isUNC = s[0] === '' &&
+                    s[1] === '' &&
+                    (s[2] === '?' || !esm_globMagic.test(s[2])) &&
+                    !esm_globMagic.test(s[3]);
+                const isDrive = /^[a-z]:/i.test(s[0]);
+                if (isUNC) {
+                    return [...s.slice(0, 4), ...s.slice(4).map(ss => this.parse(ss))];
+                }
+                else if (isDrive) {
+                    return [s[0], ...s.slice(1).map(ss => this.parse(ss))];
+                }
+            }
+            return s.map(ss => this.parse(ss));
+        });
+        this.debug(this.pattern, set);
+        // filter out everything that didn't compile properly.
+        this.set = set.filter(s => s.indexOf(false) === -1);
+        // do not treat the ? in UNC paths as magic
+        if (this.isWindows) {
+            for (let i = 0; i < this.set.length; i++) {
+                const p = this.set[i];
+                if (p[0] === '' &&
+                    p[1] === '' &&
+                    this.globParts[i][2] === '?' &&
+                    typeof p[3] === 'string' &&
+                    /^[a-z]:$/i.test(p[3])) {
+                    p[2] = '?';
+                }
+            }
+        }
+        this.debug(this.pattern, this.set);
+    }
+    // various transforms to equivalent pattern sets that are
+    // faster to process in a filesystem walk.  The goal is to
+    // eliminate what we can, and push all ** patterns as far
+    // to the right as possible, even if it increases the number
+    // of patterns that we have to process.
+    preprocess(globParts) {
+        // if we're not in globstar mode, then turn all ** into *
+        if (this.options.noglobstar) {
+            for (let i = 0; i < globParts.length; i++) {
+                for (let j = 0; j < globParts[i].length; j++) {
+                    if (globParts[i][j] === '**') {
+                        globParts[i][j] = '*';
+                    }
+                }
+            }
+        }
+        const { optimizationLevel = 1 } = this.options;
+        if (optimizationLevel >= 2) {
+            // aggressive optimization for the purpose of fs walking
+            globParts = this.firstPhasePreProcess(globParts);
+            globParts = this.secondPhasePreProcess(globParts);
+        }
+        else if (optimizationLevel >= 1) {
+            // just basic optimizations to remove some .. parts
+            globParts = this.levelOneOptimize(globParts);
+        }
+        else {
+            // just collapse multiple ** portions into one
+            globParts = this.adjascentGlobstarOptimize(globParts);
+        }
+        return globParts;
+    }
+    // just get rid of adjascent ** portions
+    adjascentGlobstarOptimize(globParts) {
+        return globParts.map(parts => {
+            let gs = -1;
+            while (-1 !== (gs = parts.indexOf('**', gs + 1))) {
+                let i = gs;
+                while (parts[i + 1] === '**') {
+                    i++;
+                }
+                if (i !== gs) {
+                    parts.splice(gs, i - gs);
+                }
+            }
+            return parts;
+        });
+    }
+    // get rid of adjascent ** and resolve .. portions
+    levelOneOptimize(globParts) {
+        return globParts.map(parts => {
+            parts = parts.reduce((set, part) => {
+                const prev = set[set.length - 1];
+                if (part === '**' && prev === '**') {
+                    return set;
+                }
+                if (part === '..') {
+                    if (prev && prev !== '..' && prev !== '.' && prev !== '**') {
+                        set.pop();
+                        return set;
+                    }
+                }
+                set.push(part);
+                return set;
+            }, []);
+            return parts.length === 0 ? [''] : parts;
+        });
+    }
+    levelTwoFileOptimize(parts) {
+        if (!Array.isArray(parts)) {
+            parts = this.slashSplit(parts);
+        }
+        let didSomething = false;
+        do {
+            didSomething = false;
+            // <pre>/<e>/<rest> -> <pre>/<rest>
+            if (!this.preserveMultipleSlashes) {
+                for (let i = 1; i < parts.length - 1; i++) {
+                    const p = parts[i];
+                    // don't squeeze out UNC patterns
+                    if (i === 1 && p === '' && parts[0] === '')
+                        continue;
+                    if (p === '.' || p === '') {
+                        didSomething = true;
+                        parts.splice(i, 1);
+                        i--;
+                    }
+                }
+                if (parts[0] === '.' &&
+                    parts.length === 2 &&
+                    (parts[1] === '.' || parts[1] === '')) {
+                    didSomething = true;
+                    parts.pop();
+                }
+            }
+            // <pre>/<p>/../<rest> -> <pre>/<rest>
+            let dd = 0;
+            while (-1 !== (dd = parts.indexOf('..', dd + 1))) {
+                const p = parts[dd - 1];
+                if (p && p !== '.' && p !== '..' && p !== '**') {
+                    didSomething = true;
+                    parts.splice(dd - 1, 2);
+                    dd -= 2;
+                }
+            }
+        } while (didSomething);
+        return parts.length === 0 ? [''] : parts;
+    }
+    // First phase: single-pattern processing
+    // <pre> is 1 or more portions
+    // <rest> is 1 or more portions
+    // <p> is any portion other than ., .., '', or **
+    // <e> is . or ''
+    //
+    // **/.. is *brutal* for filesystem walking performance, because
+    // it effectively resets the recursive walk each time it occurs,
+    // and ** cannot be reduced out by a .. pattern part like a regexp
+    // or most strings (other than .., ., and '') can be.
+    //
+    // <pre>/**/../<p>/<p>/<rest> -> {<pre>/../<p>/<p>/<rest>,<pre>/**/<p>/<p>/<rest>}
+    // <pre>/<e>/<rest> -> <pre>/<rest>
+    // <pre>/<p>/../<rest> -> <pre>/<rest>
+    // **/**/<rest> -> **/<rest>
+    //
+    // **/*/<rest> -> */**/<rest> <== not valid because ** doesn't follow
+    // this WOULD be allowed if ** did follow symlinks, or * didn't
+    firstPhasePreProcess(globParts) {
+        let didSomething = false;
+        do {
+            didSomething = false;
+            // <pre>/**/../<p>/<p>/<rest> -> {<pre>/../<p>/<p>/<rest>,<pre>/**/<p>/<p>/<rest>}
+            for (let parts of globParts) {
+                let gs = -1;
+                while (-1 !== (gs = parts.indexOf('**', gs + 1))) {
+                    let gss = gs;
+                    while (parts[gss + 1] === '**') {
+                        // <pre>/**/**/<rest> -> <pre>/**/<rest>
+                        gss++;
+                    }
+                    // eg, if gs is 2 and gss is 4, that means we have 3 **
+                    // parts, and can remove 2 of them.
+                    if (gss > gs) {
+                        parts.splice(gs + 1, gss - gs);
+                    }
+                    let next = parts[gs + 1];
+                    const p = parts[gs + 2];
+                    const p2 = parts[gs + 3];
+                    if (next !== '..')
+                        continue;
+                    if (!p ||
+                        p === '.' ||
+                        p === '..' ||
+                        !p2 ||
+                        p2 === '.' ||
+                        p2 === '..') {
+                        continue;
+                    }
+                    didSomething = true;
+                    // edit parts in place, and push the new one
+                    parts.splice(gs, 1);
+                    const other = parts.slice(0);
+                    other[gs] = '**';
+                    globParts.push(other);
+                    gs--;
+                }
+                // <pre>/<e>/<rest> -> <pre>/<rest>
+                if (!this.preserveMultipleSlashes) {
+                    for (let i = 1; i < parts.length - 1; i++) {
+                        const p = parts[i];
+                        // don't squeeze out UNC patterns
+                        if (i === 1 && p === '' && parts[0] === '')
+                            continue;
+                        if (p === '.' || p === '') {
+                            didSomething = true;
+                            parts.splice(i, 1);
+                            i--;
+                        }
+                    }
+                    if (parts[0] === '.' &&
+                        parts.length === 2 &&
+                        (parts[1] === '.' || parts[1] === '')) {
+                        didSomething = true;
+                        parts.pop();
+                    }
+                }
+                // <pre>/<p>/../<rest> -> <pre>/<rest>
+                let dd = 0;
+                while (-1 !== (dd = parts.indexOf('..', dd + 1))) {
+                    const p = parts[dd - 1];
+                    if (p && p !== '.' && p !== '..' && p !== '**') {
+                        didSomething = true;
+                        const needDot = dd === 1 && parts[dd + 1] === '**';
+                        const splin = needDot ? ['.'] : [];
+                        parts.splice(dd - 1, 2, ...splin);
+                        if (parts.length === 0)
+                            parts.push('');
+                        dd -= 2;
+                    }
+                }
+            }
+        } while (didSomething);
+        return globParts;
+    }
+    // second phase: multi-pattern dedupes
+    // {<pre>/*/<rest>,<pre>/<p>/<rest>} -> <pre>/*/<rest>
+    // {<pre>/<rest>,<pre>/<rest>} -> <pre>/<rest>
+    // {<pre>/**/<rest>,<pre>/<rest>} -> <pre>/**/<rest>
+    //
+    // {<pre>/**/<rest>,<pre>/**/<p>/<rest>} -> <pre>/**/<rest>
+    // ^-- not valid because ** doens't follow symlinks
+    secondPhasePreProcess(globParts) {
+        for (let i = 0; i < globParts.length - 1; i++) {
+            for (let j = i + 1; j < globParts.length; j++) {
+                const matched = this.partsMatch(globParts[i], globParts[j], !this.preserveMultipleSlashes);
+                if (matched) {
+                    globParts[i] = [];
+                    globParts[j] = matched;
+                    break;
+                }
+            }
+        }
+        return globParts.filter(gs => gs.length);
+    }
+    partsMatch(a, b, emptyGSMatch = false) {
+        let ai = 0;
+        let bi = 0;
+        let result = [];
+        let which = '';
+        while (ai < a.length && bi < b.length) {
+            if (a[ai] === b[bi]) {
+                result.push(which === 'b' ? b[bi] : a[ai]);
+                ai++;
+                bi++;
+            }
+            else if (emptyGSMatch && a[ai] === '**' && b[bi] === a[ai + 1]) {
+                result.push(a[ai]);
+                ai++;
+            }
+            else if (emptyGSMatch && b[bi] === '**' && a[ai] === b[bi + 1]) {
+                result.push(b[bi]);
+                bi++;
+            }
+            else if (a[ai] === '*' &&
+                b[bi] &&
+                (this.options.dot || !b[bi].startsWith('.')) &&
+                b[bi] !== '**') {
+                if (which === 'b')
+                    return false;
+                which = 'a';
+                result.push(a[ai]);
+                ai++;
+                bi++;
+            }
+            else if (b[bi] === '*' &&
+                a[ai] &&
+                (this.options.dot || !a[ai].startsWith('.')) &&
+                a[ai] !== '**') {
+                if (which === 'a')
+                    return false;
+                which = 'b';
+                result.push(b[bi]);
+                ai++;
+                bi++;
+            }
+            else {
+                return false;
+            }
+        }
+        // if we fall out of the loop, it means they two are identical
+        // as long as their lengths match
+        return a.length === b.length && result;
+    }
+    parseNegate() {
+        if (this.nonegate)
+            return;
+        const pattern = this.pattern;
+        let negate = false;
+        let negateOffset = 0;
+        for (let i = 0; i < pattern.length && pattern.charAt(i) === '!'; i++) {
+            negate = !negate;
+            negateOffset++;
+        }
+        if (negateOffset)
+            this.pattern = pattern.slice(negateOffset);
+        this.negate = negate;
+    }
+    // set partial to true to test if, for example,
+    // "/a/b" matches the start of "/*/b/*/d"
+    // Partial means, if you run out of file before you run
+    // out of pattern, then that's fine, as long as all
+    // the parts match.
+    matchOne(file, pattern, partial = false) {
+        const options = this.options;
+        // UNC paths like //?/X:/... can match X:/... and vice versa
+        // Drive letters in absolute drive or unc paths are always compared
+        // case-insensitively.
+        if (this.isWindows) {
+            const fileDrive = typeof file[0] === 'string' && /^[a-z]:$/i.test(file[0]);
+            const fileUNC = !fileDrive &&
+                file[0] === '' &&
+                file[1] === '' &&
+                file[2] === '?' &&
+                /^[a-z]:$/i.test(file[3]);
+            const patternDrive = typeof pattern[0] === 'string' && /^[a-z]:$/i.test(pattern[0]);
+            const patternUNC = !patternDrive &&
+                pattern[0] === '' &&
+                pattern[1] === '' &&
+                pattern[2] === '?' &&
+                typeof pattern[3] === 'string' &&
+                /^[a-z]:$/i.test(pattern[3]);
+            const fdi = fileUNC ? 3 : fileDrive ? 0 : undefined;
+            const pdi = patternUNC ? 3 : patternDrive ? 0 : undefined;
+            if (typeof fdi === 'number' && typeof pdi === 'number') {
+                const [fd, pd] = [file[fdi], pattern[pdi]];
+                if (fd.toLowerCase() === pd.toLowerCase()) {
+                    pattern[pdi] = fd;
+                    if (pdi > fdi) {
+                        pattern = pattern.slice(pdi);
+                    }
+                    else if (fdi > pdi) {
+                        file = file.slice(fdi);
+                    }
+                }
+            }
+        }
+        // resolve and reduce . and .. portions in the file as well.
+        // dont' need to do the second phase, because it's only one string[]
+        const { optimizationLevel = 1 } = this.options;
+        if (optimizationLevel >= 2) {
+            file = this.levelTwoFileOptimize(file);
+        }
+        this.debug('matchOne', this, { file, pattern });
+        this.debug('matchOne', file.length, pattern.length);
+        for (var fi = 0, pi = 0, fl = file.length, pl = pattern.length; fi < fl && pi < pl; fi++, pi++) {
+            this.debug('matchOne loop');
+            var p = pattern[pi];
+            var f = file[fi];
+            this.debug(pattern, p, f);
+            // should be impossible.
+            // some invalid regexp stuff in the set.
+            /* c8 ignore start */
+            if (p === false) {
+                return false;
+            }
+            /* c8 ignore stop */
+            if (p === esm_GLOBSTAR) {
+                this.debug('GLOBSTAR', [pattern, p, f]);
+                // "**"
+                // a/**/b/**/c would match the following:
+                // a/b/x/y/z/c
+                // a/x/y/z/b/c
+                // a/b/x/b/x/c
+                // a/b/c
+                // To do this, take the rest of the pattern after
+                // the **, and see if it would match the file remainder.
+                // If so, return success.
+                // If not, the ** "swallows" a segment, and try again.
+                // This is recursively awful.
+                //
+                // a/**/b/**/c matching a/b/x/y/z/c
+                // - a matches a
+                // - doublestar
+                //   - matchOne(b/x/y/z/c, b/**/c)
+                //     - b matches b
+                //     - doublestar
+                //       - matchOne(x/y/z/c, c) -> no
+                //       - matchOne(y/z/c, c) -> no
+                //       - matchOne(z/c, c) -> no
+                //       - matchOne(c, c) yes, hit
+                var fr = fi;
+                var pr = pi + 1;
+                if (pr === pl) {
+                    this.debug('** at the end');
+                    // a ** at the end will just swallow the rest.
+                    // We have found a match.
+                    // however, it will not swallow /.x, unless
+                    // options.dot is set.
+                    // . and .. are *never* matched by **, for explosively
+                    // exponential reasons.
+                    for (; fi < fl; fi++) {
+                        if (file[fi] === '.' ||
+                            file[fi] === '..' ||
+                            (!options.dot && file[fi].charAt(0) === '.'))
+                            return false;
+                    }
+                    return true;
+                }
+                // ok, let's see if we can swallow whatever we can.
+                while (fr < fl) {
+                    var swallowee = file[fr];
+                    this.debug('\nglobstar while', file, fr, pattern, pr, swallowee);
+                    // XXX remove this slice.  Just pass the start index.
+                    if (this.matchOne(file.slice(fr), pattern.slice(pr), partial)) {
+                        this.debug('globstar found match!', fr, fl, swallowee);
+                        // found a match.
+                        return true;
+                    }
+                    else {
+                        // can't swallow "." or ".." ever.
+                        // can only swallow ".foo" when explicitly asked.
+                        if (swallowee === '.' ||
+                            swallowee === '..' ||
+                            (!options.dot && swallowee.charAt(0) === '.')) {
+                            this.debug('dot detected!', file, fr, pattern, pr);
+                            break;
+                        }
+                        // ** swallows a segment, and continue.
+                        this.debug('globstar swallow a segment, and continue');
+                        fr++;
+                    }
+                }
+                // no match was found.
+                // However, in partial mode, we can't say this is necessarily over.
+                /* c8 ignore start */
+                if (partial) {
+                    // ran out of file
+                    this.debug('\n>>> no match, partial?', file, fr, pattern, pr);
+                    if (fr === fl) {
+                        return true;
+                    }
+                }
+                /* c8 ignore stop */
+                return false;
+            }
+            // something other than **
+            // non-magic patterns just have to match exactly
+            // patterns with magic have been turned into regexps.
+            let hit;
+            if (typeof p === 'string') {
+                hit = f === p;
+                this.debug('string match', p, f, hit);
+            }
+            else {
+                hit = p.test(f);
+                this.debug('pattern match', p, f, hit);
+            }
+            if (!hit)
+                return false;
+        }
+        // Note: ending in / means that we'll get a final ""
+        // at the end of the pattern.  This can only match a
+        // corresponding "" at the end of the file.
+        // If the file ends in /, then it can only match a
+        // a pattern that ends in /, unless the pattern just
+        // doesn't have any more for it. But, a/b/ should *not*
+        // match "a/b/*", even though "" matches against the
+        // [^/]*? pattern, except in partial mode, where it might
+        // simply not be reached yet.
+        // However, a/b/ should still satisfy a/*
+        // now either we fell off the end of the pattern, or we're done.
+        if (fi === fl && pi === pl) {
+            // ran out of pattern and filename at the same time.
+            // an exact hit!
+            return true;
+        }
+        else if (fi === fl) {
+            // ran out of file, but still had pattern left.
+            // this is ok if we're doing the match as part of
+            // a glob fs traversal.
+            return partial;
+        }
+        else if (pi === pl) {
+            // ran out of pattern, still have file left.
+            // this is only acceptable if we're on the very last
+            // empty segment of a file with a trailing slash.
+            // a/* should match a/b/
+            return fi === fl - 1 && file[fi] === '';
+            /* c8 ignore start */
+        }
+        else {
+            // should be unreachable.
+            throw new Error('wtf?');
+        }
+        /* c8 ignore stop */
+    }
+    braceExpand() {
+        return esm_braceExpand(this.pattern, this.options);
+    }
+    parse(pattern) {
+        assert_valid_pattern_assertValidPattern(pattern);
+        const options = this.options;
+        // shortcuts
+        if (pattern === '**')
+            return esm_GLOBSTAR;
+        if (pattern === '')
+            return '';
+        // far and away, the most common glob pattern parts are
+        // *, *.*, and *.<ext>  Add a fast check method for those.
+        let m;
+        let fastTest = null;
+        if ((m = pattern.match(esm_starRE))) {
+            fastTest = options.dot ? esm_starTestDot : esm_starTest;
+        }
+        else if ((m = pattern.match(esm_starDotExtRE))) {
+            fastTest = (options.nocase
+                ? options.dot
+                    ? esm_starDotExtTestNocaseDot
+                    : esm_starDotExtTestNocase
+                : options.dot
+                    ? esm_starDotExtTestDot
+                    : esm_starDotExtTest)(m[1]);
+        }
+        else if ((m = pattern.match(esm_qmarksRE))) {
+            fastTest = (options.nocase
+                ? options.dot
+                    ? esm_qmarksTestNocaseDot
+                    : esm_qmarksTestNocase
+                : options.dot
+                    ? esm_qmarksTestDot
+                    : esm_qmarksTest)(m);
+        }
+        else if ((m = pattern.match(esm_starDotStarRE))) {
+            fastTest = options.dot ? esm_starDotStarTestDot : esm_starDotStarTest;
+        }
+        else if ((m = pattern.match(esm_dotStarRE))) {
+            fastTest = esm_dotStarTest;
+        }
+        const re = ast_AST.fromGlob(pattern, this.options).toMMPattern();
+        if (fastTest && typeof re === 'object') {
+            // Avoids overriding in frozen environments
+            Reflect.defineProperty(re, 'test', { value: fastTest });
+        }
+        return re;
+    }
+    makeRe() {
+        if (this.regexp || this.regexp === false)
+            return this.regexp;
+        // at this point, this.set is a 2d array of partial
+        // pattern strings, or "**".
+        //
+        // It's better to use .match().  This function shouldn't
+        // be used, really, but it's pretty convenient sometimes,
+        // when you just want to work with a regex.
+        const set = this.set;
+        if (!set.length) {
+            this.regexp = false;
+            return this.regexp;
+        }
+        const options = this.options;
+        const twoStar = options.noglobstar
+            ? dist_esm_star
+            : options.dot
+                ? esm_twoStarDot
+                : esm_twoStarNoDot;
+        const flags = new Set(options.nocase ? ['i'] : []);
+        // regexpify non-globstar patterns
+        // if ** is only item, then we just do one twoStar
+        // if ** is first, and there are more, prepend (\/|twoStar\/)? to next
+        // if ** is last, append (\/twoStar|) to previous
+        // if ** is in the middle, append (\/|\/twoStar\/) to previous
+        // then filter out GLOBSTAR symbols
+        let re = set
+            .map(pattern => {
+            const pp = pattern.map(p => {
+                if (p instanceof RegExp) {
+                    for (const f of p.flags.split(''))
+                        flags.add(f);
+                }
+                return typeof p === 'string'
+                    ? dist_esm_regExpEscape(p)
+                    : p === esm_GLOBSTAR
+                        ? esm_GLOBSTAR
+                        : p._src;
+            });
+            pp.forEach((p, i) => {
+                const next = pp[i + 1];
+                const prev = pp[i - 1];
+                if (p !== esm_GLOBSTAR || prev === esm_GLOBSTAR) {
+                    return;
+                }
+                if (prev === undefined) {
+                    if (next !== undefined && next !== esm_GLOBSTAR) {
+                        pp[i + 1] = '(?:\\/|' + twoStar + '\\/)?' + next;
+                    }
+                    else {
+                        pp[i] = twoStar;
+                    }
+                }
+                else if (next === undefined) {
+                    pp[i - 1] = prev + '(?:\\/|' + twoStar + ')?';
+                }
+                else if (next !== esm_GLOBSTAR) {
+                    pp[i - 1] = prev + '(?:\\/|\\/' + twoStar + '\\/)' + next;
+                    pp[i + 1] = esm_GLOBSTAR;
+                }
+            });
+            return pp.filter(p => p !== esm_GLOBSTAR).join('/');
+        })
+            .join('|');
+        // need to wrap in parens if we had more than one thing with |,
+        // otherwise only the first will be anchored to ^ and the last to $
+        const [open, close] = set.length > 1 ? ['(?:', ')'] : ['', ''];
+        // must match entire pattern
+        // ending in a * or ** will make it less strict.
+        re = '^' + open + re + close + '$';
+        // can match anything, as long as it's not this.
+        if (this.negate)
+            re = '^(?!' + re + ').+$';
+        try {
+            this.regexp = new RegExp(re, [...flags].join(''));
+            /* c8 ignore start */
+        }
+        catch (ex) {
+            // should be impossible
+            this.regexp = false;
+        }
+        /* c8 ignore stop */
+        return this.regexp;
+    }
+    slashSplit(p) {
+        // if p starts with // on windows, we preserve that
+        // so that UNC paths aren't broken.  Otherwise, any number of
+        // / characters are coalesced into one, unless
+        // preserveMultipleSlashes is set to true.
+        if (this.preserveMultipleSlashes) {
+            return p.split('/');
+        }
+        else if (this.isWindows && /^\/\/[^\/]+/.test(p)) {
+            // add an extra '' for the one we lose
+            return ['', ...p.split(/\/+/)];
+        }
+        else {
+            return p.split(/\/+/);
+        }
+    }
+    match(f, partial = this.partial) {
+        this.debug('match', f, this.pattern);
+        // short-circuit in the case of busted things.
+        // comments, etc.
+        if (this.comment) {
+            return false;
+        }
+        if (this.empty) {
+            return f === '';
+        }
+        if (f === '/' && partial) {
+            return true;
+        }
+        const options = this.options;
+        // windows: need to use /, not \
+        if (this.isWindows) {
+            f = f.split('\\').join('/');
+        }
+        // treat the test path as a set of pathparts.
+        const ff = this.slashSplit(f);
+        this.debug(this.pattern, 'split', ff);
+        // just ONE of the pattern sets in this.set needs to match
+        // in order for it to be valid.  If negating, then just one
+        // match means that we have failed.
+        // Either way, return on the first hit.
+        const set = this.set;
+        this.debug(this.pattern, 'set', set);
+        // Find the basename of the path by looking for the last non-empty segment
+        let filename = ff[ff.length - 1];
+        if (!filename) {
+            for (let i = ff.length - 2; !filename && i >= 0; i--) {
+                filename = ff[i];
+            }
+        }
+        for (let i = 0; i < set.length; i++) {
+            const pattern = set[i];
+            let file = ff;
+            if (options.matchBase && pattern.length === 1) {
+                file = [filename];
+            }
+            const hit = this.matchOne(file, pattern, partial);
+            if (hit) {
+                if (options.flipNegate) {
+                    return true;
+                }
+                return !this.negate;
+            }
+        }
+        // didn't get any hits.  this is success if it's a negative
+        // pattern, failure otherwise.
+        if (options.flipNegate) {
+            return false;
+        }
+        return this.negate;
+    }
+    static defaults(def) {
+        return esm_minimatch.defaults(def).Minimatch;
+    }
+}
+/* c8 ignore start */
+
+
+
+/* c8 ignore stop */
+esm_minimatch.AST = ast_AST;
+esm_minimatch.Minimatch = esm_Minimatch;
+esm_minimatch.escape = esm_escape_escape;
+esm_minimatch.unescape = esm_unescape_unescape;
+//# sourceMappingURL=index.js.map
 // EXTERNAL MODULE: external "node:url"
 var external_node_url_ = __nccwpck_require__(1041);
 ;// CONCATENATED MODULE: ./node_modules/lru-cache/dist/esm/index.js
@@ -57906,7 +68806,7 @@ const PathScurry = process.platform === 'win32' ? PathScurryWin32
     : process.platform === 'darwin' ? PathScurryDarwin
         : PathScurryPosix;
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ./node_modules/@electron/asar/node_modules/glob/dist/esm/pattern.js
+;// CONCATENATED MODULE: ./node_modules/glob/dist/esm/pattern.js
 // this is just a very light wrapper around 2 arrays with an offset index
 
 const isPatternList = (pl) => pl.length >= 1;
@@ -58002,7 +68902,7 @@ class Pattern {
      * true of if pattern() returns GLOBSTAR
      */
     isGlobstar() {
-        return this.#patternList[this.#index] === GLOBSTAR;
+        return this.#patternList[this.#index] === esm_GLOBSTAR;
     }
     /**
      * true if pattern() returns a regexp
@@ -58122,7 +69022,7 @@ class Pattern {
     }
 }
 //# sourceMappingURL=pattern.js.map
-;// CONCATENATED MODULE: ./node_modules/@electron/asar/node_modules/glob/dist/esm/ignore.js
+;// CONCATENATED MODULE: ./node_modules/glob/dist/esm/ignore.js
 // give it a pattern, and it'll be able to tell you if
 // a given path should be ignored.
 // Ignoring a path ignores its children if the pattern ends in /**
@@ -58177,7 +69077,7 @@ class Ignore {
         // for absolute-ness.
         // Yet another way, Minimatch could take an array of glob strings, and
         // a cwd option, and do the right thing.
-        const mm = new Minimatch(ign, this.mmopts);
+        const mm = new esm_Minimatch(ign, this.mmopts);
         for (let i = 0; i < mm.set.length; i++) {
             const parsed = mm.set[i];
             const globParts = mm.globParts[i];
@@ -58193,7 +69093,7 @@ class Ignore {
             }
             /* c8 ignore stop */
             const p = new Pattern(parsed, globParts, 0, this.platform);
-            const m = new Minimatch(p.globString(), this.mmopts);
+            const m = new esm_Minimatch(p.globString(), this.mmopts);
             const children = globParts[globParts.length - 1] === '**';
             const absolute = p.isAbsolute();
             if (absolute)
@@ -58238,7 +69138,7 @@ class Ignore {
     }
 }
 //# sourceMappingURL=ignore.js.map
-;// CONCATENATED MODULE: ./node_modules/@electron/asar/node_modules/glob/dist/esm/processor.js
+;// CONCATENATED MODULE: ./node_modules/glob/dist/esm/processor.js
 // synchronous utility for filtering entries and calculating subwalks
 
 /**
@@ -58393,7 +69293,7 @@ class Processor {
                 this.matches.add(t.resolve(p), absolute, ifDir);
                 continue;
             }
-            else if (p === GLOBSTAR) {
+            else if (p === esm_GLOBSTAR) {
                 // if no rest, match and subwalk pattern
                 // if rest, process rest and subwalk pattern
                 // if it's a symlink, but we didn't get here by way of a
@@ -58451,7 +69351,7 @@ class Processor {
                 const absolute = pattern.isAbsolute();
                 const p = pattern.pattern();
                 const rest = pattern.rest();
-                if (p === GLOBSTAR) {
+                if (p === esm_GLOBSTAR) {
                     results.testGlobstar(e, pattern, rest, absolute);
                 }
                 else if (p instanceof RegExp) {
@@ -58533,7 +69433,7 @@ class Processor {
     }
 }
 //# sourceMappingURL=processor.js.map
-;// CONCATENATED MODULE: ./node_modules/@electron/asar/node_modules/glob/dist/esm/walker.js
+;// CONCATENATED MODULE: ./node_modules/glob/dist/esm/walker.js
 /**
  * Single-use utility classes to provide functionality to the {@link Glob}
  * methods.
@@ -58915,7 +69815,7 @@ class GlobStream extends GlobUtil {
     }
 }
 //# sourceMappingURL=walker.js.map
-;// CONCATENATED MODULE: ./node_modules/@electron/asar/node_modules/glob/dist/esm/glob.js
+;// CONCATENATED MODULE: ./node_modules/glob/dist/esm/glob.js
 
 
 
@@ -59070,7 +69970,7 @@ class Glob {
             windowsPathsNoEscape: this.windowsPathsNoEscape,
             debug: !!this.opts.debug,
         };
-        const mms = this.pattern.map(p => new Minimatch(p, mmo));
+        const mms = this.pattern.map(p => new esm_Minimatch(p, mmo));
         const [matchSet, globParts] = mms.reduce((set, m) => {
             set[0].push(...m.set);
             set[1].push(...m.globParts);
@@ -59159,7 +70059,7 @@ class Glob {
     }
 }
 //# sourceMappingURL=glob.js.map
-;// CONCATENATED MODULE: ./node_modules/@electron/asar/node_modules/glob/dist/esm/has-magic.js
+;// CONCATENATED MODULE: ./node_modules/glob/dist/esm/has-magic.js
 
 /**
  * Return true if the patterns provided contain any magic glob characters,
@@ -59177,13 +70077,13 @@ const hasMagic = (pattern, options = {}) => {
         pattern = [pattern];
     }
     for (const p of pattern) {
-        if (new Minimatch(p, options).hasMagic())
+        if (new esm_Minimatch(p, options).hasMagic())
             return true;
     }
     return false;
 };
 //# sourceMappingURL=has-magic.js.map
-;// CONCATENATED MODULE: ./node_modules/@electron/asar/node_modules/glob/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/glob/dist/esm/index.js
 
 
 
@@ -59234,8 +70134,8 @@ const glob = Object.assign(glob_, {
     iterateSync,
     Glob: Glob,
     hasMagic: hasMagic,
-    escape: escape_escape,
-    unescape: unescape_unescape,
+    escape: esm_escape_escape,
+    unescape: esm_unescape_unescape,
 });
 glob.glob = glob;
 //# sourceMappingURL=index.js.map
@@ -59588,8 +70488,8 @@ function extractAll(archivePath, dest) {
 /******/ 		}
 /******/ 		// Create a new module (and put it into the cache)
 /******/ 		var module = __webpack_module_cache__[moduleId] = {
-/******/ 			// no module.id needed
-/******/ 			// no module.loaded needed
+/******/ 			id: moduleId,
+/******/ 			loaded: false,
 /******/ 			exports: {}
 /******/ 		};
 /******/ 	
@@ -59601,6 +70501,9 @@ function extractAll(archivePath, dest) {
 /******/ 		} finally {
 /******/ 			if(threw) delete __webpack_module_cache__[moduleId];
 /******/ 		}
+/******/ 	
+/******/ 		// Flag the module as loaded
+/******/ 		module.loaded = true;
 /******/ 	
 /******/ 		// Return the exports of the module
 /******/ 		return module.exports;
@@ -59665,6 +70568,15 @@ function extractAll(archivePath, dest) {
 /******/ 		};
 /******/ 	})();
 /******/ 	
+/******/ 	/* webpack/runtime/node module decorator */
+/******/ 	(() => {
+/******/ 		__nccwpck_require__.nmd = (module) => {
+/******/ 			module.paths = [];
+/******/ 			if (!module.children) module.children = [];
+/******/ 			return module;
+/******/ 		};
+/******/ 	})();
+/******/ 	
 /******/ 	/* webpack/runtime/compat */
 /******/ 	
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
@@ -59677,9 +70589,9 @@ var __webpack_exports__ = {};
 var exports = __webpack_exports__;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const android_sdk_1 = __nccwpck_require__(2774);
+const unity_cli_1 = __nccwpck_require__(4858);
 const inputs_1 = __nccwpck_require__(7063);
-const unity_hub_1 = __nccwpck_require__(1723);
+const unity_cli_2 = __nccwpck_require__(4858);
 const core = __nccwpck_require__(2186);
 const main = async () => {
     try {
@@ -59688,7 +70600,7 @@ const main = async () => {
             core.info(`UNITY_PROJECT_PATH: ${unityProjectPath}`);
             core.exportVariable('UNITY_PROJECT_PATH', unityProjectPath);
         }
-        const unityHub = new unity_hub_1.UnityHub();
+        const unityHub = new unity_cli_2.UnityHub();
         const unityHubPath = await unityHub.Install();
         if (!unityHubPath || unityHubPath.length === 0) {
             throw new Error('Failed to install or locate Unity Hub!');
@@ -59704,7 +70616,7 @@ const main = async () => {
             core.info(`Installed Unity Editor: ${unityVersion.toString()} at ${unityEditorPath}`);
             core.exportVariable('UNITY_EDITOR_PATH', unityEditorPath);
             if (modules.includes('android') && unityProjectPath !== undefined) {
-                await (0, android_sdk_1.CheckAndroidSdkInstalled)(unityEditorPath, unityProjectPath);
+                await (0, unity_cli_1.CheckAndroidSdkInstalled)(unityEditorPath, unityProjectPath);
             }
             installedEditors.push({ version: unityVersion.version, path: unityEditorPath });
         }
