@@ -4489,9 +4489,10 @@ class UnityHub {
     /**
      * Installs or updates the Unity Hub.
      * If the Unity Hub is already installed, it will be updated to the latest version.
+     * @param autoUpdate If true, automatically updates the Unity Hub if it is already installed. Default is true.
      * @returns The path to the Unity Hub executable.
      */
-    async Install() {
+    async Install(autoUpdate = true) {
         let isInstalled = false;
         try {
             await fs.promises.access(this.executable, fs.constants.X_OK);
@@ -4500,7 +4501,7 @@ class UnityHub {
         catch {
             await this.installHub();
         }
-        if (isInstalled) {
+        if (isInstalled && autoUpdate) {
             const installedVersion = await this.getInstalledHubVersion();
             this.logger.ci(`Installed Unity Hub version: ${installedVersion.version}`);
             let latestVersion = undefined;
@@ -62109,8 +62110,9 @@ const main = async () => {
             core.info(`UNITY_PROJECT_PATH: ${unityProjectPath}`);
             core.exportVariable('UNITY_PROJECT_PATH', unityProjectPath);
         }
+        const autoUpdate = core.getInput('auto-update-hub');
         const unityHub = new unity_cli_1.UnityHub();
-        const unityHubPath = await unityHub.Install();
+        const unityHubPath = await unityHub.Install(autoUpdate === 'true');
         if (!unityHubPath || unityHubPath.length === 0) {
             throw new Error('Failed to install or locate Unity Hub!');
         }
