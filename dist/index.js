@@ -62133,7 +62133,7 @@ const main = async () => {
         const installedEditors = [];
         for (const unityVersion of versions) {
             const unityEditor = await unityHub.GetEditor(unityVersion, modules);
-            core.info(`Installed Unity Editor:\n  > ${unityEditor.version.toString()} at "${unityEditor.editorPath}"`);
+            core.info(`UNITY_EDITOR_PATH:\n  > ${unityEditor.editorPath}`);
             core.exportVariable('UNITY_EDITOR_PATH', unityEditor.editorPath);
             if (modules.includes('android') && unityProjectPath !== undefined) {
                 await (0, unity_cli_1.CheckAndroidSdkInstalled)(unityEditor.editorPath, unityProjectPath);
