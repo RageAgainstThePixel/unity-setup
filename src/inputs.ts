@@ -2,9 +2,11 @@ import fs = require('fs');
 import os = require('os');
 import path = require('path');
 import core = require('@actions/core');
-import { UnityHub } from '@rage-against-the-pixel/unity-cli';
-import { UnityVersion } from '@rage-against-the-pixel/unity-cli';
-import { ResolveGlobToPath } from '@rage-against-the-pixel/unity-cli';
+import {
+    UnityHub,
+    UnityVersion,
+    ResolveGlobToPath
+} from '@rage-against-the-pixel/unity-cli';
 
 export async function ValidateInputs(): Promise<[UnityVersion[], string[], string | null, string]> {
     const modules: string[] = [];

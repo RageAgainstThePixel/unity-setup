@@ -3406,7 +3406,7 @@ const license_client_1 = __nccwpck_require__(4115);
 const utilities_1 = __nccwpck_require__(9746);
 const unity_hub_1 = __nccwpck_require__(1723);
 const logging_1 = __nccwpck_require__(4486);
-const unity_version_1 = __nccwpck_require__(7474);
+const unity_version_1 = __nccwpck_require__(3331);
 const unity_project_1 = __nccwpck_require__(8468);
 const android_sdk_1 = __nccwpck_require__(2774);
 const unity_editor_1 = __nccwpck_require__(8944);
@@ -3415,7 +3415,7 @@ __exportStar(__nccwpck_require__(4115), exports);
 __exportStar(__nccwpck_require__(9746), exports);
 __exportStar(__nccwpck_require__(1723), exports);
 __exportStar(__nccwpck_require__(4486), exports);
-__exportStar(__nccwpck_require__(7474), exports);
+__exportStar(__nccwpck_require__(3331), exports);
 __exportStar(__nccwpck_require__(8468), exports);
 __exportStar(__nccwpck_require__(2774), exports);
 __exportStar(__nccwpck_require__(8944), exports);
@@ -4645,7 +4645,7 @@ const child_process_1 = __nccwpck_require__(2081);
 const logging_1 = __nccwpck_require__(4486);
 const semver_1 = __nccwpck_require__(1383);
 const utilities_1 = __nccwpck_require__(9746);
-const unity_version_1 = __nccwpck_require__(7474);
+const unity_version_1 = __nccwpck_require__(3331);
 const client_1 = __nccwpck_require__(601);
 const unity_editor_1 = __nccwpck_require__(8944);
 class UnityHub {
@@ -5535,7 +5535,7 @@ const os_1 = __importDefault(__nccwpck_require__(2037));
 const fs_1 = __importDefault(__nccwpck_require__(7147));
 const path_1 = __importDefault(__nccwpck_require__(1017));
 const utilities_1 = __nccwpck_require__(9746);
-const unity_version_1 = __nccwpck_require__(7474);
+const unity_version_1 = __nccwpck_require__(3331);
 class UnityProject {
     projectPath;
     /** The default modules to include in a new Unity project. */
@@ -5628,7 +5628,7 @@ exports.UnityProject = UnityProject;
 
 /***/ }),
 
-/***/ 7474:
+/***/ 3331:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -15137,7 +15137,7 @@ const {
   RequestAbortedError
 } = __nccwpck_require__(8045)
 const util = __nccwpck_require__(3983)
-const { getResolveErrorBodyCallback } = __nccwpck_require__(110)
+const { getResolveErrorBodyCallback } = __nccwpck_require__(7474)
 const { AsyncResource } = __nccwpck_require__(852)
 const { addSignal, removeSignal } = __nccwpck_require__(7032)
 
@@ -15326,7 +15326,7 @@ const {
   RequestAbortedError
 } = __nccwpck_require__(8045)
 const util = __nccwpck_require__(3983)
-const { getResolveErrorBodyCallback } = __nccwpck_require__(110)
+const { getResolveErrorBodyCallback } = __nccwpck_require__(7474)
 const { AsyncResource } = __nccwpck_require__(852)
 const { addSignal, removeSignal } = __nccwpck_require__(7032)
 
@@ -15999,7 +15999,7 @@ function consumeFinish (consume, err) {
 
 /***/ }),
 
-/***/ 110:
+/***/ 7474:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 const assert = __nccwpck_require__(9491)
@@ -34566,7 +34566,7 @@ const {
   kSentClose,
   kByteParser,
   kReceivedClose
-} = __nccwpck_require__(5226)
+} = __nccwpck_require__(7578)
 const { fireEvent, failWebsocketConnection } = __nccwpck_require__(5515)
 const { CloseEvent } = __nccwpck_require__(2611)
 const { makeRequest } = __nccwpck_require__(8359)
@@ -35312,7 +35312,7 @@ module.exports = {
 const { Writable } = __nccwpck_require__(2781)
 const diagnosticsChannel = __nccwpck_require__(7643)
 const { parserStates, opcodes, states, emptyBuffer } = __nccwpck_require__(9188)
-const { kReadyState, kSentClose, kResponse, kReceivedClose } = __nccwpck_require__(5226)
+const { kReadyState, kSentClose, kResponse, kReceivedClose } = __nccwpck_require__(7578)
 const { isValidStatusCode, failWebsocketConnection, websocketMessageReceived } = __nccwpck_require__(5515)
 const { WebsocketFrameSend } = __nccwpck_require__(5444)
 
@@ -35655,7 +35655,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 5226:
+/***/ 7578:
 /***/ ((module) => {
 
 "use strict";
@@ -35681,7 +35681,7 @@ module.exports = {
 "use strict";
 
 
-const { kReadyState, kController, kResponse, kBinaryType, kWebSocketURL } = __nccwpck_require__(5226)
+const { kReadyState, kController, kResponse, kBinaryType, kWebSocketURL } = __nccwpck_require__(7578)
 const { states, opcodes } = __nccwpck_require__(9188)
 const { MessageEvent, ErrorEvent } = __nccwpck_require__(2611)
 
@@ -35902,7 +35902,7 @@ const {
   kResponse,
   kSentClose,
   kByteParser
-} = __nccwpck_require__(5226)
+} = __nccwpck_require__(7578)
 const { isEstablished, isClosing, isValidSubprotocol, failWebsocketConnection, fireEvent } = __nccwpck_require__(5515)
 const { establishWebSocketConnection } = __nccwpck_require__(5354)
 const { WebsocketFrameSend } = __nccwpck_require__(5444)
@@ -36544,8 +36544,6 @@ const os = __nccwpck_require__(2037);
 const path = __nccwpck_require__(1017);
 const core = __nccwpck_require__(2186);
 const unity_cli_1 = __nccwpck_require__(4858);
-const unity_cli_2 = __nccwpck_require__(4858);
-const unity_cli_3 = __nccwpck_require__(4858);
 async function ValidateInputs() {
     const modules = [];
     const architectureInput = core.getInput('architecture') || getInstallationArch();
@@ -36609,7 +36607,7 @@ async function ValidateInputs() {
         }
     }
     if (versions.length > 1) {
-        versions.sort(unity_cli_2.UnityVersion.compare);
+        versions.sort(unity_cli_1.UnityVersion.compare);
     }
     core.info(`Unity Versions:`);
     for (const unityVersion of versions) {
@@ -36674,7 +36672,7 @@ async function getVersionFilePath() {
         return undefined;
     }
     if (!projectVersionPath) {
-        projectVersionPath = await (0, unity_cli_3.ResolveGlobToPath)([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
+        projectVersionPath = await (0, unity_cli_1.ResolveGlobToPath)([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
     }
     if (projectVersionPath) {
         try {
@@ -36691,7 +36689,7 @@ async function getVersionFilePath() {
             catch (error) {
                 core.error(error);
                 try {
-                    projectVersionPath = await (0, unity_cli_3.ResolveGlobToPath)([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
+                    projectVersionPath = await (0, unity_cli_1.ResolveGlobToPath)([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
                     await fs.promises.access(projectVersionPath, fs.constants.R_OK);
                     return projectVersionPath;
                 }
@@ -36731,7 +36729,7 @@ function getUnityVersionsFromInput(architecture) {
                 break;
         }
         const changeset = match.groups.changeset;
-        const unityVersion = new unity_cli_2.UnityVersion(version, changeset, architecture);
+        const unityVersion = new unity_cli_1.UnityVersion(version, changeset, architecture);
         core.debug(`  > ${unityVersion.toString()}`);
         try {
             versions.push(unityVersion);
@@ -36758,7 +36756,7 @@ async function getUnityVersionFromFile(versionFilePath, architecture) {
     if (!match.groups.changeset) {
         throw Error(`No changeset group found!`);
     }
-    return new unity_cli_2.UnityVersion(match.groups.version, match.groups.changeset, architecture);
+    return new unity_cli_1.UnityVersion(match.groups.version, match.groups.changeset, architecture);
 }
 
 
@@ -51428,7 +51426,7 @@ exports.composeNode = composeNode;
 var identity = __nccwpck_require__(5589);
 var Scalar = __nccwpck_require__(9338);
 var resolveBlockScalar = __nccwpck_require__(9485);
-var resolveFlowScalar = __nccwpck_require__(7578);
+var resolveFlowScalar = __nccwpck_require__(261);
 
 function composeScalar(ctx, token, tagToken, onError) {
     const { value, type, comment, range } = token.type === 'block-scalar'
@@ -52401,7 +52399,7 @@ exports.resolveFlowCollection = resolveFlowCollection;
 
 /***/ }),
 
-/***/ 7578:
+/***/ 261:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -54730,7 +54728,7 @@ exports.toJS = toJS;
 
 
 var resolveBlockScalar = __nccwpck_require__(9485);
-var resolveFlowScalar = __nccwpck_require__(7578);
+var resolveFlowScalar = __nccwpck_require__(261);
 var errors = __nccwpck_require__(4236);
 var stringifyString = __nccwpck_require__(6226);
 
@@ -70589,10 +70587,9 @@ var __webpack_exports__ = {};
 var exports = __webpack_exports__;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const unity_cli_1 = __nccwpck_require__(4858);
-const inputs_1 = __nccwpck_require__(7063);
-const unity_cli_2 = __nccwpck_require__(4858);
 const core = __nccwpck_require__(2186);
+const inputs_1 = __nccwpck_require__(7063);
+const unity_cli_1 = __nccwpck_require__(4858);
 const main = async () => {
     try {
         const [versions, modules, unityProjectPath, installPath] = await (0, inputs_1.ValidateInputs)();
@@ -70600,7 +70597,7 @@ const main = async () => {
             core.info(`UNITY_PROJECT_PATH: ${unityProjectPath}`);
             core.exportVariable('UNITY_PROJECT_PATH', unityProjectPath);
         }
-        const unityHub = new unity_cli_2.UnityHub();
+        const unityHub = new unity_cli_1.UnityHub();
         const unityHubPath = await unityHub.Install();
         if (!unityHubPath || unityHubPath.length === 0) {
             throw new Error('Failed to install or locate Unity Hub!');

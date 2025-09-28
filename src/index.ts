@@ -1,7 +1,9 @@
-import { CheckAndroidSdkInstalled } from '@rage-against-the-pixel/unity-cli';
-import { ValidateInputs } from './inputs';
-import { UnityHub } from '@rage-against-the-pixel/unity-cli';
 import core = require('@actions/core');
+import { ValidateInputs } from './inputs';
+import {
+    CheckAndroidSdkInstalled,
+    UnityHub
+} from '@rage-against-the-pixel/unity-cli';
 
 const main = async () => {
     try {
