@@ -14,8 +14,9 @@ const main = async () => {
             core.exportVariable('UNITY_PROJECT_PATH', unityProjectPath);
         }
 
+        const autoUpdate = core.getInput('auto-update-hub');
         const unityHub = new UnityHub();
-        const unityHubPath = await unityHub.Install();
+        const unityHubPath = await unityHub.Install(autoUpdate === 'true');
 
         if (!unityHubPath || unityHubPath.length === 0) {
             throw new Error('Failed to install or locate Unity Hub!');
