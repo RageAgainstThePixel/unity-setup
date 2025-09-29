@@ -4408,13 +4408,6 @@ class UnityHub {
     async Exec(args, options = { silent: this.logger.logLevel > logging_1.LogLevel.CI, showCommand: this.logger.logLevel <= logging_1.LogLevel.CI }) {
         let output = '';
         let exitCode = 0;
-        function processOutput(data) {
-            const chunk = data.toString();
-            output += chunk;
-            if (!options.silent) {
-                process.stdout.write(chunk);
-            }
-        }
         const filteredArgs = args.filter(arg => arg !== '--headless' && arg !== '--');
         const executable = process.platform === 'linux' ? 'unity-hub' : this.executable;
         const execArgs = process.platform === 'linux' ? ['--headless', ...filteredArgs] : ['--', '--headless', ...filteredArgs];
@@ -4424,8 +4417,18 @@ class UnityHub {
         if (this.executable.includes(path.sep)) {
             fs.accessSync(this.executable, fs.constants.R_OK | fs.constants.X_OK);
         }
+        const ignoredLines = [
+            `This error originated either by throwing inside of an async function without a catch block`,
+            `Unexpected error attempting to determine if executable file exists`,
+            `dri3 extension not supported`,
+            `Failed to connect to the bus:`,
+            `Checking for beta autoupdate feature for deb/rpm distributions`,
+            `Found package-type: deb`,
+            `XPC error for connection com.apple.backupd.sandbox.xpc: Connection invalid`
+        ];
         try {
             exitCode = await new Promise((resolve, reject) => {
+                const tasksComplete = 'All Tasks Completed Successfully.';
                 const child = (0, child_process_1.spawn)(executable, execArgs, {
                     stdio: ['ignore', 'pipe', 'pipe'],
                 });
@@ -4433,6 +4436,33 @@ class UnityHub {
                 const sigtermHandler = () => child.kill('SIGTERM');
                 process.once('SIGINT', sigintHandler);
                 process.once('SIGTERM', sigtermHandler);
+                function processOutput(data) {
+                    try {
+                        const chunk = data.toString();
+                        let outputLines = [];
+                        const lines = chunk.split('\n');
+                        for (const line of lines) {
+                            if (line.trim().length === 0 ||
+                                ignoredLines.some(ignored => line.includes(ignored))) {
+                                continue;
+                            }
+                            outputLines.push(line);
+                        }
+                        const outputLine = outputLines.join('\n');
+                        output += `${outputLine}\n`;
+                        if (!options.silent) {
+                            process.stdout.write(`${outputLine}\n`);
+                        }
+                        if (output.includes(tasksComplete)) {
+                            child.kill('SIGTERM');
+                        }
+                    }
+                    catch (error) {
+                        if (error.code !== 'EPIPE') {
+                            throw error;
+                        }
+                    }
+                }
                 child.stdout.on('data', processOutput);
                 child.stderr.on('data', processOutput);
                 child.on('error', (error) => {
@@ -4465,15 +4495,6 @@ class UnityHub {
                         throw new Error(`Failed to execute Unity Hub: [${exitCode}] ${errorMessage}`);
                 }
             }
-            const ignoredLines = [
-                `This error originated either by throwing inside of an async function without a catch block`,
-                `Unexpected error attempting to determine if executable file exists`,
-                `dri3 extension not supported`,
-                `Failed to connect to the bus:`,
-                `Checking for beta autoupdate feature for deb/rpm distributions`,
-                `Found package-type: deb`,
-                `XPC error for connection com.apple.backupd.sandbox.xpc: Connection invalid`
-            ];
             output = output.split('\n')
                 .filter(line => line.trim().length > 0)
                 .filter(line => !ignoredLines.some(ignored => line.includes(ignored)))
@@ -5648,10 +5669,17 @@ async function Exec(command, args, options = { silent: false, showCommand: true 
     const isSilent = isDebug ? false : options.silent ? options.silent : false;
     const mustShowCommand = isDebug ? true : options.showCommand ? options.showCommand : false;
     function processOutput(data) {
-        const chunk = data.toString();
-        output += chunk;
-        if (!isSilent) {
-            process.stdout.write(chunk);
+        try {
+            const chunk = data.toString();
+            output += chunk;
+            if (!isSilent && chunk.trim().length > 0) {
+                process.stdout.write(chunk);
+            }
+        }
+        catch (error) {
+            if (error.code !== 'EPIPE') {
+                throw error;
+            }
         }
     }
     if (mustShowCommand) {
@@ -5798,7 +5826,7 @@ async function TryKillProcess(procInfo) {
     try {
         pid = procInfo.pid;
         logger.ci(`Killing process "${procInfo.name}" with pid: ${pid}`);
-        process.kill(pid);
+        process.kill(pid, 'SIGTERM');
     }
     catch (error) {
         const nodeJsException = error;

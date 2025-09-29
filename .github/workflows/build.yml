@@ -16,6 +16,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
+    timeout-minutes: 20
     env:
       UNITY_EDITORS: '' # set by the unity-setup action
       UNITY_HUB_PATH: '' # set by the unity-setup action
