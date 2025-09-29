@@ -4424,11 +4424,14 @@ class UnityHub {
             `Failed to connect to the bus:`,
             `Checking for beta autoupdate feature for deb/rpm distributions`,
             `Found package-type: deb`,
-            `XPC error for connection com.apple.backupd.sandbox.xpc: Connection invalid`
+            `XPC error for connection com.apple.backupd.sandbox.xpc: Connection invalid`,
+            `Error: No modules found to install.`,
+            `Failed to execute the command due the following, please see '-- --headless help' for assistance.`
         ];
         try {
             exitCode = await new Promise((resolve, reject) => {
-                const tasksComplete = 'All Tasks Completed Successfully.';
+                let tasksComplete = false;
+                const tasksCompleteMessage = 'All Tasks Completed Successfully.';
                 const child = (0, child_process_1.spawn)(executable, execArgs, {
                     stdio: ['ignore', 'pipe', 'pipe'],
                 });
@@ -4447,16 +4450,19 @@ class UnityHub {
                                 continue;
                             }
                             outputLines.push(line);
+                            if (!options.silent) {
+                                process.stdout.write(`${line}\n`);
+                            }
                         }
                         const outputLine = outputLines.join('\n');
                         output += `${outputLine}\n`;
-                        if (!options.silent) {
-                            process.stdout.write(`${outputLine}\n`);
-                        }
-                        if (outputLine.includes(tasksComplete)) {
+                        if (outputLine.includes(tasksCompleteMessage)) {
+                            tasksComplete = true;
                             if (child?.pid) {
-                                logging_1.Logger.instance.warn(`Unity Hub reported all tasks completed, terminating process...`);
-                                process.kill(child.pid, 0);
+                                logging_1.Logger.instance.debug(`Unity Hub reported all tasks completed, terminating process...`);
+                                const childProcInfo = { pid: child.pid, name: child.spawnfile, ppid: process.pid };
+                                (0, utilities_1.KillChildProcesses)(childProcInfo);
+                                (0, utilities_1.TryKillProcess)(childProcInfo);
                             }
                         }
                     }
@@ -4476,7 +4482,12 @@ class UnityHub {
                 child.on('close', (code) => {
                     process.removeListener('SIGINT', sigintHandler);
                     process.removeListener('SIGTERM', sigtermHandler);
-                    resolve(code === null ? 0 : code);
+                    if (tasksComplete) {
+                        resolve(0);
+                    }
+                    else {
+                        resolve(code === null ? 0 : code);
+                    }
                 });
             });
         }
