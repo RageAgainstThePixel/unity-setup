@@ -4430,7 +4430,8 @@ class UnityHub {
             'Invalid key: The GraphQL query at the field at',
             'You have to request `id` or `_id` fields for all selection sets or create a custom `keys` config for `UnityReleaseLabel`.',
             'Entities without keys will be embedded directly on the parent entity. If this is intentional, create a `keys` config for `UnityReleaseLabel` that always returns null.',
-            'https://bit.ly/2XbVrpR#15'
+            'https://bit.ly/2XbVrpR#15',
+            'Interaction is not allowed with the Security Server." (-25308)'
         ];
         try {
             exitCode = await new Promise((resolve, reject) => {
@@ -4750,25 +4751,31 @@ chmod -R 777 "$hubPath"`]);
             'failed to download. Error given: Request timeout'
         ];
         this.logger.ci(`Getting release info for Unity ${unityVersion.toString()}...`);
-        let editorPath = await this.checkInstalledEditors(unityVersion, false);
-        // attempt to resolve the full version with the changeset if we don't have one already
-        if (!unityVersion.isLegacy() && !editorPath && !unityVersion.changeset) {
+        let resolvedVersion = unityVersion;
+        if (!resolvedVersion.isLegacy()) {
             try {
-                const releases = await this.getLatestHubReleases();
-                unityVersion = unityVersion.findMatch(releases);
-                const unityReleaseInfo = await this.getEditorReleaseInfo(unityVersion);
-                unityVersion = new unity_version_1.UnityVersion(unityReleaseInfo.version, unityReleaseInfo.shortRevision, unityVersion.architecture);
+                if (!resolvedVersion.isFullyQualified()) {
+                    const releases = await this.getLatestHubReleases();
+                    resolvedVersion = resolvedVersion.findMatch(releases);
+                }
+                if (!resolvedVersion.changeset) {
+                    const unityReleaseInfo = await this.getEditorReleaseInfo(resolvedVersion);
+                    resolvedVersion = new unity_version_1.UnityVersion(unityReleaseInfo.version, unityReleaseInfo.shortRevision, resolvedVersion.architecture);
+                }
             }
             catch (error) {
-                this.logger.warn(`Failed to get Unity release info for ${unityVersion.toString()}! falling back to legacy search...\n${error}`);
+                this.logger.warn(`Failed to get Unity release info for ${resolvedVersion.toString()}! falling back to legacy search...\n${error}`);
                 try {
-                    unityVersion = await this.fallbackVersionLookup(unityVersion);
+                    resolvedVersion = await this.fallbackVersionLookup(resolvedVersion);
                 }
                 catch (fallbackError) {
-                    this.logger.warn(`Failed to lookup changeset for Unity ${unityVersion.toString()}!\n${fallbackError}`);
+                    this.logger.warn(`Failed to lookup changeset for Unity ${resolvedVersion.toString()}!\n${fallbackError}`);
                 }
             }
         }
+        const allowPartialMatches = !resolvedVersion.isFullyQualified();
+        let editorPath = await this.checkInstalledEditors(resolvedVersion, false, undefined, allowPartialMatches);
+        unityVersion = resolvedVersion;
         let installPath = undefined;
         if (!editorPath) {
             try {
@@ -4832,7 +4839,17 @@ chmod -R 777 "$hubPath"`]);
             .filter(line => line.trim().length > 0)
             .map(line => line.trim());
     }
-    async checkInstalledEditors(unityVersion, failOnEmpty, installPath = undefined) {
+    /**
+     * Lists the available Unity releases.
+     * @returns A list of available Unity release versions.
+     */
+    async ListAvailableReleases() {
+        const output = await this.Exec(['editors', '--releases']);
+        return output.split('\n')
+            .filter(line => line.trim().length > 0)
+            .map(line => line.trim());
+    }
+    async checkInstalledEditors(unityVersion, failOnEmpty, installPath = undefined, allowPartialMatches = true) {
         let editorPath = undefined;
         if (!installPath) {
             const paths = await this.ListInstalledEditors();
@@ -4847,7 +4864,7 @@ chmod -R 777 "$hubPath"`]);
                 if (exactMatch) {
                     editorPath = exactMatch.groups.editorPath;
                 }
-                else {
+                else if (allowPartialMatches) {
                     // Fallback: semver satisfies
                     const versionMatches = matches.filter(match => match?.groups?.version && unityVersion.satisfies(match.groups.version));
                     if (versionMatches.length === 0) {
@@ -4857,21 +4874,28 @@ chmod -R 777 "$hubPath"`]);
                         'ARM64': 'Apple silicon',
                         'X86_64': 'Intel',
                     };
-                    for (const match of versionMatches) {
-                        if (!match || !match.groups || !match.groups.version || !match.groups.editorPath) {
+                    const sortedMatches = versionMatches
+                        .map(match => ({
+                        match: match,
+                        parsed: new unity_version_1.UnityVersion(match.groups.version, null, undefined)
+                    }))
+                        .sort((a, b) => unity_version_1.UnityVersion.compare(b.parsed, a.parsed));
+                    for (const candidate of sortedMatches) {
+                        const match = candidate.match;
+                        if (!match.groups || !match.groups.version || !match.groups.editorPath) {
                             continue;
                         }
-                        // If no architecture is set, or no arch in match, accept the version match
                         if (!unityVersion.architecture || !match.groups.arch) {
                             editorPath = match.groups.editorPath;
+                            break;
                         }
-                        // If architecture is set and present in match, check for match
-                        else if (archMap[unityVersion.architecture] === match.groups.arch) {
+                        if (archMap[unityVersion.architecture] === match.groups.arch) {
                             editorPath = match.groups.editorPath;
+                            break;
                         }
-                        // Fallback: check if editorPath includes architecture string (case-insensitive)
-                        else if (unityVersion.architecture && match.groups.editorPath.toLowerCase().includes(`-${unityVersion.architecture.toLowerCase()}`)) {
+                        if (unityVersion.architecture && match.groups.editorPath.toLowerCase().includes(`-${unityVersion.architecture.toLowerCase()}`)) {
                             editorPath = match.groups.editorPath;
+                            break;
                         }
                     }
                 }
@@ -5440,23 +5464,19 @@ class UnityVersion {
     constructor(version, changeset = undefined, architecture = undefined) {
         this.version = version;
         this.changeset = changeset;
-        const coercedVersion = (0, semver_1.coerce)(version);
-        if (!coercedVersion) {
-            throw new Error(`Invalid Unity version: ${JSON.stringify(version)}`);
-        }
-        this.semVer = coercedVersion;
+        this.semVer = UnityVersion.createSemVer(version);
         // Default to current architecture if not specified
-        architecture = architecture || (os.arch() === 'arm64' ? 'ARM64' : 'X86_64');
-        if (architecture === 'ARM64' && !this.isArmCompatible()) {
-            this.architecture = 'X86_64';
-        }
-        else {
-            this.architecture = architecture;
-        }
+        const resolvedArchitecture = architecture ?? (os.arch() === 'arm64' ? 'ARM64' : 'X86_64');
+        this.architecture = resolvedArchitecture === 'ARM64' && !this.isArmCompatible()
+            ? 'X86_64'
+            : resolvedArchitecture;
     }
     static compare(a, b) {
-        // Compare using coerced SemVer objects to handle partial inputs (e.g., "2022") safely
-        return (0, semver_1.compare)(a.semVer, b.semVer, true);
+        const baseComparison = (0, semver_1.compare)(a.semVer, b.semVer, true);
+        if (baseComparison !== 0) {
+            return baseComparison;
+        }
+        return UnityVersion.compareBuildMetadata(a.semVer, b.semVer);
     }
     toString() {
         return this.changeset ? `${this.version} (${this.changeset})` : this.version;
@@ -5470,99 +5490,27 @@ class UnityVersion {
         }
         return (0, semver_1.compare)(this.semVer, '2021.0.0', true) >= 0;
     }
+    isFullyQualified() {
+        return UnityVersion.UNITY_RELEASE_PATTERN.test(this.version);
+    }
     findMatch(versions) {
-        const fullPattern = /^\d{1,4}\.\d+\.\d+[abcfpx]\d+$/;
-        const exactMatch = versions.find(release => {
-            // Only match fully formed Unity versions (e.g., 2021.3.5f1, 2022.1.0b12)
-            const match = release.match(/(?<version>\d{1,4}\.\d+\.\d+[abcfpx]\d+)/);
-            return match && match.groups && match.groups.version === this.version;
-        });
+        const releaseInfos = UnityVersion.extractReleaseVersions(versions);
+        const releaseMap = new Map(releaseInfos.map(info => [info.version, info]));
+        const exactMatch = releaseMap.get(this.version);
         if (exactMatch) {
             this.logger.debug(`Exact match found for ${this.version}`);
-            return new UnityVersion(this.version, null, this.architecture);
+            return new UnityVersion(exactMatch.version, this.changeset ?? null, this.architecture);
         }
-        // Trigger fallback for any non fully-qualified version or wildcard patterns
-        // e.g., "6000", "6000.1", "6000.0.0", "2022.x", "6000.*"
-        const hasWildcard = /\.x($|[^\w])/.test(this.version) || /\.\*($|[^\w])/.test(this.version);
-        const triggerFallback = hasWildcard || !fullPattern.test(this.version);
-        if (triggerFallback) {
-            // Determine major/minor for fallback, supporting wildcards and partials
-            let major;
-            let minor;
-            const xMatch = this.version.match(/^(\d{1,4})(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?/);
-            if (xMatch) {
-                major = xMatch[1];
-                minor = xMatch[2];
-            }
-            let releases = versions
-                .map(release => {
-                const match = release.match(/(?<version>\d{1,4}\.\d+\.\d+[abcfpx]\d+)/);
-                return match && match.groups ? match.groups.version : null;
-            })
-                .filter(Boolean)
-                .filter(version => {
-                if (!version) {
-                    return false;
-                }
-                const parts = version.match(/(\d{1,4})\.(\d+)\.(\d+)([abcfpx])(\d+)/);
-                if (!parts || parts[4] !== 'f') {
-                    return false;
-                }
-                // major must match
-                if (major && parts[1] !== major) {
-                    return false;
-                }
-                // minor: if 'x' or '*', allow any, else must match
-                if (minor && minor !== 'x' && minor !== '*' && parts[2] !== minor) {
-                    return false;
-                }
-                return true;
-            });
-            // If no matches and requested minor was explicitly '0', broaden to any minor for that major
-            if (releases.length === 0 && minor === '0') {
-                releases = versions
-                    .map(release => {
-                    const match = release.match(/(?<version>\d{1,4}\.\d+\.\d+[abcfpx]\d+)/);
-                    return match && match.groups ? match.groups.version : null;
-                })
-                    .filter(Boolean)
-                    .filter(version => {
-                    if (!version) {
-                        return false;
-                    }
-                    const parts = version.match(/(\d{1,4})\.(\d+)\.(\d+)([abcfpx])(\d+)/);
-                    if (!parts || parts[4] !== 'f') {
-                        return false;
-                    }
-                    if (major && parts[1] !== major) {
-                        return false;
-                    }
-                    return true; // ignore minor
-                });
-            }
-            // Sort by minor, patch, and f number descending
-            releases.sort((a, b) => {
-                const parse = (v) => {
-                    const match = v.match(/(\d{1,4})\.(\d+)\.(\d+)([abcfpx])(\d+)/);
-                    return match ? [parseInt(match[2]), parseInt(match[3]), parseInt(match[5])] : [0, 0, 0];
-                };
-                const [aMinor, aPatch, af] = parse(a);
-                const [bMinor, bPatch, bf] = parse(b);
-                if (aMinor !== bMinor) {
-                    return bMinor - aMinor;
-                }
-                if (aPatch !== bPatch) {
-                    return bPatch - aPatch;
-                }
-                return bf - af;
-            });
+        if (UnityVersion.needsFallbackSearch(this.version)) {
+            const candidates = UnityVersion.resolveFallbackCandidates(this.version, releaseInfos);
             this.logger.debug(`Searching for fallback match for ${this.version}:`);
-            releases.forEach(version => {
-                this.logger.debug(`  > ${version}`);
+            candidates.forEach(release => {
+                this.logger.debug(`  > ${release.version}`);
             });
-            if (releases.length > 0) {
-                this.logger.debug(`Found fallback Unity ${releases[0]}`);
-                return new UnityVersion(releases[0], null, this.architecture);
+            const latest = candidates[0];
+            if (latest) {
+                this.logger.debug(`Found fallback Unity ${latest.version}`);
+                return new UnityVersion(latest.version, null, this.architecture);
             }
         }
         this.logger.debug(`No matching Unity version found for ${this.version}`);
@@ -5573,7 +5521,138 @@ class UnityVersion {
         if (!coercedVersion) {
             throw new Error(`Invalid version to check against: ${version}`);
         }
-        return (0, semver_1.satisfies)(coercedVersion, `^${this.semVer}`);
+        return (0, semver_1.satisfies)(coercedVersion, `^${this.semVer.version}`);
+    }
+    static UNITY_RELEASE_PATTERN = /^(\d{1,4})\.(\d+)\.(\d+)([abcfpx])(\d+)$/;
+    static VERSION_TOKEN_PATTERN = /^(\d{1,4})(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?/;
+    static UNITY_CHANNEL_ORDER = {
+        a: 0,
+        b: 1,
+        c: 2,
+        f: 3,
+        p: 4,
+        x: 5
+    };
+    static createSemVer(version) {
+        const unityMatch = UnityVersion.UNITY_RELEASE_PATTERN.exec(version);
+        if (unityMatch) {
+            const [, major, minor, patch, channel, build] = unityMatch;
+            return new semver_1.SemVer(`${major}.${minor}.${patch}+${channel}${build}`, true);
+        }
+        const coercedVersion = (0, semver_1.coerce)(version, { loose: true });
+        if (!coercedVersion) {
+            throw new Error(`Invalid Unity version: ${JSON.stringify(version)}`);
+        }
+        return coercedVersion;
+    }
+    static extractReleaseVersions(versions) {
+        return versions
+            .map(UnityVersion.parseReleaseInfo)
+            .filter((info) => info !== null);
+    }
+    static compareBuildMetadata(aSemVer, bSemVer) {
+        const aBuild = UnityVersion.parseBuildMetadata(aSemVer.build);
+        const bBuild = UnityVersion.parseBuildMetadata(bSemVer.build);
+        if (!aBuild && !bBuild) {
+            return 0;
+        }
+        if (!aBuild) {
+            return -1;
+        }
+        if (!bBuild) {
+            return 1;
+        }
+        if (aBuild.channelRank !== bBuild.channelRank) {
+            return aBuild.channelRank - bBuild.channelRank;
+        }
+        if (aBuild.revision !== bBuild.revision) {
+            return aBuild.revision - bBuild.revision;
+        }
+        return aBuild.raw.localeCompare(bBuild.raw);
+    }
+    static parseBuildMetadata(buildTokens) {
+        if (!buildTokens.length) {
+            return null;
+        }
+        const raw = buildTokens.join('.');
+        const match = raw.match(/^([abcfpx])(\d+)$/);
+        if (!match) {
+            return {
+                raw,
+                channelRank: Number.MAX_SAFE_INTEGER,
+                revision: Number.MAX_SAFE_INTEGER
+            };
+        }
+        const channel = match[1];
+        const revision = parseInt(match[2], 10);
+        return {
+            raw,
+            channelRank: UnityVersion.UNITY_CHANNEL_ORDER[channel] ?? Number.MAX_SAFE_INTEGER,
+            revision
+        };
+    }
+    static parseReleaseInfo(release) {
+        const versionMatch = release.match(/(\d{1,4}\.\d+\.\d+[abcfpx]\d+)/);
+        if (!versionMatch) {
+            return null;
+        }
+        const version = versionMatch[1];
+        const parts = UnityVersion.UNITY_RELEASE_PATTERN.exec(version);
+        if (!parts) {
+            return null;
+        }
+        const majorStr = parts[1];
+        const minorStr = parts[2];
+        const patchStr = parts[3];
+        const channel = parts[4];
+        const revisionStr = parts[5];
+        return {
+            version,
+            major: parseInt(majorStr, 10),
+            minor: parseInt(minorStr, 10),
+            patch: parseInt(patchStr, 10),
+            channel,
+            revision: parseInt(revisionStr, 10)
+        };
+    }
+    static needsFallbackSearch(version) {
+        return /\.x($|[^\w])/.test(version) || /\.\*($|[^\w])/.test(version) || !UnityVersion.UNITY_RELEASE_PATTERN.test(version);
+    }
+    static resolveFallbackCandidates(version, releases) {
+        const match = UnityVersion.VERSION_TOKEN_PATTERN.exec(version);
+        if (!match) {
+            return [];
+        }
+        const [, majorToken, minorToken] = match;
+        const majorValue = majorToken ? parseInt(majorToken, 10) : Number.NaN;
+        const normalizedMajor = Number.isNaN(majorValue) ? undefined : majorValue;
+        const requestedMinor = UnityVersion.parseMinorToken(minorToken);
+        let candidates = UnityVersion.filterFinalReleases(releases, normalizedMajor, requestedMinor);
+        if (!candidates.length && minorToken === '0') {
+            candidates = UnityVersion.filterFinalReleases(releases, normalizedMajor);
+        }
+        return candidates.sort(UnityVersion.compareFinalReleaseInfo);
+    }
+    static parseMinorToken(token) {
+        if (!token || token === 'x' || token === '*') {
+            return undefined;
+        }
+        const value = parseInt(token, 10);
+        return Number.isNaN(value) ? undefined : value;
+    }
+    static filterFinalReleases(releases, major, minor) {
+        return releases.filter(release => release.channel === 'f' &&
+            (major === undefined || release.major === major) &&
+            (minor === undefined || release.minor === minor));
+    }
+    static compareFinalReleaseInfo(a, b) {
+        if (a.minor !== b.minor) {
+            return b.minor - a.minor;
+        }
+        if (a.patch !== b.patch) {
+            return b.patch - a.patch;
+        }
+        return b.revision - a.revision;
     }
 }
 exports.UnityVersion = UnityVersion;
