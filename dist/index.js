@@ -4439,11 +4439,17 @@ class UnityHub {
                 const tasksCompleteMessage = 'All Tasks Completed Successfully.';
                 const child = (0, child_process_1.spawn)(executable, execArgs, {
                     stdio: ['ignore', 'pipe', 'pipe'],
+                    detached: process.platform !== 'win32'
                 });
                 const sigintHandler = () => child.kill('SIGINT');
                 const sigtermHandler = () => child.kill('SIGTERM');
                 process.once('SIGINT', sigintHandler);
                 process.once('SIGTERM', sigtermHandler);
+                function removeListeners() {
+                    process.removeListener('SIGINT', sigintHandler);
+                    process.removeListener('SIGTERM', sigtermHandler);
+                }
+                let forceCloseTimeout;
                 function processOutput(data) {
                     try {
                         const chunk = data.toString();
@@ -4466,8 +4472,19 @@ class UnityHub {
                             if (child?.pid) {
                                 logging_1.Logger.instance.debug(`Unity Hub reported all tasks completed, terminating process...`);
                                 const childProcInfo = { pid: child.pid, name: child.spawnfile, ppid: process.pid };
-                                (0, utilities_1.KillChildProcesses)(childProcInfo);
-                                (0, utilities_1.TryKillProcess)(childProcInfo);
+                                (0, utilities_1.KillChildProcesses)(childProcInfo).then(async () => {
+                                    const killedPid = await (0, utilities_1.TryKillProcess)(childProcInfo, 'SIGTERM');
+                                    if (!killedPid) {
+                                        logging_1.Logger.instance.error(`Failed to terminate Unity Hub process!`);
+                                    }
+                                    // In case the process doesn't close itself, force kill after 5 seconds
+                                    forceCloseTimeout = setTimeout(() => {
+                                        logging_1.Logger.instance.info(`Force closing Unity Hub process after timeout...`);
+                                        (0, utilities_1.TryKillProcess)(childProcInfo, 'SIGKILL');
+                                        removeListeners();
+                                        resolve(0);
+                                    }, 5000);
+                                });
                             }
                         }
                     }
@@ -4480,13 +4497,17 @@ class UnityHub {
                 child.stdout.on('data', processOutput);
                 child.stderr.on('data', processOutput);
                 child.on('error', (error) => {
-                    process.removeListener('SIGINT', sigintHandler);
-                    process.removeListener('SIGTERM', sigtermHandler);
+                    if (forceCloseTimeout) {
+                        clearTimeout(forceCloseTimeout);
+                    }
+                    removeListeners();
                     reject(error);
                 });
                 child.on('close', (code) => {
-                    process.removeListener('SIGINT', sigintHandler);
-                    process.removeListener('SIGTERM', sigtermHandler);
+                    if (forceCloseTimeout) {
+                        clearTimeout(forceCloseTimeout);
+                    }
+                    removeListeners();
                     if (tasksComplete) {
                         resolve(0);
                     }
@@ -5916,14 +5937,15 @@ function GetArgumentValueAsString(value, args) {
 /**
  * Attempts to kill a process with the given ProcInfo.
  * @param procInfo The process information containing the PID.
+ * @param signal The signal to use for killing the process. Defaults to 'SIGTERM'.
  * @returns The PID of the killed process, or undefined if no process was killed.
  */
-async function TryKillProcess(procInfo) {
+async function TryKillProcess(procInfo, signal = 'SIGTERM') {
     let pid;
     try {
+        logger.ci(`Killing process "${procInfo.name}" with pid: ${procInfo.pid}`);
+        process.kill(procInfo.pid, signal);
         pid = procInfo.pid;
-        logger.ci(`Killing process "${procInfo.name}" with pid: ${pid}`);
-        process.kill(pid, 'SIGTERM');
     }
     catch (error) {
         const nodeJsException = error;
