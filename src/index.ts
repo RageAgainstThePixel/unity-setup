@@ -1,8 +1,8 @@
 import core = require('@actions/core');
 import { ValidateInputs } from './inputs';
 import {
+    UnityHub,
     CheckAndroidSdkInstalled,
-    UnityHub
 } from '@rage-against-the-pixel/unity-cli';
 
 const main = async () => {
