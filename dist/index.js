@@ -3316,6 +3316,15 @@ async function execSdkManager(sdkManagerPath, javaPath, args) {
             const sigtermHandler = () => child.kill('SIGTERM');
             process.once('SIGINT', sigintHandler);
             process.once('SIGTERM', sigtermHandler);
+            let hasCleanedUpListeners = false;
+            function removeListeners() {
+                if (hasCleanedUpListeners) {
+                    return;
+                }
+                hasCleanedUpListeners = true;
+                process.removeListener('SIGINT', sigintHandler);
+                process.removeListener('SIGTERM', sigtermHandler);
+            }
             child.stdout.on('data', (data) => {
                 const chunk = data.toString();
                 output += chunk;
@@ -3331,13 +3340,11 @@ async function execSdkManager(sdkManagerPath, javaPath, args) {
                 process.stderr.write(chunk);
             });
             child.on('error', (error) => {
-                process.removeListener('SIGINT', sigintHandler);
-                process.removeListener('SIGTERM', sigtermHandler);
+                removeListeners();
                 reject(error);
             });
             child.on('close', (code) => {
-                process.removeListener('SIGINT', sigintHandler);
-                process.removeListener('SIGTERM', sigtermHandler);
+                removeListeners();
                 resolve(code === null ? 0 : code);
             });
         });
@@ -3634,10 +3641,6 @@ class LicensingClient {
         }
         let output = '';
         let exitCode = 0;
-        function processOutput(data) {
-            const chunk = data.toString();
-            output += chunk;
-        }
         this.logger.startGroup(`\x1b[34m${this.licenseClientPath} ${args.join(' ')}\x1b[0m`);
         await fs.promises.access(this.licenseClientPath, fs.constants.R_OK | fs.constants.X_OK);
         try {
@@ -3650,16 +3653,27 @@ class LicensingClient {
                 const sigtermHandler = () => child.kill('SIGTERM');
                 process.once('SIGINT', sigintHandler);
                 process.once('SIGTERM', sigtermHandler);
+                let hasCleanedUpListeners = false;
+                function removeListeners() {
+                    if (hasCleanedUpListeners) {
+                        return;
+                    }
+                    hasCleanedUpListeners = true;
+                    process.removeListener('SIGINT', sigintHandler);
+                    process.removeListener('SIGTERM', sigtermHandler);
+                }
+                function processOutput(data) {
+                    const chunk = data.toString();
+                    output += chunk;
+                }
                 child.stdout.on('data', processOutput);
                 child.stderr.on('data', processOutput);
                 child.on('error', (error) => {
-                    process.removeListener('SIGINT', sigintHandler);
-                    process.removeListener('SIGTERM', sigtermHandler);
+                    removeListeners();
                     reject(error);
                 });
                 child.on('close', (code) => {
-                    process.removeListener('SIGINT', sigintHandler);
-                    process.removeListener('SIGTERM', sigtermHandler);
+                    removeListeners();
                     resolve(code === null ? 0 : code);
                 });
             });
@@ -3834,12 +3848,46 @@ exports.LicensingClient = LicensingClient;
 /***/ }),
 
 /***/ 4486:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Logger = exports.LogLevel = void 0;
+const fs = __importStar(__nccwpck_require__(7147));
 var LogLevel;
 (function (LogLevel) {
     LogLevel["DEBUG"] = "debug";
@@ -3980,6 +4028,32 @@ class Logger {
             }
         }
     }
+    setEnvironmentVariable(name, value) {
+        switch (this._ci) {
+            case 'GITHUB_ACTIONS': {
+                // needs to be appended to the temporary file specified in the GITHUB_ENV environment variable
+                const githubEnv = process.env.GITHUB_ENV;
+                // echo "MY_ENV_VAR=myValue" >> $GITHUB_ENV
+                if (githubEnv) {
+                    fs.appendFileSync(githubEnv, `${name}=${value}\n`, { encoding: 'utf8' });
+                }
+                break;
+            }
+        }
+    }
+    setOutput(name, value) {
+        switch (this._ci) {
+            case 'GITHUB_ACTIONS': {
+                // needs to be appended to the temporary file specified in the GITHUB_OUTPUT environment variable
+                const githubOutput = process.env.GITHUB_OUTPUT;
+                // echo "myOutput=myValue" >> $GITHUB_OUTPUT
+                if (githubOutput) {
+                    fs.appendFileSync(githubOutput, `${name}=${value}\n`, { encoding: 'utf8' });
+                }
+                break;
+            }
+        }
+    }
 }
 exports.Logger = Logger;
 //# sourceMappingURL=logging.js.map
@@ -4029,16 +4103,15 @@ exports.UnityEditor = void 0;
 const fs = __importStar(__nccwpck_require__(7147));
 const path = __importStar(__nccwpck_require__(1017));
 const logging_1 = __nccwpck_require__(4486);
-const utilities_1 = __nccwpck_require__(9746);
-const child_process_1 = __nccwpck_require__(2081);
 const unity_version_1 = __nccwpck_require__(3331);
+const child_process_1 = __nccwpck_require__(2081);
+const utilities_1 = __nccwpck_require__(9746);
 class UnityEditor {
     editorPath;
     version;
     editorRootPath;
     logger = logging_1.Logger.instance;
     autoAddNoGraphics;
-    procInfo;
     /**
      * Initializes a new instance of the UnityEditor class.
      * @param editorPath The path to the Unity Editor installation.
@@ -4119,26 +4192,104 @@ class UnityEditor {
         }
         return path.normalize(templatePath);
     }
+    /**
+     * Run the Unity Editor with the specified command line arguments.
+     * @param command The command containing arguments and optional project path.
+     * @throws Will throw an error if the Unity Editor fails to start or exits with a non-zero code.
+     */
     async Run(command) {
         let isCancelled = false;
-        const onCancel = async () => {
+        let procInfo = null;
+        let logTail = null;
+        async function tryKillEditorProcesses() {
+            try {
+                if (procInfo) {
+                    await (0, utilities_1.KillProcess)(procInfo);
+                    await (0, utilities_1.KillChildProcesses)(procInfo);
+                }
+            }
+            catch (error) {
+                logging_1.Logger.instance.error(`Failed to kill Unity process: ${error}`);
+            }
+        }
+        function onCancel() {
             isCancelled = true;
-            await this.tryKillEditorProcess();
-        };
-        process.once('SIGINT', onCancel);
-        process.once('SIGTERM', onCancel);
-        let exitCode;
+            void tryKillEditorProcesses();
+        }
+        let exitCode = 1;
         try {
+            if (!command.args || command.args.length === 0) {
+                throw Error('No command arguments provided for Unity execution');
+            }
+            if (!command.args.includes(`-automated`)) {
+                command.args.push(`-automated`);
+            }
+            if (!command.args.includes(`-batchmode`)) {
+                command.args.push(`-batchmode`);
+            }
+            if (this.autoAddNoGraphics &&
+                !command.args.includes(`-nographics`) &&
+                !command.args.includes(`-force-graphics`)) {
+                command.args.push(`-nographics`);
+            }
+            if (!command.args.includes('-logFile')) {
+                command.args.push('-logFile', this.GenerateLogFilePath(command.projectPath));
+            }
+            const logPath = (0, utilities_1.GetArgumentValueAsString)('-logFile', command.args);
             const commandStr = `\x1b[34m${this.editorPath} ${command.args.join(' ')}\x1b[0m`;
             this.logger.startGroup(commandStr);
-            exitCode = await this.exec(command, pInfo => { this.procInfo = pInfo; });
-        }
-        catch (error) {
-            if (error instanceof Error) {
-                this.logger.error(error.toString());
+            let unityProcess;
+            if (process.platform === 'linux' && !command.args.includes('-nographics')) {
+                unityProcess = (0, child_process_1.spawn)('xvfb-run', [this.editorPath, ...command.args], {
+                    stdio: ['ignore', 'ignore', 'ignore'],
+                    env: {
+                        ...process.env,
+                        DISPLAY: ':99',
+                        UNITY_THISISABUILDMACHINE: '1'
+                    }
+                });
             }
-            if (!exitCode) {
-                exitCode = 1;
+            else {
+                unityProcess = (0, child_process_1.spawn)(this.editorPath, command.args, {
+                    stdio: ['ignore', 'ignore', 'ignore'],
+                    env: {
+                        ...process.env,
+                        UNITY_THISISABUILDMACHINE: '1'
+                    }
+                });
+            }
+            if (!unityProcess?.pid) {
+                throw new Error('Failed to start Unity process!');
+            }
+            process.once('SIGINT', onCancel);
+            process.once('SIGTERM', onCancel);
+            procInfo = { pid: unityProcess.pid, ppid: process.pid, name: this.editorPath };
+            this.logger.debug(`Unity process started with pid: ${procInfo.pid}`);
+            const timeout = 10000; // 10 seconds
+            await (0, utilities_1.WaitForFileToBeCreatedAndReadable)(logPath, timeout);
+            logTail = (0, utilities_1.TailLogFile)(logPath);
+            exitCode = await new Promise((resolve, reject) => {
+                unityProcess.on('close', (code) => {
+                    setTimeout(() => {
+                        logTail?.stopLogTail();
+                        resolve(code === null ? 1 : code);
+                    }, timeout);
+                });
+                unityProcess.on('error', (error) => {
+                    setTimeout(() => {
+                        logTail?.stopLogTail();
+                        reject(error);
+                    }, timeout);
+                });
+            });
+            // Wait for log tailing to finish writing remaining content
+            if (logTail && logTail.tailPromise) {
+                try {
+                    await logTail.tailPromise;
+                }
+                catch (error) {
+                    this.logger.error(`Error occurred while tailing log file: ${error}`);
+                }
             }
         }
         finally {
@@ -4146,13 +4297,18 @@ class UnityEditor {
             process.removeListener('SIGTERM', onCancel);
             this.logger.endGroup();
             if (!isCancelled) {
-                await this.tryKillEditorProcess();
+                await tryKillEditorProcesses();
                 if (exitCode !== 0) {
                     throw Error(`Unity failed with exit code ${exitCode}`);
                 }
             }
         }
     }
+    /**
+     * Get or create the Logs directory within the Unity project or current working directory.
+     * @param projectPath The path to the Unity project. If undefined, uses the current working directory.
+     * @returns The path to the Logs directory.
+     */
     GetLogsDirectory(projectPath) {
         const logsDir = projectPath !== undefined
             ? path.join(projectPath, 'Builds', 'Logs')
@@ -4166,137 +4322,22 @@ class UnityEditor {
         }
         return logsDir;
     }
+    /**
+     * Generate a log file path with an optional prefix in the Logs directory.
+     * @param projectPath The path to the Unity project. If undefined, uses the current working directory.
+     * @param prefix An optional prefix for the log file name.
+     * @returns The generated log file path.
+     */
     GenerateLogFilePath(projectPath, prefix = undefined) {
         const logsDir = this.GetLogsDirectory(projectPath);
         const timestamp = new Date().toISOString().replace(/[-:]/g, ``).replace(/\..+/, ``);
         return path.join(logsDir, `${prefix ? prefix + '-' : ''}Unity-${timestamp}.log`);
     }
-    async exec(command, onPid) {
-        if (!command.args || command.args.length === 0) {
-            throw Error('No command arguments provided for Unity execution');
-        }
-        if (!command.args.includes(`-automated`)) {
-            command.args.push(`-automated`);
-        }
-        if (!command.args.includes(`-batchmode`)) {
-            command.args.push(`-batchmode`);
-        }
-        if (this.autoAddNoGraphics &&
-            !command.args.includes(`-nographics`) &&
-            !command.args.includes(`-force-graphics`)) {
-            command.args.push(`-nographics`);
-        }
-        if (!command.args.includes('-logFile')) {
-            command.args.push('-logFile', this.GenerateLogFilePath(command.projectPath));
-        }
-        const logPath = (0, utilities_1.GetArgumentValueAsString)('-logFile', command.args);
-        let unityProcess;
-        if (process.platform === 'linux' && !command.args.includes('-nographics')) {
-            unityProcess = (0, child_process_1.spawn)('xvfb-run', [this.editorPath, ...command.args], {
-                stdio: ['ignore', 'ignore', 'ignore'],
-                detached: true,
-                env: {
-                    ...process.env,
-                    DISPLAY: ':99',
-                    UNITY_THISISABUILDMACHINE: '1'
-                }
-            });
-        }
-        else {
-            unityProcess = (0, child_process_1.spawn)(this.editorPath, command.args, {
-                stdio: ['ignore', 'ignore', 'ignore'],
-                detached: true,
-                env: {
-                    ...process.env,
-                    UNITY_THISISABUILDMACHINE: '1'
-                }
-            });
-        }
-        const processId = unityProcess.pid;
-        if (!processId) {
-            throw new Error('Failed to start Unity process!');
-        }
-        onPid({ pid: processId, ppid: process.pid, name: this.editorPath });
-        this.logger.debug(`Unity process started with pid: ${processId}`);
-        const logPollingInterval = 100; // milliseconds
-        // Wait for log file to appear
-        while (!fs.existsSync(logPath)) {
-            await new Promise(res => setTimeout(res, logPollingInterval));
-        }
-        // Start tailing the log file
-        let lastSize = 0;
-        let logEnded = false;
-        const tailLog = async () => {
-            while (!logEnded) {
-                try {
-                    const stats = fs.statSync(logPath);
-                    if (stats.size > lastSize) {
-                        const fd = fs.openSync(logPath, 'r');
-                        const buffer = Buffer.alloc(stats.size - lastSize);
-                        fs.readSync(fd, buffer, 0, buffer.length, lastSize);
-                        process.stdout.write(buffer.toString('utf8'));
-                        fs.closeSync(fd);
-                        lastSize = stats.size;
-                    }
-                }
-                catch (error) {
-                    // ignore read errors
-                }
-                await new Promise(res => setTimeout(res, logPollingInterval));
-            }
-            // Write a newline at the end of the log tail
-            // prevents appending logs from being printed on the same line
-            process.stdout.write('\n');
-        };
-        const timeout = 10000; // 10 seconds
-        // Start log tailing in background
-        const tailPromise = tailLog();
-        const exitCode = await new Promise((resolve, reject) => {
-            unityProcess.on('exit', (code) => {
-                setTimeout(() => {
-                    logEnded = true;
-                    resolve(code ?? 1);
-                }, timeout);
-            });
-            unityProcess.on('error', (error) => {
-                setTimeout(() => {
-                    logEnded = true;
-                    reject(error);
-                }, timeout);
-            });
-        });
-        // Wait for log tailing to finish
-        await tailPromise;
-        // Wait for log file to be unlocked
-        const start = Date.now();
-        let fileLocked = true;
-        while (fileLocked && Date.now() - start < timeout) {
-            try {
-                if (fs.existsSync(logPath)) {
-                    const fd = fs.openSync(logPath, 'r+');
-                    fs.closeSync(fd);
-                    fileLocked = false;
-                }
-                else {
-                    fileLocked = false;
-                }
-            }
-            catch {
-                fileLocked = true;
-                await new Promise(r => setTimeout(r, logPollingInterval));
-            }
-        }
-        return exitCode;
-    }
-    async tryKillEditorProcess() {
-        if (this.procInfo) {
-            await (0, utilities_1.TryKillProcess)(this.procInfo);
-            await (0, utilities_1.KillChildProcesses)(this.procInfo);
-        }
-        else {
-            this.logger.debug('No Unity process info available to kill.');
-        }
-    }
+    /**
+     * Get the root path of the Unity Editor installation based on the provided editor path.
+     * @param editorPath The path to the Unity Editor executable.
+     * @returns The root path of the Unity Editor installation.
+     */
     static GetEditorRootPath(editorPath) {
         let editorRootPath = editorPath;
         switch (process.platform) {
@@ -4445,46 +4486,40 @@ class UnityHub {
                 const sigtermHandler = () => child.kill('SIGTERM');
                 process.once('SIGINT', sigintHandler);
                 process.once('SIGTERM', sigtermHandler);
+                let hasCleanedUpListeners = false;
                 function removeListeners() {
+                    if (hasCleanedUpListeners) {
+                        return;
+                    }
+                    hasCleanedUpListeners = true;
                     process.removeListener('SIGINT', sigintHandler);
                     process.removeListener('SIGTERM', sigtermHandler);
                 }
-                let forceCloseTimeout;
+                let lineBuffer = ''; // Buffer for incomplete lines
                 function processOutput(data) {
                     try {
                         const chunk = data.toString();
-                        let outputLines = [];
-                        const lines = chunk.split('\n');
-                        for (const line of lines) {
-                            if (line.trim().length === 0 ||
-                                ignoredLines.some(ignored => line.includes(ignored))) {
-                                continue;
-                            }
-                            outputLines.push(line);
-                            if (!options.silent) {
-                                process.stdout.write(`${line}\n`);
-                            }
+                        const fullChunk = lineBuffer + chunk;
+                        const lines = fullChunk.split('\n') // split by newline
+                            .map(line => line.replace(/\r$/, '')) // remove trailing carriage return
+                            .filter(line => line.length > 0); // filter out empty lines
+                        if (!chunk.endsWith('\n')) {
+                            lineBuffer = lines.pop() || '';
                         }
-                        const outputLine = outputLines.join('\n');
-                        output += `${outputLine}\n`;
-                        if (outputLine.includes(tasksCompleteMessage)) {
+                        else {
+                            lineBuffer = '';
+                        }
+                        const outputLines = lines.filter(line => !ignoredLines.some(ignored => line.includes(ignored)));
+                        if (outputLines.includes(tasksCompleteMessage)) {
                             tasksComplete = true;
                             if (child?.pid) {
-                                logging_1.Logger.instance.debug(`Unity Hub reported all tasks completed, terminating process...`);
-                                const childProcInfo = { pid: child.pid, name: child.spawnfile, ppid: process.pid };
-                                (0, utilities_1.KillChildProcesses)(childProcInfo).then(async () => {
-                                    const killedPid = await (0, utilities_1.TryKillProcess)(childProcInfo, 'SIGTERM');
-                                    if (!killedPid) {
-                                        logging_1.Logger.instance.error(`Failed to terminate Unity Hub process!`);
-                                    }
-                                    // In case the process doesn't close itself, force kill after 5 seconds
-                                    forceCloseTimeout = setTimeout(() => {
-                                        logging_1.Logger.instance.info(`Force closing Unity Hub process after timeout...`);
-                                        (0, utilities_1.TryKillProcess)(childProcInfo, 'SIGKILL');
-                                        removeListeners();
-                                        resolve(0);
-                                    }, 5000);
-                                });
+                                void (0, utilities_1.KillProcess)({ pid: child.pid, name: child.spawnfile, ppid: process.pid });
+                            }
+                        }
+                        for (const line of outputLines) {
+                            output += `${line}\n`;
+                            if (!options.silent) {
+                                process.stdout.write(`${line}\n`);
                             }
                         }
                     }
@@ -4497,17 +4532,27 @@ class UnityHub {
                 child.stdout.on('data', processOutput);
                 child.stderr.on('data', processOutput);
                 child.on('error', (error) => {
-                    if (forceCloseTimeout) {
-                        clearTimeout(forceCloseTimeout);
-                    }
                     removeListeners();
                     reject(error);
                 });
                 child.on('close', (code) => {
-                    if (forceCloseTimeout) {
-                        clearTimeout(forceCloseTimeout);
-                    }
                     removeListeners();
+                    // Flush any remaining buffered content
+                    if (lineBuffer.length > 0) {
+                        const lines = lineBuffer.split('\n') // split by newline
+                            .map(line => line.replace(/\r$/, '')) // remove trailing carriage return
+                            .filter(line => line.length > 0); // filter out empty lines
+                        const outputLines = lines.filter(line => !ignoredLines.some(ignored => line.includes(ignored)));
+                        if (outputLines.includes(tasksCompleteMessage)) {
+                            tasksComplete = true;
+                        }
+                        for (const line of outputLines) {
+                            output += `${line}\n`;
+                            if (!options.silent) {
+                                process.stdout.write(`${line}\n`);
+                            }
+                        }
+                    }
                     if (tasksComplete) {
                         resolve(0);
                     }
@@ -5031,6 +5076,7 @@ done
             }
         }
         const request = {
+            url: '/unity/editor/release/v1/releases',
             query: {
                 version: version,
                 architecture: [unityVersion.architecture],
@@ -5039,7 +5085,7 @@ done
             }
         };
         this.logger.debug(`Get Unity Release: ${JSON.stringify(request, null, 2)}`);
-        const { data, error } = await releasesClient.api.ReleaseService.getUnityReleases(request);
+        const { data, error } = await releasesClient.api.Release.getUnityReleases(request);
         if (error) {
             throw new Error(`Failed to get Unity releases: ${JSON.stringify(error, null, 2)}`);
         }
@@ -5728,15 +5774,20 @@ exports.DeleteDirectory = DeleteDirectory;
 exports.ReadFileContents = ReadFileContents;
 exports.GetTempDir = GetTempDir;
 exports.GetArgumentValueAsString = GetArgumentValueAsString;
-exports.TryKillProcess = TryKillProcess;
 exports.ReadPidFile = ReadPidFile;
+exports.Delay = Delay;
+exports.TailLogFile = TailLogFile;
+exports.WaitForFileToBeCreatedAndReadable = WaitForFileToBeCreatedAndReadable;
+exports.WaitForFileToBeUnlocked = WaitForFileToBeUnlocked;
+exports.TestFileAccess = TestFileAccess;
+exports.KillProcess = KillProcess;
 exports.KillChildProcesses = KillChildProcesses;
-const path = __importStar(__nccwpck_require__(1017));
-const glob = __importStar(__nccwpck_require__(8211));
+const os = __importStar(__nccwpck_require__(2037));
 const fs = __importStar(__nccwpck_require__(7147));
+const path = __importStar(__nccwpck_require__(1017));
 const https = __importStar(__nccwpck_require__(5687));
 const readline = __importStar(__nccwpck_require__(4521));
-const os = __importStar(__nccwpck_require__(2037));
+const glob_1 = __nccwpck_require__(8211);
 const child_process_1 = __nccwpck_require__(2081);
 const logging_1 = __nccwpck_require__(4486);
 const logger = logging_1.Logger.instance;
@@ -5747,13 +5798,18 @@ const logger = logging_1.Logger.instance;
  */
 async function ResolveGlobToPath(globs) {
     const globPath = path.join(...globs).split(path.sep).join('/');
-    const paths = await glob.glob(globPath);
+    const paths = await (0, glob_1.glob)(globPath);
     for (const path of paths) {
         await fs.promises.access(path, fs.constants.R_OK);
         return path;
     }
     throw new Error(`No accessible file found for glob pattern: ${path.normalize(globPath)}`);
 }
+/**
+ * Prompts the user for input, masking the input with asterisks.
+ * @param prompt The prompt message to display.
+ * @returns The user input as a string.
+ */
 async function PromptForSecretInput(prompt) {
     return new Promise((resolve) => {
         const rl = readline.createInterface({
@@ -5786,20 +5842,6 @@ async function Exec(command, args, options = { silent: false, showCommand: true 
     const isDebug = logger.logLevel === logging_1.LogLevel.DEBUG;
     const isSilent = isDebug ? false : options.silent ? options.silent : false;
     const mustShowCommand = isDebug ? true : options.showCommand ? options.showCommand : false;
-    function processOutput(data) {
-        try {
-            const chunk = data.toString();
-            output += chunk;
-            if (!isSilent && chunk.trim().length > 0) {
-                process.stdout.write(chunk);
-            }
-        }
-        catch (error) {
-            if (error.code !== 'EPIPE') {
-                throw error;
-            }
-        }
-    }
     if (mustShowCommand) {
         const commandStr = `\x1b[34m${command} ${args.join(' ')}\x1b[0m`;
         if (isSilent) {
@@ -5822,16 +5864,62 @@ async function Exec(command, args, options = { silent: false, showCommand: true 
             const sigtermHandler = () => child.kill('SIGTERM');
             process.once('SIGINT', sigintHandler);
             process.once('SIGTERM', sigtermHandler);
+            let hasCleanedUpListeners = false;
+            function removeListeners() {
+                if (hasCleanedUpListeners) {
+                    return;
+                }
+                hasCleanedUpListeners = true;
+                process.removeListener('SIGINT', sigintHandler);
+                process.removeListener('SIGTERM', sigtermHandler);
+            }
+            let lineBuffer = ''; // Buffer for incomplete lines
+            function processOutput(data) {
+                try {
+                    const chunk = data.toString();
+                    const fullChunk = lineBuffer + chunk;
+                    const lines = fullChunk.split('\n') // split by newline
+                        .map(line => line.replace(/\r$/, '')) // remove trailing carriage return
+                        .filter(line => line.length > 0); // filter out empty lines
+                    if (!chunk.endsWith('\n')) {
+                        lineBuffer = lines.pop() || '';
+                    }
+                    else {
+                        lineBuffer = '';
+                    }
+                    for (const line of lines) {
+                        output += `${line}\n`;
+                        if (!isSilent) {
+                            process.stdout.write(`${line}\n`);
+                        }
+                    }
+                }
+                catch (error) {
+                    if (error.code !== 'EPIPE') {
+                        throw error;
+                    }
+                }
+            }
             child.stdout.on('data', processOutput);
             child.stderr.on('data', processOutput);
             child.on('error', (error) => {
-                process.removeListener('SIGINT', sigintHandler);
-                process.removeListener('SIGTERM', sigtermHandler);
+                removeListeners();
                 reject(error);
             });
             child.on('close', (code) => {
-                process.removeListener('SIGINT', sigintHandler);
-                process.removeListener('SIGTERM', sigtermHandler);
+                removeListeners();
+                // Flush any remaining buffered content
+                if (lineBuffer.length > 0) {
+                    const lines = lineBuffer.split('\n') // split by newline
+                        .map(line => line.replace(/\r$/, '')) // remove trailing carriage return
+                        .filter(line => line.length > 0); // filter out empty lines
+                    for (const line of lines) {
+                        output += `${line}\n`;
+                        if (!isSilent) {
+                            process.stdout.write(`${line}\n`);
+                        }
+                    }
+                }
                 resolve(code === null ? 0 : code);
             });
         });
@@ -5935,28 +6023,6 @@ function GetArgumentValueAsString(value, args) {
     return args[index + 1];
 }
 /**
- * Attempts to kill a process with the given ProcInfo.
- * @param procInfo The process information containing the PID.
- * @param signal The signal to use for killing the process. Defaults to 'SIGTERM'.
- * @returns The PID of the killed process, or undefined if no process was killed.
- */
-async function TryKillProcess(procInfo, signal = 'SIGTERM') {
-    let pid;
-    try {
-        logger.ci(`Killing process "${procInfo.name}" with pid: ${procInfo.pid}`);
-        process.kill(procInfo.pid, signal);
-        pid = procInfo.pid;
-    }
-    catch (error) {
-        const nodeJsException = error;
-        const errorCode = nodeJsException?.code;
-        if (errorCode !== 'ENOENT' && errorCode !== 'ESRCH') {
-            logger.error(`Failed to kill process:\n${JSON.stringify(error)}`);
-        }
-    }
-    return pid;
-}
-/**
  * Reads a PID file and returns the process information.
  * @param pidFilePath The path to the PID file.
  * @returns The process information, or undefined if the file does not exist or cannot be read.
@@ -5992,11 +6058,216 @@ async function ReadPidFile(pidFilePath) {
     return procInfo;
 }
 /**
+ * Delays execution for a specified number of milliseconds.
+ * @param ms The number of milliseconds to delay.
+ * @returns A promise that resolves after the delay.
+ */
+async function Delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+/**
+ * Tails a log file using fs.watch and ReadStream for efficient reading.
+ * @param logPath The path to the log file to tail.
+ * @returns An object containing the tail promise and signalEnd function.
+ */
+function TailLogFile(logPath) {
+    let logEnded = false;
+    let lastSize = 0;
+    const logPollingInterval = 250;
+    async function readNewLogContent() {
+        try {
+            const stats = await fs.promises.stat(logPath);
+            if (stats.size < lastSize) {
+                lastSize = 0;
+            }
+            if (stats.size > lastSize) {
+                const bytesToRead = stats.size - lastSize;
+                const buffer = Buffer.alloc(bytesToRead);
+                let fh;
+                try {
+                    fh = await fs.promises.open(logPath, fs.constants.O_RDONLY);
+                    await fh.read(buffer, 0, bytesToRead, lastSize);
+                }
+                finally {
+                    await fh?.close();
+                }
+                lastSize = stats.size;
+                if (bytesToRead > 0) {
+                    const chunk = buffer.toString('utf8');
+                    try {
+                        process.stdout.write(chunk);
+                    }
+                    catch (error) {
+                        if (error.code !== 'EPIPE') {
+                            throw error;
+                        }
+                    }
+                }
+            }
+        }
+        catch (error) {
+            logger.warn(`Error while tailing log file: ${error}`);
+        }
+    }
+    const tailPromise = new Promise((resolve, reject) => {
+        (async () => {
+            try {
+                while (!logEnded) {
+                    await Delay(logPollingInterval);
+                    await readNewLogContent();
+                }
+                // Final read to capture any remaining content after tailing stops
+                await WaitForFileToBeUnlocked(logPath, 10000);
+                await readNewLogContent();
+                try {
+                    process.stdout.write('\n');
+                }
+                catch (error) {
+                    if (error.code !== 'EPIPE') {
+                        logger.warn(`Error while writing log tail: ${error}`);
+                    }
+                }
+                resolve();
+            }
+            catch (error) {
+                reject(error);
+            }
+        })();
+    });
+    function stopLogTail() {
+        logEnded = true;
+    }
+    return { tailPromise, stopLogTail };
+}
+/**
+ * Waits for a file to be created and become readable within a timeout.
+ * @param filePath The path of the file to wait for.
+ * @param timeout The maximum time to wait in milliseconds. Default is 30000 (30 seconds).
+ */
+async function WaitForFileToBeCreatedAndReadable(filePath, timeout = 30000) {
+    const pollInterval = 100;
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+        // test file access by attempting to open the file with read only access
+        if (await TestFileAccess(filePath, fs.constants.O_RDONLY)) {
+            return;
+        }
+        await Delay(pollInterval);
+    }
+    throw new Error(`Timed out waiting for file to become readable: ${filePath}`);
+}
+/**
+ * Waits for a file to be unlocked (not exclusively locked by another process).
+ * If the file does not exist, it is considered unlocked.
+ * If the file exists, attempts to open it with read/write access.
+ * @param filePath The path of the file to wait for.
+ * @param timeout The maximum time to wait in milliseconds. Default is 30000 (30 seconds).
+ * @returns A promise that resolves when the file is unlocked.
+ */
+async function WaitForFileToBeUnlocked(filePath, timeout = 30000) {
+    const pollInterval = 100;
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+        // test file access by attempting to open the file with read/write access
+        if (await TestFileAccess(filePath, fs.constants.O_RDWR)) {
+            return;
+        }
+        await Delay(pollInterval);
+    }
+    throw new Error(`Timed out waiting for file to be unlocked: ${filePath}`);
+}
+/**
+ * Tests if a file can be opened with the specified flags.
+ * @remarks If the file does not exist, it returns false.
+ * @param filePath The path of the file to test.
+ * @param flags The flags to use when opening the file (e.g., fs.constants.O_RDONLY).
+ * @returns A promise that resolves to true if the file can be opened, false otherwise.
+ */
+async function TestFileAccess(filePath, flags) {
+    // expect the file to be visible and accessible
+    try {
+        await fs.promises.access(filePath, fs.constants.F_OK);
+    }
+    catch (error) {
+        return false;
+    }
+    let fh;
+    // try to open the file with the specified flags
+    try {
+        fh = await fs.promises.open(filePath, flags);
+        return true;
+    }
+    catch (error) {
+        const code = error && error.code ? error.code : null;
+        // These codes indicate the file is temporarily inaccessible (locked/permission) or missing.
+        if (code === 'EACCES' || code === 'EPERM' || code === 'EBUSY' || code === 'ETXTBSY' || code === 'ENOENT') {
+            return false;
+        }
+        // Unexpected error, rethrow
+        throw error;
+    }
+    finally {
+        await fh?.close();
+    }
+}
+/**
+ * Attempts to kill a process with the given ProcInfo.
+ * Escalates to SIGKILL or taskkill if the process does not exit after 5 seconds.
+ * @param procInfo The process information containing the PID.
+ * @param signal The signal to use for killing the process. Defaults to 'SIGTERM'.
+ */
+async function KillProcess(procInfo, signal = 'SIGTERM') {
+    try {
+        logger.debug(`Killing process [${procInfo.pid}] ${procInfo.name}...`);
+        process.kill(procInfo.pid, signal);
+        // Immediately check if the process has exited
+        try {
+            process.kill(procInfo.pid, 0);
+        }
+        catch {
+            logger.debug(`Process [${procInfo.pid}] ${procInfo.name} has exited successfully.`);
+            return; // Process has exited
+        }
+        await Delay(5000); // wait 5 seconds
+        try {
+            // Check if the process is still running
+            process.kill(procInfo.pid, 0);
+        }
+        catch {
+            logger.debug(`Process [${procInfo.pid}] ${procInfo.name} has exited successfully.`);
+            return; // Process has exited
+        }
+        // If the process is still running, escalate to SIGKILL or taskkill to force quit.
+        logger.debug(`Process [${procInfo.pid}] ${procInfo.name} did not exit after ${signal}, attempting to force quit...`);
+        try {
+            if (process.platform === 'win32') {
+                const command = `taskkill /PID ${procInfo.pid} /F /T`;
+                await Exec('powershell', ['-Command', command], { silent: true, showCommand: false });
+            }
+            else { // linux and macos
+                process.kill(procInfo.pid, 'SIGKILL');
+            }
+        }
+        catch (error) {
+            if (error.code !== 'ENOENT' && error.code !== 'ESRCH') {
+                logger.error(`Failed to kill process:\n${JSON.stringify(error)}`);
+                throw error;
+            }
+        }
+    }
+    catch (error) {
+        if (error.code !== 'ENOENT' && error.code !== 'ESRCH') {
+            logger.error(`Failed to kill process:\n${JSON.stringify(error)}`);
+            throw error;
+        }
+    }
+}
+/**
  * Kills all child processes of the given process.
  * @param procInfo The process information of the parent process.
  */
 async function KillChildProcesses(procInfo) {
-    logger.debug(`Killing child processes of ${procInfo.name} with pid: ${procInfo.pid}...`);
+    logger.debug(`Killing child processes of [${procInfo.pid}] ${procInfo.name}...`);
     try {
         if (process.platform === 'win32') {
             const command = `Get-CimInstance Win32_Process -Filter "ParentProcessId=${procInfo.pid}" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`;
@@ -6005,17 +6276,19 @@ async function KillChildProcesses(procInfo) {
         else { // linux and macos
             const psOutput = await Exec('ps', ['-eo', 'pid,ppid,comm'], { silent: true, showCommand: false });
             const lines = psOutput.split('\n').slice(1); // Skip header line
+            const killPromises = [];
             for (const line of lines) {
-                const parts = line.trim().split(/\s+/, 3);
-                if (parts.length === 3) {
-                    const pid = parseInt(parts[0], 10);
-                    const ppid = parseInt(parts[1], 10);
-                    const name = parts[2];
+                const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
+                if (match) {
+                    const pid = parseInt(match[1], 10);
+                    const ppid = parseInt(match[2], 10);
+                    const name = match[3].trim();
                     if (ppid === procInfo.pid) {
-                        await TryKillProcess({ pid, ppid, name });
+                        killPromises.push(KillProcess({ pid, ppid, name }));
                     }
                 }
             }
+            await Promise.all(killPromises);
         }
     }
     catch (error) {
@@ -6066,11 +6339,12 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UnityReleasesClient = void 0;
-const services = __importStar(__nccwpck_require__(1028));
+const api = __importStar(__nccwpck_require__(1209));
+const client_gen_1 = __nccwpck_require__(6196);
 class UnityReleasesClient {
-    api = services;
+    api = api;
     constructor() {
-        services.client.setConfig({ baseUrl: 'https://services.api.unity.com' });
+        client_gen_1.client.setConfig({ baseUrl: 'https://services.api.unity.com' });
     }
 }
 exports.UnityReleasesClient = UnityReleasesClient;
@@ -6104,309 +6378,276 @@ __exportStar(__nccwpck_require__(1028), exports);
 
 /***/ }),
 
-/***/ 1936:
+/***/ 6196:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
+// This file is auto-generated by @hey-api/openapi-ts
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.urlSearchParamsBodySerializer = exports.jsonBodySerializer = exports.formDataBodySerializer = exports.createConfig = exports.createClient = void 0;
-const utils_1 = __nccwpck_require__(6444);
+exports.client = void 0;
+const client_1 = __nccwpck_require__(1936);
+exports.client = (0, client_1.createClient)((0, client_1.createConfig)({
+    baseUrl: 'https://services.api.unity.com'
+}));
+
+
+/***/ }),
+
+/***/ 3340:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+// This file is auto-generated by @hey-api/openapi-ts
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createClient = void 0;
+const serverSentEvents_gen_1 = __nccwpck_require__(9631);
+const utils_gen_1 = __nccwpck_require__(285);
+const utils_gen_2 = __nccwpck_require__(6170);
 const createClient = (config = {}) => {
-    let _config = (0, utils_1.mergeConfigs)((0, utils_1.createConfig)(), config);
+    let _config = (0, utils_gen_2.mergeConfigs)((0, utils_gen_2.createConfig)(), config);
     const getConfig = () => ({ ..._config });
     const setConfig = (config) => {
-        _config = (0, utils_1.mergeConfigs)(_config, config);
+        _config = (0, utils_gen_2.mergeConfigs)(_config, config);
         return getConfig();
     };
-    const interceptors = (0, utils_1.createInterceptors)();
-    // @ts-expect-error
-    const request = async (options) => {
-        // @ts-expect-error
+    const interceptors = (0, utils_gen_2.createInterceptors)();
+    const beforeRequest = async (options) => {
         const opts = {
             ..._config,
             ...options,
-            headers: (0, utils_1.mergeHeaders)(_config.headers, options.headers),
+            fetch: options.fetch ?? _config.fetch ?? globalThis.fetch,
+            headers: (0, utils_gen_2.mergeHeaders)(_config.headers, options.headers),
+            serializedBody: undefined,
         };
-        if (opts.body && opts.bodySerializer) {
-            opts.body = opts.bodySerializer(opts.body);
+        if (opts.security) {
+            await (0, utils_gen_2.setAuthParams)({
+                ...opts,
+                security: opts.security,
+            });
+        }
+        if (opts.requestValidator) {
+            await opts.requestValidator(opts);
+        }
+        if (opts.body !== undefined && opts.bodySerializer) {
+            opts.serializedBody = opts.bodySerializer(opts.body);
         }
         // remove Content-Type header if body is empty to avoid sending invalid requests
-        if (!opts.body) {
+        if (opts.body === undefined || opts.serializedBody === '') {
             opts.headers.delete('Content-Type');
         }
-        const url = (0, utils_1.getUrl)({
-            baseUrl: opts.baseUrl ?? '',
-            path: opts.path,
-            query: opts.query,
-            querySerializer: typeof opts.querySerializer === 'function'
-                ? opts.querySerializer
-                : (0, utils_1.createQuerySerializer)(opts.querySerializer),
-            url: opts.url,
-        });
+        const url = (0, utils_gen_2.buildUrl)(opts);
+        return { opts, url };
+    };
+    const request = async (options) => {
+        // @ts-expect-error
+        const { opts, url } = await beforeRequest(options);
         const requestInit = {
             redirect: 'follow',
             ...opts,
+            body: (0, utils_gen_1.getValidRequestBody)(opts),
         };
         let request = new Request(url, requestInit);
-        for (const fn of interceptors.request._fns) {
-            request = await fn(request, opts);
+        for (const fn of interceptors.request.fns) {
+            if (fn) {
+                request = await fn(request, opts);
+            }
         }
+        // fetch must be assigned here, otherwise it would throw the error:
+        // TypeError: Failed to execute 'fetch' on 'Window': Illegal invocation
         const _fetch = opts.fetch;
         let response = await _fetch(request);
-        for (const fn of interceptors.response._fns) {
-            response = await fn(response, request, opts);
+        for (const fn of interceptors.response.fns) {
+            if (fn) {
+                response = await fn(response, request, opts);
+            }
         }
         const result = {
             request,
             response,
         };
         if (response.ok) {
+            const parseAs = (opts.parseAs === 'auto'
+                ? (0, utils_gen_2.getParseAs)(response.headers.get('Content-Type'))
+                : opts.parseAs) ?? 'json';
             if (response.status === 204 ||
                 response.headers.get('Content-Length') === '0') {
-                return {
-                    data: {},
+                let emptyData;
+                switch (parseAs) {
+                    case 'arrayBuffer':
+                    case 'blob':
+                    case 'text':
+                        emptyData = await response[parseAs]();
+                        break;
+                    case 'formData':
+                        emptyData = new FormData();
+                        break;
+                    case 'stream':
+                        emptyData = response.body;
+                        break;
+                    case 'json':
+                    default:
+                        emptyData = {};
+                        break;
+                }
+                return opts.responseStyle === 'data'
+                    ? emptyData
+                    : {
+                        data: emptyData,
+                        ...result,
+                    };
+            }
+            let data;
+            switch (parseAs) {
+                case 'arrayBuffer':
+                case 'blob':
+                case 'formData':
+                case 'json':
+                case 'text':
+                    data = await response[parseAs]();
+                    break;
+                case 'stream':
+                    return opts.responseStyle === 'data'
+                        ? response.body
+                        : {
+                            data: response.body,
+                            ...result,
+                        };
+            }
+            if (parseAs === 'json') {
+                if (opts.responseValidator) {
+                    await opts.responseValidator(data);
+                }
+                if (opts.responseTransformer) {
+                    data = await opts.responseTransformer(data);
+                }
+            }
+            return opts.responseStyle === 'data'
+                ? data
+                : {
+                    data,
                     ...result,
                 };
-            }
-            if (opts.parseAs === 'stream') {
-                return {
-                    data: response.body,
-                    ...result,
-                };
-            }
-            const parseAs = (opts.parseAs === 'auto'
-                ? (0, utils_1.getParseAs)(response.headers.get('Content-Type'))
-                : opts.parseAs) ?? 'json';
-            let data = await response[parseAs]();
-            if (parseAs === 'json' && opts.responseTransformer) {
-                data = await opts.responseTransformer(data);
-            }
-            return {
-                data,
-                ...result,
-            };
         }
-        let error = await response.text();
+        const textError = await response.text();
+        let jsonError;
         try {
-            error = JSON.parse(error);
+            jsonError = JSON.parse(textError);
         }
         catch {
             // noop
         }
+        const error = jsonError ?? textError;
         let finalError = error;
-        for (const fn of interceptors.error._fns) {
-            finalError = (await fn(error, response, request, opts));
+        for (const fn of interceptors.error.fns) {
+            if (fn) {
+                finalError = (await fn(error, response, request, opts));
+            }
         }
         finalError = finalError || {};
         if (opts.throwOnError) {
             throw finalError;
         }
-        return {
-            error: finalError,
-            ...result,
-        };
+        // TODO: we probably want to return error and improve types
+        return opts.responseStyle === 'data'
+            ? undefined
+            : {
+                error: finalError,
+                ...result,
+            };
+    };
+    const makeMethodFn = (method) => (options) => request({ ...options, method });
+    const makeSseFn = (method) => async (options) => {
+        const { opts, url } = await beforeRequest(options);
+        return (0, serverSentEvents_gen_1.createSseClient)({
+            ...opts,
+            body: opts.body,
+            headers: opts.headers,
+            method,
+            onRequest: async (url, init) => {
+                let request = new Request(url, init);
+                for (const fn of interceptors.request.fns) {
+                    if (fn) {
+                        request = await fn(request, opts);
+                    }
+                }
+                return request;
+            },
+            url,
+        });
     };
     return {
-        connect: (options) => request({ ...options, method: 'CONNECT' }),
-        delete: (options) => request({ ...options, method: 'DELETE' }),
-        get: (options) => request({ ...options, method: 'GET' }),
+        buildUrl: utils_gen_2.buildUrl,
+        connect: makeMethodFn('CONNECT'),
+        delete: makeMethodFn('DELETE'),
+        get: makeMethodFn('GET'),
         getConfig,
-        head: (options) => request({ ...options, method: 'HEAD' }),
+        head: makeMethodFn('HEAD'),
         interceptors,
-        options: (options) => request({ ...options, method: 'OPTIONS' }),
-        patch: (options) => request({ ...options, method: 'PATCH' }),
-        post: (options) => request({ ...options, method: 'POST' }),
-        put: (options) => request({ ...options, method: 'PUT' }),
+        options: makeMethodFn('OPTIONS'),
+        patch: makeMethodFn('PATCH'),
+        post: makeMethodFn('POST'),
+        put: makeMethodFn('PUT'),
         request,
         setConfig,
-        trace: (options) => request({ ...options, method: 'TRACE' }),
+        sse: {
+            connect: makeSseFn('CONNECT'),
+            delete: makeSseFn('DELETE'),
+            get: makeSseFn('GET'),
+            head: makeSseFn('HEAD'),
+            options: makeSseFn('OPTIONS'),
+            patch: makeSseFn('PATCH'),
+            post: makeSseFn('POST'),
+            put: makeSseFn('PUT'),
+            trace: makeSseFn('TRACE'),
+        },
+        trace: makeMethodFn('TRACE'),
     };
 };
 exports.createClient = createClient;
-var utils_2 = __nccwpck_require__(6444);
-Object.defineProperty(exports, "createConfig", ({ enumerable: true, get: function () { return utils_2.createConfig; } }));
-Object.defineProperty(exports, "formDataBodySerializer", ({ enumerable: true, get: function () { return utils_2.formDataBodySerializer; } }));
-Object.defineProperty(exports, "jsonBodySerializer", ({ enumerable: true, get: function () { return utils_2.jsonBodySerializer; } }));
-Object.defineProperty(exports, "urlSearchParamsBodySerializer", ({ enumerable: true, get: function () { return utils_2.urlSearchParamsBodySerializer; } }));
 
 
 /***/ }),
 
-/***/ 6444:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 1936:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
+// This file is auto-generated by @hey-api/openapi-ts
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.createConfig = exports.urlSearchParamsBodySerializer = exports.jsonBodySerializer = exports.formDataBodySerializer = exports.createInterceptors = exports.mergeHeaders = exports.mergeConfigs = exports.getUrl = exports.getParseAs = exports.createQuerySerializer = void 0;
-const PATH_PARAM_RE = /\{[^{}]+\}/g;
-const serializePrimitiveParam = ({ allowReserved, name, value, }) => {
-    if (value === undefined || value === null) {
-        return '';
-    }
-    if (typeof value === 'object') {
-        throw new Error('Deeply-nested arrays/objects aren’t supported. Provide your own `querySerializer()` to handle these.');
-    }
-    return `${name}=${allowReserved ? value : encodeURIComponent(value)}`;
-};
-const separatorArrayExplode = (style) => {
-    switch (style) {
-        case 'label':
-            return '.';
-        case 'matrix':
-            return ';';
-        case 'simple':
-            return ',';
-        default:
-            return '&';
-    }
-};
-const separatorArrayNoExplode = (style) => {
-    switch (style) {
-        case 'form':
-            return ',';
-        case 'pipeDelimited':
-            return '|';
-        case 'spaceDelimited':
-            return '%20';
-        default:
-            return ',';
-    }
-};
-const separatorObjectExplode = (style) => {
-    switch (style) {
-        case 'label':
-            return '.';
-        case 'matrix':
-            return ';';
-        case 'simple':
-            return ',';
-        default:
-            return '&';
-    }
-};
-const serializeArrayParam = ({ allowReserved, explode, name, style, value, }) => {
-    if (!explode) {
-        const joinedValues = (allowReserved ? value : value.map((v) => encodeURIComponent(v))).join(separatorArrayNoExplode(style));
-        switch (style) {
-            case 'label':
-                return `.${joinedValues}`;
-            case 'matrix':
-                return `;${name}=${joinedValues}`;
-            case 'simple':
-                return joinedValues;
-            default:
-                return `${name}=${joinedValues}`;
-        }
-    }
-    const separator = separatorArrayExplode(style);
-    const joinedValues = value
-        .map((v) => {
-        if (style === 'label' || style === 'simple') {
-            return allowReserved ? v : encodeURIComponent(v);
-        }
-        return serializePrimitiveParam({
-            allowReserved,
-            name,
-            value: v,
-        });
-    })
-        .join(separator);
-    return style === 'label' || style === 'matrix'
-        ? separator + joinedValues
-        : joinedValues;
-};
-const serializeObjectParam = ({ allowReserved, explode, name, style, value, }) => {
-    if (value instanceof Date) {
-        return `${name}=${value.toISOString()}`;
-    }
-    if (style !== 'deepObject' && !explode) {
-        let values = [];
-        Object.entries(value).forEach(([key, v]) => {
-            values = [
-                ...values,
-                key,
-                allowReserved ? v : encodeURIComponent(v),
-            ];
-        });
-        const joinedValues = values.join(',');
-        switch (style) {
-            case 'form':
-                return `${name}=${joinedValues}`;
-            case 'label':
-                return `.${joinedValues}`;
-            case 'matrix':
-                return `;${name}=${joinedValues}`;
-            default:
-                return joinedValues;
-        }
-    }
-    const separator = separatorObjectExplode(style);
-    const joinedValues = Object.entries(value)
-        .map(([key, v]) => serializePrimitiveParam({
-        allowReserved,
-        name: style === 'deepObject' ? `${name}[${key}]` : key,
-        value: v,
-    }))
-        .join(separator);
-    return style === 'label' || style === 'matrix'
-        ? separator + joinedValues
-        : joinedValues;
-};
-const defaultPathSerializer = ({ path, url: _url }) => {
-    let url = _url;
-    const matches = _url.match(PATH_PARAM_RE);
-    if (matches) {
-        for (const match of matches) {
-            let explode = false;
-            let name = match.substring(1, match.length - 1);
-            let style = 'simple';
-            if (name.endsWith('*')) {
-                explode = true;
-                name = name.substring(0, name.length - 1);
-            }
-            if (name.startsWith('.')) {
-                name = name.substring(1);
-                style = 'label';
-            }
-            else if (name.startsWith(';')) {
-                name = name.substring(1);
-                style = 'matrix';
-            }
-            const value = path[name];
-            if (value === undefined || value === null) {
-                continue;
-            }
-            if (Array.isArray(value)) {
-                url = url.replace(match, serializeArrayParam({ explode, name, style, value }));
-                continue;
-            }
-            if (typeof value === 'object') {
-                url = url.replace(match, serializeObjectParam({
-                    explode,
-                    name,
-                    style,
-                    value: value,
-                }));
-                continue;
-            }
-            if (style === 'matrix') {
-                url = url.replace(match, `;${serializePrimitiveParam({
-                    name,
-                    value: value,
-                })}`);
-                continue;
-            }
-            const replaceValue = encodeURIComponent(style === 'label' ? `.${value}` : value);
-            url = url.replace(match, replaceValue);
-        }
-    }
-    return url;
-};
+exports.mergeHeaders = exports.createConfig = exports.createClient = exports.buildClientParams = exports.urlSearchParamsBodySerializer = exports.jsonBodySerializer = exports.formDataBodySerializer = void 0;
+var bodySerializer_gen_1 = __nccwpck_require__(7783);
+Object.defineProperty(exports, "formDataBodySerializer", ({ enumerable: true, get: function () { return bodySerializer_gen_1.formDataBodySerializer; } }));
+Object.defineProperty(exports, "jsonBodySerializer", ({ enumerable: true, get: function () { return bodySerializer_gen_1.jsonBodySerializer; } }));
+Object.defineProperty(exports, "urlSearchParamsBodySerializer", ({ enumerable: true, get: function () { return bodySerializer_gen_1.urlSearchParamsBodySerializer; } }));
+var params_gen_1 = __nccwpck_require__(4770);
+Object.defineProperty(exports, "buildClientParams", ({ enumerable: true, get: function () { return params_gen_1.buildClientParams; } }));
+var client_gen_1 = __nccwpck_require__(3340);
+Object.defineProperty(exports, "createClient", ({ enumerable: true, get: function () { return client_gen_1.createClient; } }));
+var utils_gen_1 = __nccwpck_require__(6170);
+Object.defineProperty(exports, "createConfig", ({ enumerable: true, get: function () { return utils_gen_1.createConfig; } }));
+Object.defineProperty(exports, "mergeHeaders", ({ enumerable: true, get: function () { return utils_gen_1.mergeHeaders; } }));
+
+
+/***/ }),
+
+/***/ 6170:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+// This file is auto-generated by @hey-api/openapi-ts
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createConfig = exports.createInterceptors = exports.mergeHeaders = exports.mergeConfigs = exports.buildUrl = exports.setAuthParams = exports.getParseAs = exports.createQuerySerializer = void 0;
+const auth_gen_1 = __nccwpck_require__(2026);
+const bodySerializer_gen_1 = __nccwpck_require__(7783);
+const pathSerializer_gen_1 = __nccwpck_require__(6651);
+const utils_gen_1 = __nccwpck_require__(285);
 const createQuerySerializer = ({ allowReserved, array, object, } = {}) => {
     const querySerializer = (queryParams) => {
-        let search = [];
+        const search = [];
         if (queryParams && typeof queryParams === 'object') {
             for (const name in queryParams) {
                 const value = queryParams[name];
@@ -6414,41 +6655,38 @@ const createQuerySerializer = ({ allowReserved, array, object, } = {}) => {
                     continue;
                 }
                 if (Array.isArray(value)) {
-                    search = [
-                        ...search,
-                        serializeArrayParam({
-                            allowReserved,
-                            explode: true,
-                            name,
-                            style: 'form',
-                            value,
-                            ...array,
-                        }),
-                    ];
-                    continue;
+                    const serializedArray = (0, pathSerializer_gen_1.serializeArrayParam)({
+                        allowReserved,
+                        explode: true,
+                        name,
+                        style: 'form',
+                        value,
+                        ...array,
+                    });
+                    if (serializedArray)
+                        search.push(serializedArray);
                 }
-                if (typeof value === 'object') {
-                    search = [
-                        ...search,
-                        serializeObjectParam({
-                            allowReserved,
-                            explode: true,
-                            name,
-                            style: 'deepObject',
-                            value: value,
-                            ...object,
-                        }),
-                    ];
-                    continue;
+                else if (typeof value === 'object') {
+                    const serializedObject = (0, pathSerializer_gen_1.serializeObjectParam)({
+                        allowReserved,
+                        explode: true,
+                        name,
+                        style: 'deepObject',
+                        value: value,
+                        ...object,
+                    });
+                    if (serializedObject)
+                        search.push(serializedObject);
                 }
-                search = [
-                    ...search,
-                    serializePrimitiveParam({
+                else {
+                    const serializedPrimitive = (0, pathSerializer_gen_1.serializePrimitiveParam)({
                         allowReserved,
                         name,
                         value: value,
-                    }),
-                ];
+                    });
+                    if (serializedPrimitive)
+                        search.push(serializedPrimitive);
+                }
             }
         }
         return search.join('&');
@@ -6461,9 +6699,14 @@ exports.createQuerySerializer = createQuerySerializer;
  */
 const getParseAs = (contentType) => {
     if (!contentType) {
+        // If no Content-Type header is provided, the best we can do is return the raw response body,
+        // which is effectively the same as the 'stream' option.
+        return 'stream';
+    }
+    const cleanContent = contentType.split(';')[0]?.trim();
+    if (!cleanContent) {
         return;
     }
-    const cleanContent = contentType.split(';')[0].trim();
     if (cleanContent.startsWith('application/json') ||
         cleanContent.endsWith('+json')) {
         return 'json';
@@ -6477,24 +6720,58 @@ const getParseAs = (contentType) => {
     if (cleanContent.startsWith('text/')) {
         return 'text';
     }
+    return;
 };
 exports.getParseAs = getParseAs;
-const getUrl = ({ baseUrl, path, query, querySerializer, url: _url, }) => {
-    const pathUrl = _url.startsWith('/') ? _url : `/${_url}`;
-    let url = baseUrl + pathUrl;
-    if (path) {
-        url = defaultPathSerializer({ path, url });
+const checkForExistence = (options, name) => {
+    if (!name) {
+        return false;
     }
-    let search = query ? querySerializer(query) : '';
-    if (search.startsWith('?')) {
-        search = search.substring(1);
+    if (options.headers.has(name) ||
+        options.query?.[name] ||
+        options.headers.get('Cookie')?.includes(`${name}=`)) {
+        return true;
     }
-    if (search) {
-        url += `?${search}`;
-    }
-    return url;
+    return false;
 };
-exports.getUrl = getUrl;
+const setAuthParams = async ({ security, ...options }) => {
+    for (const auth of security) {
+        if (checkForExistence(options, auth.name)) {
+            continue;
+        }
+        const token = await (0, auth_gen_1.getAuthToken)(auth, options.auth);
+        if (!token) {
+            continue;
+        }
+        const name = auth.name ?? 'Authorization';
+        switch (auth.in) {
+            case 'query':
+                if (!options.query) {
+                    options.query = {};
+                }
+                options.query[name] = token;
+                break;
+            case 'cookie':
+                options.headers.append('Cookie', `${name}=${token}`);
+                break;
+            case 'header':
+            default:
+                options.headers.set(name, token);
+                break;
+        }
+    }
+};
+exports.setAuthParams = setAuthParams;
+const buildUrl = (options) => (0, utils_gen_1.getUrl)({
+    baseUrl: options.baseUrl,
+    path: options.path,
+    query: options.query,
+    querySerializer: typeof options.querySerializer === 'function'
+        ? options.querySerializer
+        : (0, exports.createQuerySerializer)(options.querySerializer),
+    url: options.url,
+});
+exports.buildUrl = buildUrl;
 const mergeConfigs = (a, b) => {
     const config = { ...a, ...b };
     if (config.baseUrl?.endsWith('/')) {
@@ -6504,13 +6781,22 @@ const mergeConfigs = (a, b) => {
     return config;
 };
 exports.mergeConfigs = mergeConfigs;
+const headersEntries = (headers) => {
+    const entries = [];
+    headers.forEach((value, key) => {
+        entries.push([key, value]);
+    });
+    return entries;
+};
 const mergeHeaders = (...headers) => {
     const mergedHeaders = new Headers();
     for (const header of headers) {
-        if (!header || typeof header !== 'object') {
+        if (!header) {
             continue;
         }
-        const iterator = header instanceof Headers ? header.entries() : Object.entries(header);
+        const iterator = header instanceof Headers
+            ? headersEntries(header)
+            : Object.entries(header);
         for (const [key, value] of iterator) {
             if (value === null) {
                 mergedHeaders.delete(key);
@@ -6531,35 +6817,118 @@ const mergeHeaders = (...headers) => {
 };
 exports.mergeHeaders = mergeHeaders;
 class Interceptors {
-    _fns;
-    constructor() {
-        this._fns = [];
-    }
+    fns = [];
     clear() {
-        this._fns = [];
+        this.fns = [];
     }
-    exists(fn) {
-        return this._fns.indexOf(fn) !== -1;
-    }
-    eject(fn) {
-        const index = this._fns.indexOf(fn);
-        if (index !== -1) {
-            this._fns = [...this._fns.slice(0, index), ...this._fns.slice(index + 1)];
+    eject(id) {
+        const index = this.getInterceptorIndex(id);
+        if (this.fns[index]) {
+            this.fns[index] = null;
         }
     }
+    exists(id) {
+        const index = this.getInterceptorIndex(id);
+        return Boolean(this.fns[index]);
+    }
+    getInterceptorIndex(id) {
+        if (typeof id === 'number') {
+            return this.fns[id] ? id : -1;
+        }
+        return this.fns.indexOf(id);
+    }
+    update(id, fn) {
+        const index = this.getInterceptorIndex(id);
+        if (this.fns[index]) {
+            this.fns[index] = fn;
+            return id;
+        }
+        return false;
+    }
     use(fn) {
-        this._fns = [...this._fns, fn];
+        this.fns.push(fn);
+        return this.fns.length - 1;
     }
 }
-// do not add `Middleware` as return type so we can use _fns internally
 const createInterceptors = () => ({
     error: new Interceptors(),
     request: new Interceptors(),
     response: new Interceptors(),
 });
 exports.createInterceptors = createInterceptors;
+const defaultQuerySerializer = (0, exports.createQuerySerializer)({
+    allowReserved: false,
+    array: {
+        explode: true,
+        style: 'form',
+    },
+    object: {
+        explode: true,
+        style: 'deepObject',
+    },
+});
+const defaultHeaders = {
+    'Content-Type': 'application/json',
+};
+const createConfig = (override = {}) => ({
+    ...bodySerializer_gen_1.jsonBodySerializer,
+    headers: defaultHeaders,
+    parseAs: 'auto',
+    querySerializer: defaultQuerySerializer,
+    ...override,
+});
+exports.createConfig = createConfig;
+
+
+/***/ }),
+
+/***/ 2026:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+// This file is auto-generated by @hey-api/openapi-ts
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getAuthToken = void 0;
+const getAuthToken = async (auth, callback) => {
+    const token = typeof callback === 'function' ? await callback(auth) : callback;
+    if (!token) {
+        return;
+    }
+    if (auth.scheme === 'bearer') {
+        return `Bearer ${token}`;
+    }
+    if (auth.scheme === 'basic') {
+        return `Basic ${btoa(token)}`;
+    }
+    return token;
+};
+exports.getAuthToken = getAuthToken;
+
+
+/***/ }),
+
+/***/ 7783:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+// This file is auto-generated by @hey-api/openapi-ts
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.urlSearchParamsBodySerializer = exports.jsonBodySerializer = exports.formDataBodySerializer = void 0;
 const serializeFormDataPair = (data, key, value) => {
     if (typeof value === 'string' || value instanceof Blob) {
+        data.append(key, value);
+    }
+    else if (value instanceof Date) {
+        data.append(key, value.toISOString());
+    }
+    else {
+        data.append(key, JSON.stringify(value));
+    }
+};
+const serializeUrlSearchParamsPair = (data, key, value) => {
+    if (typeof value === 'string') {
         data.append(key, value);
     }
     else {
@@ -6584,15 +6953,7 @@ exports.formDataBodySerializer = {
     },
 };
 exports.jsonBodySerializer = {
-    bodySerializer: (body) => JSON.stringify(body),
-};
-const serializeUrlSearchParamsPair = (data, key, value) => {
-    if (typeof value === 'string') {
-        data.append(key, value);
-    }
-    else {
-        data.append(key, JSON.stringify(value));
-    }
+    bodySerializer: (body) => JSON.stringify(body, (_key, value) => typeof value === 'bigint' ? value.toString() : value),
 };
 exports.urlSearchParamsBodySerializer = {
     bodySerializer: (body) => {
@@ -6608,33 +6969,488 @@ exports.urlSearchParamsBodySerializer = {
                 serializeUrlSearchParamsPair(data, key, value);
             }
         });
-        return data;
+        return data.toString();
     },
 };
-const defaultQuerySerializer = (0, exports.createQuerySerializer)({
-    allowReserved: false,
-    array: {
-        explode: true,
-        style: 'form',
-    },
-    object: {
-        explode: true,
-        style: 'deepObject',
-    },
-});
-const defaultHeaders = {
-    'Content-Type': 'application/json',
+
+
+/***/ }),
+
+/***/ 4770:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+// This file is auto-generated by @hey-api/openapi-ts
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.buildClientParams = void 0;
+const extraPrefixesMap = {
+    $body_: 'body',
+    $headers_: 'headers',
+    $path_: 'path',
+    $query_: 'query',
 };
-const createConfig = (override = {}) => ({
-    ...exports.jsonBodySerializer,
-    baseUrl: '',
-    fetch: globalThis.fetch,
-    headers: defaultHeaders,
-    parseAs: 'auto',
-    querySerializer: defaultQuerySerializer,
-    ...override,
-});
-exports.createConfig = createConfig;
+const extraPrefixes = Object.entries(extraPrefixesMap);
+const buildKeyMap = (fields, map) => {
+    if (!map) {
+        map = new Map();
+    }
+    for (const config of fields) {
+        if ('in' in config) {
+            if (config.key) {
+                map.set(config.key, {
+                    in: config.in,
+                    map: config.map,
+                });
+            }
+        }
+        else if (config.args) {
+            buildKeyMap(config.args, map);
+        }
+    }
+    return map;
+};
+const stripEmptySlots = (params) => {
+    for (const [slot, value] of Object.entries(params)) {
+        if (value && typeof value === 'object' && !Object.keys(value).length) {
+            delete params[slot];
+        }
+    }
+};
+const buildClientParams = (args, fields) => {
+    const params = {
+        body: {},
+        headers: {},
+        path: {},
+        query: {},
+    };
+    const map = buildKeyMap(fields);
+    let config;
+    for (const [index, arg] of args.entries()) {
+        if (fields[index]) {
+            config = fields[index];
+        }
+        if (!config) {
+            continue;
+        }
+        if ('in' in config) {
+            if (config.key) {
+                const field = map.get(config.key);
+                const name = field.map || config.key;
+                params[field.in][name] = arg;
+            }
+            else {
+                params.body = arg;
+            }
+        }
+        else {
+            for (const [key, value] of Object.entries(arg ?? {})) {
+                const field = map.get(key);
+                if (field) {
+                    const name = field.map || key;
+                    params[field.in][name] = value;
+                }
+                else {
+                    const extra = extraPrefixes.find(([prefix]) => key.startsWith(prefix));
+                    if (extra) {
+                        const [prefix, slot] = extra;
+                        params[slot][key.slice(prefix.length)] = value;
+                    }
+                    else {
+                        for (const [slot, allowed] of Object.entries(config.allowExtra ?? {})) {
+                            if (allowed) {
+                                params[slot][key] = value;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    stripEmptySlots(params);
+    return params;
+};
+exports.buildClientParams = buildClientParams;
+
+
+/***/ }),
+
+/***/ 6651:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+// This file is auto-generated by @hey-api/openapi-ts
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.serializeObjectParam = exports.serializePrimitiveParam = exports.serializeArrayParam = exports.separatorObjectExplode = exports.separatorArrayNoExplode = exports.separatorArrayExplode = void 0;
+const separatorArrayExplode = (style) => {
+    switch (style) {
+        case 'label':
+            return '.';
+        case 'matrix':
+            return ';';
+        case 'simple':
+            return ',';
+        default:
+            return '&';
+    }
+};
+exports.separatorArrayExplode = separatorArrayExplode;
+const separatorArrayNoExplode = (style) => {
+    switch (style) {
+        case 'form':
+            return ',';
+        case 'pipeDelimited':
+            return '|';
+        case 'spaceDelimited':
+            return '%20';
+        default:
+            return ',';
+    }
+};
+exports.separatorArrayNoExplode = separatorArrayNoExplode;
+const separatorObjectExplode = (style) => {
+    switch (style) {
+        case 'label':
+            return '.';
+        case 'matrix':
+            return ';';
+        case 'simple':
+            return ',';
+        default:
+            return '&';
+    }
+};
+exports.separatorObjectExplode = separatorObjectExplode;
+const serializeArrayParam = ({ allowReserved, explode, name, style, value, }) => {
+    if (!explode) {
+        const joinedValues = (allowReserved ? value : value.map((v) => encodeURIComponent(v))).join((0, exports.separatorArrayNoExplode)(style));
+        switch (style) {
+            case 'label':
+                return `.${joinedValues}`;
+            case 'matrix':
+                return `;${name}=${joinedValues}`;
+            case 'simple':
+                return joinedValues;
+            default:
+                return `${name}=${joinedValues}`;
+        }
+    }
+    const separator = (0, exports.separatorArrayExplode)(style);
+    const joinedValues = value
+        .map((v) => {
+        if (style === 'label' || style === 'simple') {
+            return allowReserved ? v : encodeURIComponent(v);
+        }
+        return (0, exports.serializePrimitiveParam)({
+            allowReserved,
+            name,
+            value: v,
+        });
+    })
+        .join(separator);
+    return style === 'label' || style === 'matrix'
+        ? separator + joinedValues
+        : joinedValues;
+};
+exports.serializeArrayParam = serializeArrayParam;
+const serializePrimitiveParam = ({ allowReserved, name, value, }) => {
+    if (value === undefined || value === null) {
+        return '';
+    }
+    if (typeof value === 'object') {
+        throw new Error('Deeply-nested arrays/objects aren’t supported. Provide your own `querySerializer()` to handle these.');
+    }
+    return `${name}=${allowReserved ? value : encodeURIComponent(value)}`;
+};
+exports.serializePrimitiveParam = serializePrimitiveParam;
+const serializeObjectParam = ({ allowReserved, explode, name, style, value, valueOnly, }) => {
+    if (value instanceof Date) {
+        return valueOnly ? value.toISOString() : `${name}=${value.toISOString()}`;
+    }
+    if (style !== 'deepObject' && !explode) {
+        let values = [];
+        Object.entries(value).forEach(([key, v]) => {
+            values = [
+                ...values,
+                key,
+                allowReserved ? v : encodeURIComponent(v),
+            ];
+        });
+        const joinedValues = values.join(',');
+        switch (style) {
+            case 'form':
+                return `${name}=${joinedValues}`;
+            case 'label':
+                return `.${joinedValues}`;
+            case 'matrix':
+                return `;${name}=${joinedValues}`;
+            default:
+                return joinedValues;
+        }
+    }
+    const separator = (0, exports.separatorObjectExplode)(style);
+    const joinedValues = Object.entries(value)
+        .map(([key, v]) => (0, exports.serializePrimitiveParam)({
+        allowReserved,
+        name: style === 'deepObject' ? `${name}[${key}]` : key,
+        value: v,
+    }))
+        .join(separator);
+    return style === 'label' || style === 'matrix'
+        ? separator + joinedValues
+        : joinedValues;
+};
+exports.serializeObjectParam = serializeObjectParam;
+
+
+/***/ }),
+
+/***/ 9631:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+// This file is auto-generated by @hey-api/openapi-ts
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createSseClient = void 0;
+const createSseClient = ({ onRequest, onSseError, onSseEvent, responseTransformer, responseValidator, sseDefaultRetryDelay, sseMaxRetryAttempts, sseMaxRetryDelay, sseSleepFn, url, ...options }) => {
+    let lastEventId;
+    const sleep = sseSleepFn ??
+        ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    const createStream = async function* () {
+        let retryDelay = sseDefaultRetryDelay ?? 3000;
+        let attempt = 0;
+        const signal = options.signal ?? new AbortController().signal;
+        while (true) {
+            if (signal.aborted)
+                break;
+            attempt++;
+            const headers = options.headers instanceof Headers
+                ? options.headers
+                : new Headers(options.headers);
+            if (lastEventId !== undefined) {
+                headers.set('Last-Event-ID', lastEventId);
+            }
+            try {
+                const requestInit = {
+                    redirect: 'follow',
+                    ...options,
+                    body: options.serializedBody,
+                    headers,
+                    signal,
+                };
+                let request = new Request(url, requestInit);
+                if (onRequest) {
+                    request = await onRequest(url, requestInit);
+                }
+                // fetch must be assigned here, otherwise it would throw the error:
+                // TypeError: Failed to execute 'fetch' on 'Window': Illegal invocation
+                const _fetch = options.fetch ?? globalThis.fetch;
+                const response = await _fetch(request);
+                if (!response.ok)
+                    throw new Error(`SSE failed: ${response.status} ${response.statusText}`);
+                if (!response.body)
+                    throw new Error('No body in SSE response');
+                const reader = response.body
+                    .pipeThrough(new TextDecoderStream())
+                    .getReader();
+                let buffer = '';
+                const abortHandler = () => {
+                    try {
+                        reader.cancel();
+                    }
+                    catch {
+                        // noop
+                    }
+                };
+                signal.addEventListener('abort', abortHandler);
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done)
+                            break;
+                        buffer += value;
+                        const chunks = buffer.split('\n\n');
+                        buffer = chunks.pop() ?? '';
+                        for (const chunk of chunks) {
+                            const lines = chunk.split('\n');
+                            const dataLines = [];
+                            let eventName;
+                            for (const line of lines) {
+                                if (line.startsWith('data:')) {
+                                    dataLines.push(line.replace(/^data:\s*/, ''));
+                                }
+                                else if (line.startsWith('event:')) {
+                                    eventName = line.replace(/^event:\s*/, '');
+                                }
+                                else if (line.startsWith('id:')) {
+                                    lastEventId = line.replace(/^id:\s*/, '');
+                                }
+                                else if (line.startsWith('retry:')) {
+                                    const parsed = Number.parseInt(line.replace(/^retry:\s*/, ''), 10);
+                                    if (!Number.isNaN(parsed)) {
+                                        retryDelay = parsed;
+                                    }
+                                }
+                            }
+                            let data;
+                            let parsedJson = false;
+                            if (dataLines.length) {
+                                const rawData = dataLines.join('\n');
+                                try {
+                                    data = JSON.parse(rawData);
+                                    parsedJson = true;
+                                }
+                                catch {
+                                    data = rawData;
+                                }
+                            }
+                            if (parsedJson) {
+                                if (responseValidator) {
+                                    await responseValidator(data);
+                                }
+                                if (responseTransformer) {
+                                    data = await responseTransformer(data);
+                                }
+                            }
+                            onSseEvent?.({
+                                data,
+                                event: eventName,
+                                id: lastEventId,
+                                retry: retryDelay,
+                            });
+                            if (dataLines.length) {
+                                yield data;
+                            }
+                        }
+                    }
+                }
+                finally {
+                    signal.removeEventListener('abort', abortHandler);
+                    reader.releaseLock();
+                }
+                break; // exit loop on normal completion
+            }
+            catch (error) {
+                // connection failed or aborted; retry after delay
+                onSseError?.(error);
+                if (sseMaxRetryAttempts !== undefined &&
+                    attempt >= sseMaxRetryAttempts) {
+                    break; // stop after firing error
+                }
+                // exponential backoff: double retry each attempt, cap at 30s
+                const backoff = Math.min(retryDelay * 2 ** (attempt - 1), sseMaxRetryDelay ?? 30000);
+                await sleep(backoff);
+            }
+        }
+    };
+    const stream = createStream();
+    return { stream };
+};
+exports.createSseClient = createSseClient;
+
+
+/***/ }),
+
+/***/ 285:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+// This file is auto-generated by @hey-api/openapi-ts
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getUrl = exports.defaultPathSerializer = exports.PATH_PARAM_RE = void 0;
+exports.getValidRequestBody = getValidRequestBody;
+const pathSerializer_gen_1 = __nccwpck_require__(6651);
+exports.PATH_PARAM_RE = /\{[^{}]+\}/g;
+const defaultPathSerializer = ({ path, url: _url }) => {
+    let url = _url;
+    const matches = _url.match(exports.PATH_PARAM_RE);
+    if (matches) {
+        for (const match of matches) {
+            let explode = false;
+            let name = match.substring(1, match.length - 1);
+            let style = 'simple';
+            if (name.endsWith('*')) {
+                explode = true;
+                name = name.substring(0, name.length - 1);
+            }
+            if (name.startsWith('.')) {
+                name = name.substring(1);
+                style = 'label';
+            }
+            else if (name.startsWith(';')) {
+                name = name.substring(1);
+                style = 'matrix';
+            }
+            const value = path[name];
+            if (value === undefined || value === null) {
+                continue;
+            }
+            if (Array.isArray(value)) {
+                url = url.replace(match, (0, pathSerializer_gen_1.serializeArrayParam)({ explode, name, style, value }));
+                continue;
+            }
+            if (typeof value === 'object') {
+                url = url.replace(match, (0, pathSerializer_gen_1.serializeObjectParam)({
+                    explode,
+                    name,
+                    style,
+                    value: value,
+                    valueOnly: true,
+                }));
+                continue;
+            }
+            if (style === 'matrix') {
+                url = url.replace(match, `;${(0, pathSerializer_gen_1.serializePrimitiveParam)({
+                    name,
+                    value: value,
+                })}`);
+                continue;
+            }
+            const replaceValue = encodeURIComponent(style === 'label' ? `.${value}` : value);
+            url = url.replace(match, replaceValue);
+        }
+    }
+    return url;
+};
+exports.defaultPathSerializer = defaultPathSerializer;
+const getUrl = ({ baseUrl, path, query, querySerializer, url: _url, }) => {
+    const pathUrl = _url.startsWith('/') ? _url : `/${_url}`;
+    let url = (baseUrl ?? '') + pathUrl;
+    if (path) {
+        url = (0, exports.defaultPathSerializer)({ path, url });
+    }
+    let search = query ? querySerializer(query) : '';
+    if (search.startsWith('?')) {
+        search = search.substring(1);
+    }
+    if (search) {
+        url += `?${search}`;
+    }
+    return url;
+};
+exports.getUrl = getUrl;
+function getValidRequestBody(options) {
+    const hasBody = options.body !== undefined;
+    const isSerializedBody = hasBody && options.bodySerializer;
+    if (isSerializedBody) {
+        if ('serializedBody' in options) {
+            const hasSerializedBody = options.serializedBody !== undefined && options.serializedBody !== '';
+            return hasSerializedBody ? options.serializedBody : null;
+        }
+        // not all clients implement a serializedBody property (i.e. client-axios)
+        return options.body !== '' ? options.body : null;
+    }
+    // plain/text body
+    if (hasBody) {
+        return options.body;
+    }
+    // no body was provided
+    return undefined;
+}
 
 
 /***/ }),
@@ -6644,6 +7460,7 @@ exports.createConfig = createConfig;
 
 "use strict";
 
+// This file is auto-generated by @hey-api/openapi-ts
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -6659,10 +7476,8 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-// This file is auto-generated by @hey-api/openapi-ts
+__exportStar(__nccwpck_require__(1209), exports);
 __exportStar(__nccwpck_require__(1230), exports);
-__exportStar(__nccwpck_require__(7423), exports);
-__exportStar(__nccwpck_require__(7358), exports);
 
 
 /***/ }),
@@ -7120,17 +7935,16 @@ exports.GetUnityReleaseServiceUnavailableErrorSchema = {
 
 /***/ }),
 
-/***/ 7423:
+/***/ 1209:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 // This file is auto-generated by @hey-api/openapi-ts
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.ReleaseService = exports.client = void 0;
-const client_1 = __nccwpck_require__(1936);
-exports.client = (0, client_1.createClient)((0, client_1.createConfig)());
-class ReleaseService {
+exports.Release = void 0;
+const client_gen_1 = __nccwpck_require__(6196);
+class Release {
     /**
      * Get Unity Releases
      * Get Unity Releases.
@@ -7348,24 +8162,13 @@ class ReleaseService {
      *
      */
     static getUnityReleases(options) {
-        return (options?.client ?? exports.client).get({
-            ...options,
-            url: '/unity/editor/release/v1/releases'
+        return (options?.client ?? client_gen_1.client).get({
+            url: '/unity/editor/release/v1/releases',
+            ...options
         });
     }
 }
-exports.ReleaseService = ReleaseService;
-
-
-/***/ }),
-
-/***/ 7358:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-// This file is auto-generated by @hey-api/openapi-ts
-Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Release = Release;
 
 
 /***/ }),
@@ -53515,7 +54318,7 @@ minimatch.unescape = unescape_unescape;
 const external_node_module_namespaceObject = require("node:module");
 ;// CONCATENATED MODULE: ./node_modules/@electron/asar/lib/wrapped-fs.js
 
-const wrapped_fs_require = (0,external_node_module_namespaceObject.createRequire)("file:///E:/Dev/Rage/unity-setup/node_modules/@electron/asar/lib/wrapped-fs.js");
+const wrapped_fs_require = (0,external_node_module_namespaceObject.createRequire)("file:///C:/Dev/Rage/unity-setup/node_modules/@electron/asar/lib/wrapped-fs.js");
 const fs = 'electron' in process.versions ? wrapped_fs_require('original-fs') : wrapped_fs_require('node:fs');
 const promisifiedMethods = [
     'lstat',
