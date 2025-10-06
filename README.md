@@ -31,7 +31,7 @@ strategy:
         build-targets: StandaloneOSX, Android, iOS, VisionOS
         modules: mac-server
 steps:
-  - uses: RageAgainstThePixel/unity-setup@v1
+  - uses: RageAgainstThePixel/unity-setup@v2
     with:
       version-file: 'path/to/your/ProjectSettings.ProjectVersion.txt'
       unity-version: ${{ matrix.unity-version }} # overrides version in version-file
