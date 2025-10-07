@@ -3562,44 +3562,43 @@ class LicensingClient {
     async patchLicenseVersion() {
         if (!this.licenseVersion) {
             // check if the UNITY_EDITOR_PATH is set. If it is, use it to determine the license version
-            const unityEditorPath = process.env['UNITY_EDITOR_PATH'];
-            if (unityEditorPath) {
-                const versionMatch = unityEditorPath.match(/(\d+)\.(\d+)\.(\d+)/);
-                if (!versionMatch) {
-                    this.licenseVersion = '6.x'; // default to 6.x if version cannot be determined
-                }
-                else {
-                    switch (versionMatch[1]) {
-                        case '4':
-                            this.licenseVersion = '4.x';
-                            break;
-                        case '5':
-                            this.licenseVersion = '5.x';
-                            break;
-                        default:
-                            this.licenseVersion = '6.x'; // default to 6.x for any other
-                            break;
+            const versionMatch = process.env.UNITY_EDITOR_PATH?.match(/(\d+)\.(\d+)\.(\d+)/);
+            if (versionMatch) {
+                switch (versionMatch[1]) {
+                    case '4': {
+                        this.licenseVersion = '4.x';
+                        break;
+                    }
+                    case '5': {
+                        this.licenseVersion = '5.x';
+                        break;
+                    }
+                    default: {
+                        this.licenseVersion = '6.x'; // default to 6.x for any other
+                        break;
                     }
                 }
             }
-            if (!this.licenseVersion) {
+            else {
                 this.licenseVersion = '6.x'; // default to 6.x if not set
             }
         }
-        if (this.licenseVersion === '6.x') {
-            return;
-        }
-        if (this.licenseVersion !== '5.x' && this.licenseVersion !== '4.x') {
-            this.logger.warn(`Warning: Specified license version '${this.licenseVersion}' is unsupported, skipping`);
-            return;
+        if (this.licenseVersion !== '6.x') {
+            if (this.licenseVersion !== '5.x' && this.licenseVersion !== '4.x') {
+                this.logger.warn(`Warning: Specified license version '${this.licenseVersion}' is unsupported, skipping`);
+                return;
+            }
         }
         if (!this.licenseClientPath) {
             this.licenseClientPath = await this.init();
         }
+        if (this.licenseVersion === '6.x') {
+            return; // no patching needed
+        }
         const clientDirectory = path.dirname(this.licenseClientPath);
         const patchedDirectory = path.join(os.tmpdir(), `UnityLicensingClient-${this.licenseVersion.replace('.', '_')}`);
         if (await fs.promises.mkdir(patchedDirectory, { recursive: true }) === undefined) {
-            this.logger.info('Unity Licensing Client was already patched, reusing');
+            this.logger.debug('Unity Licensing Client was already patched, reusing');
         }
         else {
             let found = false;
@@ -3698,7 +3697,7 @@ class LicensingClient {
     maskSerialInOutput(output) {
         return output.replace(/([\w-]+-XXXX)/g, (_, serial) => {
             const maskedSerial = serial.slice(0, -4) + `XXXX`;
-            this.logger.mask(maskedSerial);
+            this.logger.CI_mask(maskedSerial);
             return serial;
         });
     }
@@ -3710,22 +3709,19 @@ class LicensingClient {
     }
     /**
      * Activates a Unity license.
-     * @param licenseType The type of license to activate.
-     * @param servicesConfig The services config path for floating licenses.
-     * @param serial The license serial number.
-     * @param username The Unity ID username.
-     * @param password The Unity ID password.
+     * @param options The activation options including license type, services config, serial, username, and password.
+     * @returns A promise that resolves when the license is activated.
      * @throws Error if activation fails or required parameters are missing.
      */
-    async Activate(licenseType, servicesConfig = undefined, serial = undefined, username = undefined, password = undefined) {
-        let activeLicenses = await this.showEntitlements();
-        if (activeLicenses.includes(licenseType)) {
-            this.logger.info(`License of type '${licenseType}' is already active, skipping activation`);
+    async Activate(options) {
+        let activeLicenses = await this.GetActiveEntitlements();
+        if (activeLicenses.includes(options.licenseType)) {
+            this.logger.info(`License of type '${options.licenseType}' is already active, skipping activation`);
             return;
         }
-        switch (licenseType) {
+        switch (options.licenseType) {
             case LicenseType.floating: {
-                if (!servicesConfig) {
+                if (!options.servicesConfig) {
                     throw new Error('Services config path is required for floating license activation');
                 }
                 let servicesPath;
@@ -3743,32 +3739,36 @@ class LicensingClient {
                         throw new Error(`Unsupported platform: ${process.platform}`);
                 }
                 const servicesConfigPath = path.join(servicesPath, 'services-config.json');
-                await fs.promises.writeFile(servicesConfigPath, Buffer.from(servicesConfig, 'base64'));
-                return;
+                await fs.promises.writeFile(servicesConfigPath, Buffer.from(options.servicesConfig, 'base64'));
+                break;
             }
             default: { // personal and professional license activation
-                if (!username) {
+                if (!options.username) {
                     const encodedUsername = process.env.UNITY_USERNAME_BASE64;
                     if (!encodedUsername) {
                         throw Error('Username is required for Unity License Activation!');
                     }
-                    username = Buffer.from(encodedUsername, 'base64').toString('utf-8');
+                    options.username = Buffer.from(encodedUsername, 'base64').toString('utf-8');
                 }
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                if (username.length === 0 || !emailRegex.test(username)) {
+                function isValidEmail(email) {
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    return emailRegex.test(email);
+                }
+                if (options.username.length === 0 || !isValidEmail(options.username)) {
                     throw Error('Username must be your Unity ID email address!');
                 }
-                if (!password) {
+                if (!options.password) {
                     const encodedPassword = process.env.UNITY_PASSWORD_BASE64;
                     if (!encodedPassword) {
                         throw Error('Password is required for Unity License Activation!');
                     }
-                    password = Buffer.from(encodedPassword, 'base64').toString('utf-8');
+                    options.password = Buffer.from(encodedPassword, 'base64').toString('utf-8');
                 }
-                if (password.length === 0) {
+                if (options.password.length === 0) {
                     throw Error('Password is required for Unity License Activation!');
                 }
-                await this.activateLicense(licenseType, username, password, serial);
+                await this.activateLicense(options.licenseType, options.username, options.password, options.serial);
+                break;
             }
         }
     }
@@ -3782,12 +3782,16 @@ class LicensingClient {
         if (licenseType === LicenseType.floating) {
             return;
         }
-        const activeLicenses = await this.showEntitlements();
+        const activeLicenses = await this.GetActiveEntitlements();
         if (activeLicenses.includes(licenseType)) {
             await this.returnLicense(licenseType);
         }
     }
-    async showEntitlements() {
+    /**
+     * Shows the currently active entitlements/licenses.
+     * @returns A list of active license types.
+     */
+    async GetActiveEntitlements() {
         const output = await this.exec([`--showEntitlements`]);
         const matches = output.matchAll(/Product Name: (?<license>.+)/g);
         const licenses = [];
@@ -3821,13 +3825,13 @@ class LicensingClient {
             serial = serial.trim();
             args.push(`--serial`, serial);
             const maskedSerial = serial.slice(0, -4) + `XXXX`;
-            this.logger.mask(maskedSerial);
+            this.logger.CI_mask(maskedSerial);
         }
         if (licenseType === LicenseType.personal) {
             args.push(`--include-personal`);
         }
         await this.exec(args);
-        const activeLicenses = await this.showEntitlements();
+        const activeLicenses = await this.GetActiveEntitlements();
         if (!activeLicenses.includes(licenseType)) {
             throw new Error(`Failed to activate license of type '${licenseType}'`);
         }
@@ -3835,7 +3839,7 @@ class LicensingClient {
     }
     async returnLicense(licenseType) {
         await this.exec([`--return-ulf`]);
-        const activeLicenses = await this.showEntitlements();
+        const activeLicenses = await this.GetActiveEntitlements();
         if (activeLicenses.includes(licenseType)) {
             throw new Error(`Failed to return license of type '${licenseType}'`);
         }
@@ -4020,7 +4024,7 @@ class Logger {
      * Masks a string in the console output in CI environments that support it.
      * @param message The string to mask.
      */
-    mask(message) {
+    CI_mask(message) {
         switch (this._ci) {
             case 'GITHUB_ACTIONS': {
                 process.stdout.write(`::add-mask::${message}\n`);
@@ -4028,7 +4032,12 @@ class Logger {
             }
         }
     }
-    setEnvironmentVariable(name, value) {
+    /**
+     * Sets an environment variable in CI environments that support it.
+     * @param name The name of the environment variable.
+     * @param value The value of the environment variable.
+     */
+    CI_setEnvironmentVariable(name, value) {
         switch (this._ci) {
             case 'GITHUB_ACTIONS': {
                 // needs to be appended to the temporary file specified in the GITHUB_ENV environment variable
@@ -4041,7 +4050,7 @@ class Logger {
             }
         }
     }
-    setOutput(name, value) {
+    CI_setOutput(name, value) {
         switch (this._ci) {
             case 'GITHUB_ACTIONS': {
                 // needs to be appended to the temporary file specified in the GITHUB_OUTPUT environment variable
@@ -4108,18 +4117,18 @@ const child_process_1 = __nccwpck_require__(2081);
 const utilities_1 = __nccwpck_require__(9746);
 class UnityEditor {
     editorPath;
-    version;
     editorRootPath;
+    version;
     logger = logging_1.Logger.instance;
     autoAddNoGraphics;
     /**
      * Initializes a new instance of the UnityEditor class.
      * @param editorPath The path to the Unity Editor installation.
+     * @param version Optional UnityVersion instance. If not provided, the version will be inferred from the editorPath.
      * @throws Will throw an error if the editor path is invalid or not executable.
      */
-    constructor(editorPath, version = undefined) {
-        this.editorPath = editorPath;
-        this.version = version;
+    constructor(editorPath, version) {
+        this.editorPath = path.normalize(editorPath);
         if (!fs.existsSync(editorPath)) {
             throw new Error(`The Unity Editor path does not exist: ${editorPath}`);
         }
@@ -4145,44 +4154,27 @@ class UnityEditor {
      * Get the full path to a Unity project template based on the provided template name or regex pattern.
      * @param template The name or regex pattern of the template to find.
      * @returns The full path to the matching template file.
-     * @throws Error if the template directory does not exist, no templates are found, or no matching template is found.
+     * @throws If no templates are found, or no matching template is found.
      */
     GetTemplatePath(template) {
-        let templateDir;
-        let editorRoot = path.dirname(this.editorPath);
-        if (process.platform === 'darwin') {
-            templateDir = path.join(path.dirname(editorRoot), 'Resources', 'PackageManager', 'ProjectTemplates');
+        const templates = this.GetAvailableTemplates();
+        if (templates.length === 0) {
+            throw new Error('No Unity templates found!');
         }
-        else {
-            templateDir = path.join(editorRoot, 'Data', 'Resources', 'PackageManager', 'ProjectTemplates');
-        }
-        // Check if the template directory exists
-        if (!fs.existsSync(templateDir) ||
-            !fs.statSync(templateDir).isDirectory()) {
-            throw new Error(`Template directory not found: ${templateDir}`);
-        }
-        // Find all .tgz files in the template directory
-        const files = fs.readdirSync(templateDir)
-            .filter(f => f.endsWith('.tgz'))
-            .map(f => path.join(templateDir, f));
-        if (files.length === 0) {
-            throw new Error(`No templates found in ${templateDir}`);
-        }
-        this.logger.ci(`Available templates:`);
-        files.forEach(f => this.logger.ci(`  > ${path.basename(f)}`));
-        // Build a regex to match the template name and version (e.g., com.unity.template.3d.*[0-9]+\.[0-9]+\.[0-9]+\.tgz)
+        // Build a regex to match the template name and version
+        // e.g., com.unity.template.3d(-cross-platform)?.*[0-9]+\.[0-9]+\.[0-9]+\.tgz
         // Accepts either a full regex or a simple string
         let regex;
         try {
-            regex = new RegExp(template + ".*[0-9]+\\.[0-9]+\\.[0-9]+\\.tgz");
+            regex = new RegExp(`^${template}.*[0-9]+\\.[0-9]+\\.[0-9]+\\.tgz$`);
         }
         catch (e) {
             throw new Error(`Invalid template regex: ${template}`);
         }
         // Filter files by regex
-        const matches = files.filter(f => regex.test(path.basename(f)));
+        const matches = templates.filter(t => regex.test(path.basename(t)));
         if (matches.length === 0) {
-            throw new Error(`${template} path not found in ${templateDir}!`);
+            throw new Error(`${template} path not found!`);
         }
         // Pick the longest match (as in the shell script: sort by length descending)
         matches.sort((a, b) => b.length - a.length);
@@ -4191,6 +4183,33 @@ class UnityEditor {
             throw new Error('No matching template path found.');
         }
         return path.normalize(templatePath);
+    }
+    /**
+     * Get a list of available Unity project templates.
+     * @returns An array of available template file names.
+     */
+    GetAvailableTemplates() {
+        let templateDir;
+        let editorRoot = path.dirname(this.editorPath);
+        const templates = [];
+        if (process.platform === 'darwin') {
+            templateDir = path.join(path.dirname(editorRoot), 'Resources', 'PackageManager', 'ProjectTemplates');
+        }
+        else {
+            templateDir = path.join(editorRoot, 'Data', 'Resources', 'PackageManager', 'ProjectTemplates');
+        }
+        this.logger.debug(`Looking for templates in: ${templateDir}`);
+        // Check if the template directory exists
+        if (!fs.existsSync(templateDir) ||
+            !fs.statSync(templateDir).isDirectory()) {
+            return templates;
+        }
+        // Find all .tgz packages in the template directory
+        const packages = fs.readdirSync(templateDir)
+            .filter(f => f.endsWith('.tgz'))
+            .map(f => path.join(templateDir, f));
+        templates.push(...packages);
+        return templates;
     }
     /**
      * Run the Unity Editor with the specified command line arguments.
@@ -4265,21 +4284,16 @@ class UnityEditor {
             process.once('SIGTERM', onCancel);
             procInfo = { pid: unityProcess.pid, ppid: process.pid, name: this.editorPath };
             this.logger.debug(`Unity process started with pid: ${procInfo.pid}`);
-            const timeout = 10000; // 10 seconds
-            await (0, utilities_1.WaitForFileToBeCreatedAndReadable)(logPath, timeout);
+            await (0, utilities_1.WaitForFileToBeCreatedAndReadable)(logPath, 10_000);
             logTail = (0, utilities_1.TailLogFile)(logPath);
             exitCode = await new Promise((resolve, reject) => {
                 unityProcess.on('close', (code) => {
-                    setTimeout(() => {
-                        logTail?.stopLogTail();
-                        resolve(code === null ? 1 : code);
-                    }, timeout);
+                    logTail?.stopLogTail();
+                    resolve(code === null ? 1 : code);
                 });
                 unityProcess.on('error', (error) => {
-                    setTimeout(() => {
-                        logTail?.stopLogTail();
-                        reject(error);
-                    }, timeout);
+                    logTail?.stopLogTail();
+                    reject(error);
                 });
             });
             // Wait for log tailing to finish writing remaining content
@@ -4288,7 +4302,7 @@ class UnityEditor {
                     await logTail.tailPromise;
                 }
                 catch (error) {
-                    this.logger.error(`Error occurred while tailing log file: ${error}`);
+                    this.logger.error(`Error occurred while tailing log: ${error}`);
                 }
             }
         }
@@ -4354,6 +4368,36 @@ class UnityEditor {
         fs.accessSync(editorRootPath, fs.constants.R_OK);
         return editorRootPath;
     }
+    /**
+     * Uninstall the Unity Editor.
+     */
+    async Uninstall() {
+        switch (process.platform) {
+            case 'darwin':
+            case 'linux':
+                await (0, utilities_1.Exec)('sudo', [
+                    'rm', '-rf', this.editorRootPath
+                ], { silent: true, showCommand: true });
+                break;
+            case 'win32':
+                const editorDir = path.dirname(this.editorPath);
+                const uninstallPath = path.join(editorDir, 'Uninstall.exe');
+                await fs.promises.access(uninstallPath, fs.constants.R_OK | fs.constants.X_OK);
+                await (0, utilities_1.Exec)('powershell', [
+                    '-NoProfile',
+                    '-Command',
+                    `Start-Process -FilePath "${uninstallPath}" -ArgumentList "/S" -Wait`
+                ], { silent: true, showCommand: true });
+                // delete the editor root directory if it still exists
+                await (0, utilities_1.DeleteDirectory)(editorDir);
+                if (this.version.isLegacy()) {
+                    // delete the MonoDevelop that is a sibling of the Unity editor directory
+                    const monoDevelopDir = path.join(path.dirname(editorDir), 'MonoDevelop');
+                    await (0, utilities_1.DeleteDirectory)(monoDevelopDir);
+                }
+                break;
+        }
+    }
 }
 exports.UnityEditor = UnityEditor;
 //# sourceMappingURL=unity-editor.js.map
@@ -4404,6 +4448,7 @@ const fs = __importStar(__nccwpck_require__(7147));
 const os = __importStar(__nccwpck_require__(2037));
 const path = __importStar(__nccwpck_require__(1017));
 const yaml = __importStar(__nccwpck_require__(4083));
+const asar = __importStar(__nccwpck_require__(9735));
 const child_process_1 = __nccwpck_require__(2081);
 const logging_1 = __nccwpck_require__(4486);
 const unity_editor_1 = __nccwpck_require__(8944);
@@ -4472,7 +4517,8 @@ class UnityHub {
             'You have to request `id` or `_id` fields for all selection sets or create a custom `keys` config for `UnityReleaseLabel`.',
             'Entities without keys will be embedded directly on the parent entity. If this is intentional, create a `keys` config for `UnityReleaseLabel` that always returns null.',
             'https://bit.ly/2XbVrpR#15',
-            'Interaction is not allowed with the Security Server." (-25308)'
+            'Interaction is not allowed with the Security Server." (-25308)',
+            'Network service crashed, restarting service.',
         ];
         try {
             exitCode = await new Promise((resolve, reject) => {
@@ -4658,11 +4704,20 @@ class UnityHub {
             }
             if (latestVersion && (0, semver_1.compare)(installedVersion, latestVersion) < 0) {
                 this.logger.info(`Updating Unity Hub from ${installedVersion.version} to ${latestVersion.version}...`);
-                if (process.platform !== 'linux') {
-                    await (0, utilities_1.DeleteDirectory)(this.rootDirectory);
+                if (process.platform === 'darwin') {
+                    await (0, utilities_1.Exec)('sudo', ['rm', '-rf', this.rootDirectory], { silent: true, showCommand: true });
                     await this.installHub();
                 }
-                else {
+                else if (process.platform === 'win32') {
+                    const uninstaller = path.join(path.dirname(this.executable), 'Uninstall Unity Hub.exe');
+                    await (0, utilities_1.Exec)('powershell', [
+                        '-NoProfile',
+                        '-Command',
+                        `Start-Process -FilePath '${uninstaller}' -ArgumentList '/S' -Verb RunAs -Wait`
+                    ], { silent: true, showCommand: true });
+                    await this.installHub();
+                }
+                else if (process.platform === 'linux') {
                     await (0, utilities_1.Exec)('sudo', ['sh', '-c', `#!/bin/bash
 set -e
 wget -qO - https://hub.unity3d.com/linux/keys/public | gpg --dearmor | sudo tee /usr/share/keyrings/Unity_Technologies_ApS.gpg >/dev/null
@@ -4687,7 +4742,11 @@ sudo apt-get install -y --no-install-recommends --only-upgrade unityhub`]);
                 await (0, utilities_1.DownloadFile)(url, downloadPath);
                 this.logger.info(`Running Unity Hub installer...`);
                 try {
-                    await (0, utilities_1.Exec)(downloadPath, ['/S'], { silent: true, showCommand: true });
+                    await (0, utilities_1.Exec)('powershell', [
+                        '-NoProfile',
+                        '-Command',
+                        `Start-Process -FilePath '${downloadPath}' -ArgumentList '/S' -Verb RunAs -Wait`
+                    ], { silent: true, showCommand: true });
                 }
                 finally {
                     if (fs.statSync(downloadPath).isFile()) {
@@ -4779,8 +4838,12 @@ chmod -R 777 "$hubPath"`]);
                 break;
             }
         }
-        await fs.promises.access(asarPath, fs.constants.R_OK);
-        const asar = await Promise.resolve().then(() => __importStar(__nccwpck_require__(9735)));
+        try {
+            await fs.promises.access(asarPath, fs.constants.R_OK);
+        }
+        catch {
+            throw new Error('Unity Hub is not installed.');
+        }
         const fileBuffer = asar.extractFile(asarPath, 'package.json');
         const packageJson = JSON.parse(fileBuffer.toString());
         const version = (0, semver_1.coerce)(packageJson.version);
@@ -4846,7 +4909,7 @@ chmod -R 777 "$hubPath"`]);
      * @param modules The modules to install alongside the editor.
      * @returns The path to the Unity Editor executable.
      */
-    async GetEditor(unityVersion, modules) {
+    async GetEditor(unityVersion, modules = []) {
         const retryErrorMessages = [
             'Editor already installed in this location',
             'failed to download. Error given: Request timeout'
@@ -4856,11 +4919,11 @@ chmod -R 777 "$hubPath"`]);
         if (!resolvedVersion.isLegacy()) {
             try {
                 if (!resolvedVersion.isFullyQualified()) {
-                    const releases = await this.getLatestHubReleases();
+                    const releases = await this.ListAvailableReleases();
                     resolvedVersion = resolvedVersion.findMatch(releases);
                 }
-                if (!resolvedVersion.changeset) {
-                    const unityReleaseInfo = await this.getEditorReleaseInfo(resolvedVersion);
+                if (!resolvedVersion?.changeset) {
+                    const unityReleaseInfo = await this.GetEditorReleaseInfo(resolvedVersion);
                     resolvedVersion = new unity_version_1.UnityVersion(unityReleaseInfo.version, unityReleaseInfo.shortRevision, resolvedVersion.architecture);
                 }
             }
@@ -4877,26 +4940,26 @@ chmod -R 777 "$hubPath"`]);
         const allowPartialMatches = !resolvedVersion.isFullyQualified();
         let editorPath = await this.checkInstalledEditors(resolvedVersion, false, undefined, allowPartialMatches);
         unityVersion = resolvedVersion;
-        let installPath = undefined;
+        let installDir = undefined;
         if (!editorPath) {
             try {
-                installPath = await this.installUnity(unityVersion, modules);
+                installDir = await this.installUnity(unityVersion, modules);
             }
             catch (error) {
                 if (retryErrorMessages.some(msg => error.message.includes(msg))) {
                     if (editorPath) {
                         await (0, utilities_1.DeleteDirectory)(editorPath);
                     }
-                    if (installPath) {
-                        await (0, utilities_1.DeleteDirectory)(installPath);
+                    if (installDir) {
+                        await (0, utilities_1.DeleteDirectory)(installDir);
                     }
-                    installPath = await this.installUnity(unityVersion, modules);
+                    installDir = await this.installUnity(unityVersion, modules);
                 }
                 else {
                     throw error;
                 }
             }
-            editorPath = await this.checkInstalledEditors(unityVersion, true, installPath);
+            editorPath = await this.checkInstalledEditors(unityVersion, true, installDir);
         }
         if (!editorPath) {
             throw new Error(`Failed to find or install Unity Editor: ${unityVersion.toString()}`);
@@ -4907,18 +4970,18 @@ chmod -R 777 "$hubPath"`]);
             return new unity_editor_1.UnityEditor(path.normalize(editorPath), unityVersion);
         }
         try {
-            this.logger.ci(`Checking installed modules for Unity ${unityVersion.toString()}...`);
+            this.logger.info(`Checking installed modules for Unity ${unityVersion.toString()}...`);
             const [installedModules, additionalModules] = await this.checkEditorModules(editorPath, unityVersion, modules);
             if (installedModules && installedModules.length > 0) {
-                this.logger.ci(`Installed Modules:`);
+                this.logger.info(`Installed Modules:`);
                 for (const module of installedModules) {
-                    this.logger.ci(`  > ${module}`);
+                    this.logger.info(`  > ${module}`);
                 }
             }
             if (additionalModules && additionalModules.length > 0) {
-                this.logger.ci(`Additional Modules:`);
+                this.logger.info(`Additional Modules:`);
                 for (const module of additionalModules) {
-                    this.logger.ci(`  > ${module}`);
+                    this.logger.info(`  > ${module}`);
                 }
             }
         }
@@ -4936,9 +4999,35 @@ chmod -R 777 "$hubPath"`]);
      */
     async ListInstalledEditors() {
         const output = await this.Exec(['editors', '-i']);
-        return output.split('\n')
-            .filter(line => line.trim().length > 0)
+        const paths = output.split('\n')
+            .filter(line => /installed at/.test(line))
             .map(line => line.trim());
+        const editors = [];
+        const pattern = /(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?\s*,? installed at (?<editorPath>.*)/;
+        const matches = paths.map(path => path.match(pattern)).filter(match => match && match.groups);
+        if (paths.length !== matches.length) {
+            throw new Error(`Failed to parse all installed Unity Editors!\n > paths: ${JSON.stringify(paths)}\n  > matches: ${JSON.stringify(matches)}`);
+        }
+        for (const match of matches) {
+            if (match && match.groups && match.groups.version && match.groups.editorPath) {
+                const version = new unity_version_1.UnityVersion(match.groups.version, null, match.groups.arch === 'Apple silicon' ? 'ARM64' : match.groups.arch === 'Intel' ? 'X86_64' : undefined);
+                editors.push(new unity_editor_1.UnityEditor(path.normalize(match.groups.editorPath), version));
+            }
+        }
+        // Sort editors descending by UnityVersion so callers receive newest matches first
+        editors.sort((a, b) => {
+            if (!a.version && !b.version) {
+                return 0;
+            }
+            if (!a.version) {
+                return 1;
+            }
+            if (!b.version) {
+                return -1;
+            }
+            return unity_version_1.UnityVersion.compare(b.version, a.version);
+        });
+        return editors;
     }
     /**
      * Lists the available Unity releases.
@@ -4946,56 +5035,45 @@ chmod -R 777 "$hubPath"`]);
      */
     async ListAvailableReleases() {
         const output = await this.Exec(['editors', '--releases']);
+        // filter out version lines only 2021.3.45f2 (may include installed path following version)
         return output.split('\n')
-            .filter(line => line.trim().length > 0)
+            .filter(line => /^\d{1,4}\.\d+\.\d+[abcfpx]?\d*/.test(line.trim()))
             .map(line => line.trim());
     }
-    async checkInstalledEditors(unityVersion, failOnEmpty, installPath = undefined, allowPartialMatches = true) {
+    async checkInstalledEditors(unityVersion, failOnEmpty, installDir = undefined, allowPartialMatches = true) {
         let editorPath = undefined;
-        if (!installPath) {
-            const paths = await this.ListInstalledEditors();
-            if (paths && paths.length > 0) {
-                const pattern = /(?<version>\d+\.\d+\.\d+[abcfpx]?\d*)\s*(?:\((?<arch>Apple silicon|Intel)\))?\s*,? installed at (?<editorPath>.*)/;
-                const matches = paths.map(path => path.match(pattern)).filter(match => match && match.groups);
-                if (paths.length !== matches.length) {
-                    throw new Error(`Failed to parse all installed Unity Editors!\n > paths: ${JSON.stringify(paths)}\n  > matches: ${JSON.stringify(matches)}`);
-                }
+        if (!installDir) {
+            const editors = await this.ListInstalledEditors();
+            if (editors && editors.length > 0) {
                 // Prefer exact version match first
-                const exactMatch = matches.find(match => match?.groups?.version === unityVersion.version);
-                if (exactMatch) {
-                    editorPath = exactMatch.groups.editorPath;
+                const exactEditor = editors.find(e => e.version && e.version.version === unityVersion.version);
+                if (exactEditor) {
+                    editorPath = exactEditor.editorPath;
                 }
                 else if (allowPartialMatches) {
                     // Fallback: semver satisfies
-                    const versionMatches = matches.filter(match => match?.groups?.version && unityVersion.satisfies(match.groups.version));
-                    if (versionMatches.length === 0) {
+                    const versionEditors = editors.filter(e => e.version && unityVersion.satisfies(e.version.version));
+                    if (versionEditors.length === 0) {
                         return undefined;
                     }
-                    const archMap = {
-                        'ARM64': 'Apple silicon',
-                        'X86_64': 'Intel',
-                    };
-                    const sortedMatches = versionMatches
-                        .map(match => ({
-                        match: match,
-                        parsed: new unity_version_1.UnityVersion(match.groups.version, null, undefined)
-                    }))
-                        .sort((a, b) => unity_version_1.UnityVersion.compare(b.parsed, a.parsed));
-                    for (const candidate of sortedMatches) {
-                        const match = candidate.match;
-                        if (!match.groups || !match.groups.version || !match.groups.editorPath) {
+                    // ListInstalledEditors already returns editors sorted descending by version.
+                    for (const editor of versionEditors) {
+                        if (!editor.version || !editor.editorPath) {
                             continue;
                         }
-                        if (!unityVersion.architecture || !match.groups.arch) {
-                            editorPath = match.groups.editorPath;
+                        // If no architecture requested or editor has no arch info, accept it
+                        if (!unityVersion.architecture || !editor.version.architecture) {
+                            editorPath = editor.editorPath;
                             break;
                         }
-                        if (archMap[unityVersion.architecture] === match.groups.arch) {
-                            editorPath = match.groups.editorPath;
+                        // Exact architecture match
+                        if (unityVersion.architecture === editor.version.architecture) {
+                            editorPath = editor.editorPath;
                             break;
                         }
-                        if (unityVersion.architecture && match.groups.editorPath.toLowerCase().includes(`-${unityVersion.architecture.toLowerCase()}`)) {
-                            editorPath = match.groups.editorPath;
+                        // Fallback: check for architecture suffix in path (e.g., -arm64)
+                        if (unityVersion.architecture && editor.editorPath.toLowerCase().includes(`-${unityVersion.architecture.toLowerCase()}`)) {
+                            editorPath = editor.editorPath;
                             break;
                         }
                     }
@@ -5004,10 +5082,10 @@ chmod -R 777 "$hubPath"`]);
         }
         else {
             if (process.platform == 'win32') {
-                editorPath = path.join(installPath, 'Unity.exe');
+                editorPath = path.join(installDir, 'Unity.exe');
             }
             else {
-                editorPath = installPath;
+                editorPath = installDir;
             }
         }
         if (!editorPath) {
@@ -5029,24 +5107,6 @@ chmod -R 777 "$hubPath"`]);
         }
         this.logger.debug(`Found installed editor: "${editorPath}"`);
         return editorPath;
-    }
-    async getLatestHubReleases() {
-        // Normalize output to bare version strings (e.g., 2022.3.62f1)
-        // Unity Hub can return lines like:
-        //  - "6000.0.56f1 (Apple silicon)"
-        //  - "2022.3.62f1 installed at C:\\..."
-        //  - "2022.3.62f1, installed at ..." (older format)
-        // We extract the first version token and discard the rest.
-        const versionRegex = /(\d{1,4})\.(\d+)\.(\d+)([abcfpx])(\d+)/;
-        return (await this.Exec([`editors`, `--releases`]))
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0)
-            .map(line => {
-            const match = line.match(versionRegex);
-            return match ? match[0] : '';
-        })
-            .filter(v => v.length > 0);
     }
     /**
      * Patches the Bee Backend for Unity Linux Editor.
@@ -5078,7 +5138,13 @@ done
             }
         }
     }
-    async getEditorReleaseInfo(unityVersion) {
+    /**
+     * Gets the specified Unity release info from the Unity Releases API.
+     * Supports querying by exact version or by prefix (e.g., "2020", "2020.1", "2021.x", "2021.3.x").
+     * @param unityVersion The Unity version to get the release info for.
+     * @returns The Unity release info.
+     */
+    async GetEditorReleaseInfo(unityVersion) {
         // Prefer querying the releases API with the exact fully-qualified Unity version (e.g., 2022.3.10f1).
         // If we don't have a fully-qualified version, use the most specific prefix available:
         //  - "YYYY.M" when provided (e.g., 6000.1)
@@ -5089,9 +5155,9 @@ done
             version = unityVersion.version;
         }
         else {
-            const mm = unityVersion.version.match(/^(\d{1,4})(?:\.(\d+))?/);
-            if (mm) {
-                version = mm[2] ? `${mm[1]}.${mm[2]}` : mm[1];
+            const match = unityVersion.version.match(/^(\d{1,4})(?:\.(\d+))?/);
+            if (match) {
+                version = match[2] ? `${match[1]}.${match[2]}` : match[1];
             }
             else {
                 version = unityVersion.version.split('.')[0];
@@ -5116,7 +5182,8 @@ done
                 version: version,
                 architecture: [unityVersion.architecture],
                 platform: getPlatform(),
-                limit: 1,
+                limit: 10,
+                order: 'RELEASE_DATE_DESC',
             }
         };
         this.logger.debug(`Get Unity Release: ${JSON.stringify(request, null, 2)}`);
@@ -5127,36 +5194,24 @@ done
         if (!data || !data.results || data.results.length === 0) {
             throw new Error(`No Unity releases found for version: ${version}`);
         }
-        this.logger.debug(`Found Unity Release: ${JSON.stringify(data, null, 2)}`);
         // Filter to stable 'f' releases only unless the user explicitly asked for a pre-release
         const isExplicitPrerelease = /[abcpx]$/.test(unityVersion.version) || /[abcpx]/.test(unityVersion.version);
-        const results = (data.results || [])
-            .filter(r => isExplicitPrerelease ? true : /f\d+$/.test(r.version))
-            // Sort descending by minor, patch, f-number where possible; fallback to semver coercion
-            .sort((a, b) => {
-            const parse = (v) => {
-                const m = v.match(/(\d{1,4})\.(\d+)\.(\d+)([abcfpx])(\d+)/);
-                return m ? [parseInt(m[2]), parseInt(m[3]), m[4], parseInt(m[5])] : [0, 0, 'f', 0];
-            };
-            const [aMinor, aPatch, aTag, aNum] = parse(a.version);
-            const [bMinor, bPatch, bTag, bNum] = parse(b.version);
-            // Prefer higher minor
-            if (aMinor !== bMinor)
-                return bMinor - aMinor;
-            // Then higher patch
-            if (aPatch !== bPatch)
-                return bPatch - aPatch;
-            // Tag order: f > p > c > b > a > x
-            const order = { f: 5, p: 4, c: 3, b: 2, a: 1, x: 0 };
-            if (order[aTag] !== order[bTag])
-                return (order[bTag] || 0) - (order[aTag] || 0);
-            return bNum - aNum;
-        });
-        if (results.length === 0) {
+        const releases = (data.results || [])
+            .filter(release => isExplicitPrerelease || release.version.includes('f'))
+            .map(release => ({
+            unityRelease: release,
+            unityVersion: new unity_version_1.UnityVersion(release.version, release.shortRevision, unityVersion.architecture)
+        }));
+        if (releases.length === 0) {
             throw new Error(`No suitable Unity releases (stable) found for version: ${version}`);
         }
-        this.logger.debug(`Found Unity Release: ${JSON.stringify({ query: version, picked: results[0] }, null, 2)}`);
-        return results[0];
+        releases.sort((a, b) => unity_version_1.UnityVersion.compare(b.unityVersion, a.unityVersion));
+        this.logger.debug(`Found ${releases.length} matching Unity releases for version: ${version}`);
+        releases.forEach(release => {
+            this.logger.debug(` - ${release.unityRelease.version} (${release.unityRelease.shortRevision}) - ${release.unityRelease.recommended}`);
+        });
+        const latest = releases[0].unityRelease;
+        return latest;
     }
     async fallbackVersionLookup(unityVersion) {
         const url = `https://unity.com/releases/editor/whats-new/${unityVersion.version}`;
@@ -5241,7 +5296,9 @@ done
                     fs.promises.unlink(downloadPath);
                 }
             }
-            else if (['2019.3', '2019.4'].some(v => unityVersion.version.startsWith(v)) || unityVersion.version.startsWith('2020.')) {
+            else if (['2019.3', '2019.4'].some(v => unityVersion.version.startsWith(v)) ||
+                unityVersion.version.startsWith('2020.') ||
+                unityVersion.version.startsWith('2021.')) {
                 const url = `https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.0g-2ubuntu4_${arch}.deb`;
                 const downloadPath = path.join((0, utilities_1.GetTempDir)(), `libssl1.1_1.1.0g-2ubuntu4_${arch}.deb`);
                 await (0, utilities_1.DownloadFile)(url, downloadPath);
@@ -5273,17 +5330,21 @@ done
         }
     }
     async installUnity4x(unityVersion) {
-        const installDir = await this.GetInstallPath();
+        const hubInstallDir = await this.GetInstallPath();
         switch (process.platform) {
             case 'win32': {
-                const installPath = path.join(installDir, `Unity ${unityVersion.version}`);
+                const installDir = path.join(hubInstallDir, `Unity ${unityVersion.version}`);
+                const installPath = path.join(installDir, 'Unity.exe');
                 if (!fs.existsSync(installPath)) {
                     const url = `https://beta.unity3d.com/download/UnitySetup-${unityVersion.version}.exe`;
                     const installerPath = path.join((0, utilities_1.GetTempDir)(), `UnitySetup-${unityVersion.version}.exe`);
                     await (0, utilities_1.DownloadFile)(url, installerPath);
                     this.logger.info(`Running Unity ${unityVersion.toString()} installer...`);
                     try {
-                        await (0, utilities_1.Exec)('powershell', ['-Command', `Start-Process -FilePath \"${installerPath}\" -ArgumentList \"/S /D=${installPath}\" -Wait -NoNewWindow`], { silent: true, showCommand: true });
+                        await (0, utilities_1.Exec)('powershell', [
+                            '-Command',
+                            `Start-Process -FilePath \"${installerPath}\" -ArgumentList \"/S /D=${installDir}\" -Wait`
+                        ], { silent: true, showCommand: true });
                     }
                     catch (error) {
                         this.logger.error(`Failed to install Unity ${unityVersion.toString()}: ${error}`);
@@ -5292,12 +5353,12 @@ done
                         fs.promises.unlink(installerPath);
                     }
                 }
-                await fs.promises.access(installPath, fs.constants.R_OK);
-                return installPath;
+                await fs.promises.access(installDir, fs.constants.R_OK | fs.constants.X_OK);
+                return installDir;
             }
             case 'darwin': {
-                const installPath = path.join(installDir, `Unity ${unityVersion.version}`, 'Unity.app');
-                if (!fs.existsSync(installPath)) {
+                const installDir = path.join(hubInstallDir, `Unity ${unityVersion.version}`, 'Unity.app');
+                if (!fs.existsSync(installDir)) {
                     const url = `https://beta.unity3d.com/download/unity-${unityVersion.version}.dmg`;
                     const installerPath = path.join((0, utilities_1.GetTempDir)(), `UnitySetup-${unityVersion.version}.dmg`);
                     await (0, utilities_1.DownloadFile)(url, installerPath);
@@ -5316,7 +5377,7 @@ done
                         this.logger.debug(`Found .pkg installer: ${pkgPath}`);
                         await (0, utilities_1.Exec)('sudo', ['installer', '-pkg', pkgPath, '-target', '/', '-verboseR'], { silent: true, showCommand: true });
                         const unityAppPath = path.join('/Applications', 'Unity');
-                        const targetPath = path.join(installDir, `Unity ${unityVersion.version}`);
+                        const targetPath = path.join(hubInstallDir, `Unity ${unityVersion.version}`);
                         if (fs.existsSync(unityAppPath)) {
                             this.logger.debug(`Moving ${unityAppPath} to ${targetPath}...`);
                             await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
@@ -5350,8 +5411,8 @@ done
                         }
                     }
                 }
-                await fs.promises.access(installPath, fs.constants.R_OK);
-                return installPath;
+                await fs.promises.access(installDir, fs.constants.R_OK | fs.constants.X_OK);
+                return installDir;
             }
             default:
                 throw new Error(`Unity ${unityVersion.toString()} is not supported on ${process.platform}`);
@@ -5624,6 +5685,9 @@ class UnityVersion {
             throw new Error(`Invalid version to check against: ${version}`);
         }
         return (0, semver_1.satisfies)(coercedVersion, `^${this.semVer.version}`);
+    }
+    equals(other) {
+        return UnityVersion.compare(this, other) === 0;
     }
     static UNITY_RELEASE_PATTERN = /^(\d{1,4})\.(\d+)\.(\d+)([abcfpx])(\d+)$/;
     static VERSION_TOKEN_PATTERN = /^(\d{1,4})(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?/;
@@ -5943,16 +6007,23 @@ async function Exec(command, args, options = { silent: false, showCommand: true 
             });
             child.on('close', (code) => {
                 removeListeners();
-                // Flush any remaining buffered content
-                if (lineBuffer.length > 0) {
-                    const lines = lineBuffer.split('\n') // split by newline
-                        .map(line => line.replace(/\r$/, '')) // remove trailing carriage return
-                        .filter(line => line.length > 0); // filter out empty lines
-                    for (const line of lines) {
-                        output += `${line}\n`;
-                        if (!isSilent) {
-                            process.stdout.write(`${line}\n`);
+                try {
+                    // Flush any remaining buffered content
+                    if (lineBuffer.length > 0) {
+                        const lines = lineBuffer.split('\n') // split by newline
+                            .map(line => line.replace(/\r$/, '')) // remove trailing carriage return
+                            .filter(line => line.length > 0); // filter out empty lines
+                        for (const line of lines) {
+                            output += `${line}\n`;
+                            if (!isSilent) {
+                                process.stdout.write(`${line}\n`);
+                            }
                         }
+                    }
+                }
+                catch (error) {
+                    if (error.code !== 'EPIPE') {
+                        logger.error(`Error while flushing output: ${error}`);
                     }
                 }
                 resolve(code === null ? 0 : code);
@@ -6002,9 +6073,14 @@ async function DownloadFile(url, downloadPath) {
  * @throws An error if the deletion fails.
  */
 async function DeleteDirectory(targetPath) {
-    logger.debug(`Attempting to delete directory: ${targetPath}...`);
     if (targetPath && targetPath.length > 0 && fs.existsSync(targetPath)) {
-        await fs.promises.rm(targetPath, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 });
+        logger.debug(`Attempting to delete directory: ${targetPath}...`);
+        try {
+            await fs.promises.rm(targetPath, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 });
+        }
+        catch (error) {
+            logger.warn(`Failed to delete directory: ${targetPath}\n${error}`);
+        }
     }
 }
 /**
@@ -6276,8 +6352,7 @@ async function KillProcess(procInfo, signal = 'SIGTERM') {
         logger.debug(`Process [${procInfo.pid}] ${procInfo.name} did not exit after ${signal}, attempting to force quit...`);
         try {
             if (process.platform === 'win32') {
-                const command = `taskkill /PID ${procInfo.pid} /F /T`;
-                await Exec('powershell', ['-Command', command], { silent: true, showCommand: false });
+                await Exec('taskkill', ['/PID', procInfo.pid.toString(), '/F', '/T'], { silent: true, showCommand: false });
             }
             else { // linux and macos
                 process.kill(procInfo.pid, 'SIGKILL');
@@ -6306,7 +6381,11 @@ async function KillChildProcesses(procInfo) {
     try {
         if (process.platform === 'win32') {
             const command = `Get-CimInstance Win32_Process -Filter "ParentProcessId=${procInfo.pid}" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`;
-            await Exec('powershell', ['-Command', command], { silent: true, showCommand: true });
+            await Exec('powershell', [
+                '-NoProfile',
+                '-Command',
+                command
+            ], { silent: true, showCommand: false });
         }
         else { // linux and macos
             const psOutput = await Exec('ps', ['-eo', 'pid,ppid,comm'], { silent: true, showCommand: false });
