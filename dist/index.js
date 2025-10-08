@@ -3738,8 +3738,17 @@ class LicensingClient {
                     default:
                         throw new Error(`Unsupported platform: ${process.platform}`);
                 }
+                // Ensure the services directory exists
+                if (!fs.existsSync(servicesPath)) {
+                    await fs.promises.mkdir(servicesPath, { recursive: true });
+                }
                 const servicesConfigPath = path.join(servicesPath, 'services-config.json');
-                await fs.promises.writeFile(servicesConfigPath, Buffer.from(options.servicesConfig, 'base64'));
+                if (fs.existsSync(options.servicesConfig)) {
+                    await fs.promises.copyFile(options.servicesConfig, servicesConfigPath);
+                }
+                else {
+                    await fs.promises.writeFile(servicesConfigPath, Buffer.from(options.servicesConfig, 'base64'));
+                }
                 break;
             }
             default: { // personal and professional license activation
@@ -3897,7 +3906,7 @@ var LogLevel;
     LogLevel["DEBUG"] = "debug";
     LogLevel["CI"] = "ci";
     LogLevel["INFO"] = "info";
-    LogLevel["WARN"] = "warn";
+    LogLevel["WARN"] = "warning";
     LogLevel["ERROR"] = "error";
 })(LogLevel || (exports.LogLevel = LogLevel = {}));
 class Logger {
@@ -4159,7 +4168,8 @@ class UnityEditor {
     GetTemplatePath(template) {
         const templates = this.GetAvailableTemplates();
         if (templates.length === 0) {
-            throw new Error('No Unity templates found!');
+            this.logger.warn(`No Unity templates found for ${this.version.toString()}`);
+            return undefined;
         }
         // Build a regex to match the template name and version
         // e.g., com.unity.template.3d(-cross-platform)?.*[0-9]+\.[0-9]+\.[0-9]+\.tgz
@@ -4174,13 +4184,15 @@ class UnityEditor {
         // Filter files by regex
         const matches = templates.filter(t => regex.test(path.basename(t)));
         if (matches.length === 0) {
-            throw new Error(`${template} path not found!`);
+            this.logger.warn(`No matching template path found for ${template}`);
+            return undefined;
         }
         // Pick the longest match (as in the shell script: sort by length descending)
         matches.sort((a, b) => b.length - a.length);
         const templatePath = matches[0];
         if (!templatePath) {
-            throw new Error('No matching template path found.');
+            this.logger.warn(`No matching template path found for ${template}`);
+            return undefined;
         }
         return path.normalize(templatePath);
     }
@@ -4209,6 +4221,7 @@ class UnityEditor {
             .filter(f => f.endsWith('.tgz'))
             .map(f => path.join(templateDir, f));
         templates.push(...packages);
+        this.logger.debug(`Found ${templates.length} templates:\n${templates.map(t => `  - ${t}`).join('\n')}`);
         return templates;
     }
     /**
@@ -4218,7 +4231,7 @@ class UnityEditor {
      */
     async Run(command) {
         let isCancelled = false;
-        let exitCode = 1;
+        let exitCode = undefined;
         let procInfo = null;
         let logTail = null;
         let unityProcess;
@@ -4256,14 +4269,30 @@ class UnityEditor {
                 command.args.push('-logFile', this.GenerateLogFilePath(command.projectPath));
             }
             const logPath = (0, utilities_1.GetArgumentValueAsString)('-logFile', command.args);
+            logTail = (0, utilities_1.TailLogFile)(logPath);
             const commandStr = `\x1b[34m${this.editorPath} ${command.args.join(' ')}\x1b[0m`;
             this.logger.startGroup(commandStr);
-            if (process.platform === 'linux' && !command.args.includes('-nographics')) {
+            if (this.version.isLegacy() && process.platform === 'darwin' && process.arch === 'arm64') {
+                throw new Error(`Cannot execute Unity ${this.version.toString()} on Apple Silicon Macs.`);
+            }
+            if (process.platform === 'linux' &&
+                !command.args.includes('-nographics')) {
                 unityProcess = (0, child_process_1.spawn)('xvfb-run', [this.editorPath, ...command.args], {
                     stdio: ['ignore', 'ignore', 'ignore'],
                     env: {
                         ...process.env,
                         DISPLAY: ':99',
+                        UNITY_THISISABUILDMACHINE: '1'
+                    }
+                });
+            }
+            else if (process.arch === 'arm64' &&
+                process.platform === 'darwin' &&
+                this.version.architecture === 'X86_64') { // Force the Unity Editor to run under Rosetta 2 on Apple Silicon Macs if the editor is x86_64
+                unityProcess = (0, child_process_1.spawn)('arch', ['-x86_64', this.editorPath, ...command.args], {
+                    stdio: ['ignore', 'ignore', 'ignore'],
+                    env: {
+                        ...process.env,
                         UNITY_THISISABUILDMACHINE: '1'
                     }
                 });
@@ -4277,21 +4306,20 @@ class UnityEditor {
                     }
                 });
             }
-            if (!unityProcess?.pid) {
+            if (!unityProcess?.pid || unityProcess.killed) {
                 throw new Error('Failed to start Unity process!');
             }
             process.once('SIGINT', onCancel);
             process.once('SIGTERM', onCancel);
             procInfo = { pid: unityProcess.pid, ppid: process.pid, name: this.editorPath };
             this.logger.debug(`Unity process started with pid: ${procInfo.pid}`);
-            await (0, utilities_1.WaitForFileToBeCreatedAndReadable)(logPath, 10_000);
-            logTail = (0, utilities_1.TailLogFile)(logPath);
             exitCode = await new Promise((resolve, reject) => {
                 unityProcess.on('close', (code) => {
                     logTail?.stopLogTail();
                     resolve(code === null ? 1 : code);
                 });
                 unityProcess.on('error', (error) => {
+                    this.logger.error(`Unity process error: ${error}`);
                     logTail?.stopLogTail();
                     reject(error);
                 });
@@ -4312,7 +4340,10 @@ class UnityEditor {
             this.logger.endGroup();
             if (!isCancelled) {
                 await tryKillEditorProcesses();
-                if (exitCode !== 0) {
+                if (exitCode === undefined) {
+                    throw Error('Failed to start Unity!');
+                }
+                else if (exitCode !== 0) {
                     throw Error(`Unity failed with exit code ${exitCode}`);
                 }
             }
@@ -4907,9 +4938,10 @@ chmod -R 777 "$hubPath"`]);
      * Attempts to find or install the specified Unity Editor version with the requested modules.
      * @param unityVersion The Unity version to find or install.
      * @param modules The modules to install alongside the editor.
+     * @param channels The channels to consider when searching for the editor. Can be 'f' (final), 'p' (patch), 'b' (beta), 'a' (alpha), or 'x' (experimental). Default is ['f'].
      * @returns The path to the Unity Editor executable.
      */
-    async GetEditor(unityVersion, modules = []) {
+    async GetEditor(unityVersion, modules = [], channels = ['f']) {
         const retryErrorMessages = [
             'Editor already installed in this location',
             'failed to download. Error given: Request timeout'
@@ -4920,7 +4952,8 @@ chmod -R 777 "$hubPath"`]);
             try {
                 if (!resolvedVersion.isFullyQualified()) {
                     const releases = await this.ListAvailableReleases();
-                    resolvedVersion = resolvedVersion.findMatch(releases);
+                    logging_1.Logger.instance.debug(`Found ${releases.length} available Unity releases, searching channels: ${channels.join(', ')}`);
+                    resolvedVersion = resolvedVersion.findMatch(releases, channels);
                 }
                 if (!resolvedVersion?.changeset) {
                     const unityReleaseInfo = await this.GetEditorReleaseInfo(resolvedVersion);
@@ -5037,8 +5070,14 @@ chmod -R 777 "$hubPath"`]);
         const output = await this.Exec(['editors', '--releases']);
         // filter out version lines only 2021.3.45f2 (may include installed path following version)
         return output.split('\n')
-            .filter(line => /^\d{1,4}\.\d+\.\d+[abcfpx]?\d*/.test(line.trim()))
-            .map(line => line.trim());
+            .map(line => line.trim())
+            .map(line => {
+            const match = line.match(/^(\d{1,4}\.\d+\.\d+[abcfpx]?\d*)/);
+            return match ? match[1] : undefined;
+        })
+            .filter((line) => !!line && /^\d{1,4}\.\d+\.\d+[abcfpx]?\d*/.test(line))
+            .map(line => new unity_version_1.UnityVersion(line))
+            .sort((a, b) => unity_version_1.UnityVersion.compare(b, a)); // Sort descending by version
     }
     async checkInstalledEditors(unityVersion, failOnEmpty, installDir = undefined, allowPartialMatches = true) {
         let editorPath = undefined;
@@ -5656,7 +5695,7 @@ class UnityVersion {
     isFullyQualified() {
         return UnityVersion.UNITY_RELEASE_PATTERN.test(this.version);
     }
-    findMatch(versions) {
+    findMatch(versions, channels = ['f']) {
         const releaseInfos = UnityVersion.extractReleaseVersions(versions);
         const releaseMap = new Map(releaseInfos.map(info => [info.version, info]));
         const exactMatch = releaseMap.get(this.version);
@@ -5664,15 +5703,20 @@ class UnityVersion {
             this.logger.debug(`Exact match found for ${this.version}`);
             return new UnityVersion(exactMatch.version, this.changeset ?? null, this.architecture);
         }
-        if (UnityVersion.needsFallbackSearch(this.version)) {
-            const candidates = UnityVersion.resolveFallbackCandidates(this.version, releaseInfos);
-            this.logger.debug(`Searching for fallback match for ${this.version}:`);
-            candidates.forEach(release => {
-                this.logger.debug(`  > ${release.version}`);
+        this.logger.debug(`ReleaseInfos:`);
+        releaseInfos.forEach(release => {
+            this.logger.debug(`  > ${release.version}`);
+        });
+        if (UnityVersion.needsGlobSearch(this.version)) {
+            this.logger.debug(`Performing glob search for ${this.version} in channels: ${channels.join(', ')} ...`);
+            const candidates = UnityVersion.resolveVersionCandidates(this.version, releaseInfos, channels);
+            this.logger.debug(`Searching for match for ${this.version} from candidates:`);
+            candidates.forEach(candidate => {
+                this.logger.debug(`  > ${candidate.version}`);
             });
             const latest = candidates[0];
             if (latest) {
-                this.logger.debug(`Found fallback Unity ${latest.version}`);
+                this.logger.debug(`Found Unity ${latest.version}`);
                 return new UnityVersion(latest.version, null, this.architecture);
             }
         }
@@ -5694,9 +5738,9 @@ class UnityVersion {
     static UNITY_CHANNEL_ORDER = {
         a: 0,
         b: 1,
-        c: 2,
-        f: 3,
-        p: 4,
+        p: 2,
+        c: 3,
+        f: 4,
         x: 5
     };
     static createSemVer(version) {
@@ -5758,6 +5802,9 @@ class UnityVersion {
         };
     }
     static parseReleaseInfo(release) {
+        if (release instanceof UnityVersion) {
+            release = release.version;
+        }
         const versionMatch = release.match(/(\d{1,4}\.\d+\.\d+[abcfpx]\d+)/);
         if (!versionMatch) {
             return null;
@@ -5781,22 +5828,27 @@ class UnityVersion {
             revision: parseInt(revisionStr, 10)
         };
     }
-    static needsFallbackSearch(version) {
+    static needsGlobSearch(version) {
         return /\.x($|[^\w])/.test(version) || /\.\*($|[^\w])/.test(version) || !UnityVersion.UNITY_RELEASE_PATTERN.test(version);
     }
-    static resolveFallbackCandidates(version, releases) {
+    static resolveVersionCandidates(version, releases, channels = ['f']) {
         const match = UnityVersion.VERSION_TOKEN_PATTERN.exec(version);
         if (!match) {
+            logging_1.Logger.instance.warn(`Invalid version pattern: ${version}`);
             return [];
         }
         const [, majorToken, minorToken] = match;
         const majorValue = majorToken ? parseInt(majorToken, 10) : Number.NaN;
         const normalizedMajor = Number.isNaN(majorValue) ? undefined : majorValue;
         const requestedMinor = UnityVersion.parseMinorToken(minorToken);
-        let candidates = UnityVersion.filterFinalReleases(releases, normalizedMajor, requestedMinor);
+        let candidates = UnityVersion.filterFinalReleases(releases, normalizedMajor, requestedMinor, channels);
         if (!candidates.length && minorToken === '0') {
-            candidates = UnityVersion.filterFinalReleases(releases, normalizedMajor);
+            candidates = UnityVersion.filterFinalReleases(releases, normalizedMajor, undefined, channels);
         }
+        logging_1.Logger.instance.debug(`Found ${candidates.length} candidate(s) for version pattern ${version}`);
+        candidates.forEach(release => {
+            logging_1.Logger.instance.debug(`  - ${release.version}`);
+        });
         return candidates.sort(UnityVersion.compareFinalReleaseInfo);
     }
     static parseMinorToken(token) {
@@ -5806,8 +5858,8 @@ class UnityVersion {
         const value = parseInt(token, 10);
         return Number.isNaN(value) ? undefined : value;
     }
-    static filterFinalReleases(releases, major, minor) {
-        return releases.filter(release => release.channel === 'f' &&
+    static filterFinalReleases(releases, major, minor, channels = ['f']) {
+        return releases.filter(release => channels.includes(release.channel) &&
             (major === undefined || release.major === major) &&
             (minor === undefined || release.minor === minor));
     }
@@ -5818,7 +5870,12 @@ class UnityVersion {
         if (a.patch !== b.patch) {
             return b.patch - a.patch;
         }
-        return b.revision - a.revision;
+        if (a.revision !== b.revision) {
+            return b.revision - a.revision;
+        }
+        // compare channels in reverse order (f > p > b > a)
+        return (UnityVersion.UNITY_CHANNEL_ORDER[b.channel] ?? Number.MAX_SAFE_INTEGER) -
+            (UnityVersion.UNITY_CHANNEL_ORDER[a.channel] ?? Number.MAX_SAFE_INTEGER);
     }
 }
 exports.UnityVersion = UnityVersion;
@@ -5876,7 +5933,6 @@ exports.GetArgumentValueAsString = GetArgumentValueAsString;
 exports.ReadPidFile = ReadPidFile;
 exports.Delay = Delay;
 exports.TailLogFile = TailLogFile;
-exports.WaitForFileToBeCreatedAndReadable = WaitForFileToBeCreatedAndReadable;
 exports.WaitForFileToBeUnlocked = WaitForFileToBeUnlocked;
 exports.TestFileAccess = TestFileAccess;
 exports.KillProcess = KillProcess;
@@ -6187,6 +6243,9 @@ function TailLogFile(logPath) {
     const logPollingInterval = 250;
     async function readNewLogContent() {
         try {
+            if (!fs.existsSync(logPath)) {
+                return;
+            }
             const stats = await fs.promises.stat(logPath);
             if (stats.size < lastSize) {
                 lastSize = 0;
@@ -6228,7 +6287,7 @@ function TailLogFile(logPath) {
                     await readNewLogContent();
                 }
                 // Final read to capture any remaining content after tailing stops
-                await WaitForFileToBeUnlocked(logPath, 10000);
+                await WaitForFileToBeUnlocked(logPath, 10_000);
                 await readNewLogContent();
                 try {
                     process.stdout.write('\n');
@@ -6251,23 +6310,6 @@ function TailLogFile(logPath) {
     return { tailPromise, stopLogTail };
 }
 /**
- * Waits for a file to be created and become readable within a timeout.
- * @param filePath The path of the file to wait for.
- * @param timeout The maximum time to wait in milliseconds. Default is 30000 (30 seconds).
- */
-async function WaitForFileToBeCreatedAndReadable(filePath, timeout = 30000) {
-    const pollInterval = 100;
-    const deadline = Date.now() + timeout;
-    while (Date.now() < deadline) {
-        // test file access by attempting to open the file with read only access
-        if (await TestFileAccess(filePath, fs.constants.O_RDONLY)) {
-            return;
-        }
-        await Delay(pollInterval);
-    }
-    throw new Error(`Timed out waiting for file to become readable: ${filePath}`);
-}
-/**
  * Waits for a file to be unlocked (not exclusively locked by another process).
  * If the file does not exist, it is considered unlocked.
  * If the file exists, attempts to open it with read/write access.
@@ -6285,7 +6327,7 @@ async function WaitForFileToBeUnlocked(filePath, timeout = 30000) {
         }
         await Delay(pollInterval);
     }
-    throw new Error(`Timed out waiting for file to be unlocked: ${filePath}`);
+    throw new Error(`Timed out after ${timeout / 1000} seconds waiting for file to be unlocked: ${filePath}`);
 }
 /**
  * Tests if a file can be opened with the specified flags.
@@ -8699,6 +8741,7 @@ const isSatisfiable = (comparators, options) => {
 // already replaced the hyphen ranges
 // turn into a set of JUST comparators.
 const parseComparator = (comp, options) => {
+  comp = comp.replace(re[t.BUILD], '')
   debug('comp', comp, options)
   comp = replaceCarets(comp, options)
   debug('caret', comp)
@@ -9119,11 +9162,25 @@ class SemVer {
       other = new SemVer(other, this.options)
     }
 
-    return (
-      compareIdentifiers(this.major, other.major) ||
-      compareIdentifiers(this.minor, other.minor) ||
-      compareIdentifiers(this.patch, other.patch)
-    )
+    if (this.major < other.major) {
+      return -1
+    }
+    if (this.major > other.major) {
+      return 1
+    }
+    if (this.minor < other.minor) {
+      return -1
+    }
+    if (this.minor > other.minor) {
+      return 1
+    }
+    if (this.patch < other.patch) {
+      return -1
+    }
+    if (this.patch > other.patch) {
+      return 1
+    }
+    return 0
   }
 
   comparePre (other) {
@@ -10024,6 +10081,10 @@ module.exports = debug
 
 const numeric = /^[0-9]+$/
 const compareIdentifiers = (a, b) => {
+  if (typeof a === 'number' && typeof b === 'number') {
+    return a === b ? 0 : a < b ? -1 : 1
+  }
+
   const anum = numeric.test(a)
   const bnum = numeric.test(b)
 
