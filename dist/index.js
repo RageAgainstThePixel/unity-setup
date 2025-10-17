@@ -3287,8 +3287,9 @@ async function getSdkManager(rootEditorPath) {
 }
 async function getAndroidSdkPath(rootEditorPath, androidTargetSdk) {
     logger.ci(`Attempting to locate Android SDK Path...\n  > editorPath: ${rootEditorPath}\n  > androidTargetSdk: ${androidTargetSdk}`);
-    const sdkPath = await (0, utilities_1.ResolveGlobToPath)([rootEditorPath, '**', 'PlaybackEngines', 'AndroidPlayer', 'SDK', 'platforms', `android-${androidTargetSdk}/`]);
+    let sdkPath;
     try {
+        sdkPath = await (0, utilities_1.ResolveGlobToPath)([rootEditorPath, '**', 'PlaybackEngines', 'AndroidPlayer', 'SDK', 'platforms', `android-${androidTargetSdk}/`]);
         await fs_1.default.promises.access(sdkPath, fs_1.default.constants.R_OK);
     }
     catch (error) {
@@ -4677,19 +4678,23 @@ class UnityHub {
         finally {
             this.logger.endGroup();
             const match = output.match(/Assertion (?<assert>.+) failed/g);
+            const retryConditions = [
+                'async hook stack has become corrupted',
+                'failed to download'
+            ];
             if (match ||
-                output.includes('async hook stack has become corrupted')) {
+                retryConditions.some(s => output.includes(s))) {
                 this.logger.warn(`Install failed, retrying...`);
                 return await this.Exec(args);
             }
-            if (exitCode > 0 || output.includes('Error:')) {
-                const error = output.match(/Error: (.+)/);
+            if (exitCode > 0 || output.includes('Error')) {
+                const error = output.match(/Error(?: given)?:\s*(.+)/);
                 const errorMessage = error && error[1] ? error[1] : 'Unknown Error';
                 switch (errorMessage) {
                     case 'No modules found to install.':
                         break;
                     default:
-                        throw new Error(`Failed to execute Unity Hub: [${exitCode}] ${errorMessage}`);
+                        throw new Error(`Failed to execute Unity Hub (exit code: ${exitCode}) ${errorMessage}`);
                 }
             }
             output = output.split('\n')
@@ -5318,12 +5323,12 @@ done
         return JSON.parse(modulesContent);
     }
     async installUnity(unityVersion, modules) {
-        this.logger.ci(`Installing Unity ${unityVersion.toString()}...`);
         if (unityVersion.isLegacy()) {
             return await this.installUnity4x(unityVersion);
         }
         if (process.platform === 'linux') {
             const arch = process.arch === 'x64' ? 'amd64' : process.arch === 'arm64' ? 'arm64' : process.arch;
+            // install older versions of libssl for older Unity versions
             if (['2019.1', '2019.2'].some(v => unityVersion.version.startsWith(v))) {
                 const url = `https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.0.0_1.0.2g-1ubuntu4.20_${arch}.deb`;
                 const downloadPath = path.join((0, utilities_1.GetTempDir)(), `libssl1.0.0_1.0.2g-1ubuntu4.20_${arch}.deb`);
@@ -5349,6 +5354,7 @@ done
                 }
             }
         }
+        this.logger.ci(`Installing Unity ${unityVersion.toString()}...`);
         const args = ['install', '--version', unityVersion.version];
         if (unityVersion.changeset) {
             args.push('--changeset', unityVersion.changeset);
@@ -5364,11 +5370,13 @@ done
             args.push('--cm');
         }
         const output = await this.Exec(args, { showCommand: true, silent: false });
-        if (output.includes(`Error while installing an editor or a module from changeset`)) {
+        if (output.includes(`Error while installing an editor or a module from changeset`) ||
+            output.includes(`failed to download.`)) {
             throw new Error(`Failed to install Unity ${unityVersion.toString()}`);
         }
     }
     async installUnity4x(unityVersion) {
+        this.logger.ci(`Installing Unity ${unityVersion.toString()}...`);
         const hubInstallDir = await this.GetInstallPath();
         switch (process.platform) {
             case 'win32': {
