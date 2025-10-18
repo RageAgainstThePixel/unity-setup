@@ -3308,10 +3308,18 @@ async function execSdkManager(sdkManagerPath, javaPath, args) {
     }
     try {
         exitCode = await new Promise((resolve, reject) => {
-            const child = (0, child_process_1.spawn)(sdkManagerPath, args, {
+            let cmd = sdkManagerPath;
+            let cmdArgs = args;
+            if (process.platform === 'win32') {
+                if (!(0, utilities_1.isProcessElevated)()) {
+                    throw new Error('Android SDK installation requires elevated (administrator) privileges. Please rerun as Administrator.');
+                }
+                cmd = 'cmd.exe';
+                cmdArgs = ['/c', sdkManagerPath, ...args];
+            }
+            const child = (0, child_process_1.spawn)(cmd, cmdArgs, {
                 stdio: ['pipe', 'pipe', 'pipe'],
                 env: {
-                    ...process.env,
                     JAVA_HOME: process.platform === 'win32' ? `"${javaPath}"` : javaPath
                 }
             });
@@ -3331,7 +3339,7 @@ async function execSdkManager(sdkManagerPath, javaPath, args) {
             function handleDataStream(data) {
                 const chunk = data.toString();
                 output += chunk;
-                process.stderr.write(chunk);
+                process.stdout.write(chunk);
             }
             const acceptBuffer = Buffer.from(Array(10).fill('y').join(os_1.default.EOL), 'utf8');
             child.stdin.write(acceptBuffer);
@@ -5942,6 +5950,7 @@ exports.WaitForFileToBeUnlocked = WaitForFileToBeUnlocked;
 exports.TestFileAccess = TestFileAccess;
 exports.KillProcess = KillProcess;
 exports.KillChildProcesses = KillChildProcesses;
+exports.isProcessElevated = isProcessElevated;
 const os = __importStar(__nccwpck_require__(2037));
 const fs = __importStar(__nccwpck_require__(7147));
 const path = __importStar(__nccwpck_require__(1017));
@@ -6455,6 +6464,20 @@ async function KillChildProcesses(procInfo) {
     catch (error) {
         logger.error(`Failed to kill child processes of pid ${procInfo.pid}:\n${JSON.stringify(error)}`);
     }
+}
+/**
+ * Checks if the current process is running with elevated (administrator) privileges.
+ * @returns True if the process is elevated, false otherwise.
+ */
+function isProcessElevated() {
+    if (process.platform !== 'win32') {
+        return true;
+    } // We can sudo easily on non-windows platforms
+    const probe = (0, child_process_1.spawnSync)('powershell.exe', [
+        '-NoLogo', '-NoProfile', '-Command',
+        "[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent().IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"
+    ], { encoding: 'utf8' });
+    return probe.status === 0 && probe.stdout.trim().toLowerCase() === 'true';
 }
 //# sourceMappingURL=utilities.js.map
 
