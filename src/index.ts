@@ -37,7 +37,7 @@ const main = async () => {
             core.exportVariable('UNITY_EDITOR_PATH', unityEditor.editorPath); // always sets to the latest installed editor path
 
             if (modules.includes('android') && unityProjectPath !== undefined) {
-                await CheckAndroidSdkInstalled(unityEditor.editorPath, unityProjectPath);
+                await CheckAndroidSdkInstalled(unityEditor, unityProjectPath);
             }
 
             installedEditors.push({ version: unityVersion.version, path: unityEditor.editorPath });
