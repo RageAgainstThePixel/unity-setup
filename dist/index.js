@@ -3210,20 +3210,18 @@ const os_1 = __importDefault(__nccwpck_require__(2037));
 const path_1 = __importDefault(__nccwpck_require__(1017));
 const child_process_1 = __nccwpck_require__(2081);
 const logging_1 = __nccwpck_require__(4486);
-const unity_editor_1 = __nccwpck_require__(8944);
 const utilities_1 = __nccwpck_require__(9746);
 const logger = logging_1.Logger.instance;
 /**
  * Checks if the required Android SDK is installed for the given Unity Editor and Project.
- * @param editorPath The path to the Unity Editor executable.
+ * @param editor The UnityEditor instance.
  * @param projectPath The path to the Unity project.
  * @returns A promise that resolves when the check is complete.
  */
-async function CheckAndroidSdkInstalled(editorPath, projectPath) {
-    logger.ci(`Checking Android SDK installation for:\n  > Editor: ${editorPath}\n  > Project: ${projectPath}`);
+async function CheckAndroidSdkInstalled(editor, projectPath) {
+    logger.ci(`Checking Android SDK installation for:\n  > Editor: ${editor.editorRootPath}\n  > Project: ${projectPath}`);
     let sdkPath = undefined;
     await createRepositoryCfg();
-    const rootEditorPath = unity_editor_1.UnityEditor.GetEditorRootPath(editorPath);
     const projectSettingsPath = path_1.default.join(projectPath, 'ProjectSettings/ProjectSettings.asset');
     const projectSettingsContent = await (0, utilities_1.ReadFileContents)(projectSettingsPath);
     const matchResult = projectSettingsContent.match(/(?<=AndroidTargetSdkVersion: )\d+/);
@@ -3232,20 +3230,20 @@ async function CheckAndroidSdkInstalled(editorPath, projectPath) {
     if (androidTargetSdk === undefined || androidTargetSdk === 0) {
         return;
     }
-    sdkPath = await getAndroidSdkPath(rootEditorPath, androidTargetSdk);
+    sdkPath = await getAndroidSdkPath(editor, androidTargetSdk);
     if (sdkPath) {
         logger.ci(`Target Android SDK android-${androidTargetSdk} Installed in:\n  > "${sdkPath}"`);
         return;
     }
     logger.info(`Installing Android Target SDK:\n  > android-${androidTargetSdk}`);
-    const sdkManagerPath = await getSdkManager(rootEditorPath);
-    const javaSdk = await getJDKPath(rootEditorPath);
+    const sdkManagerPath = await getSdkManager(editor);
+    const javaSdk = await getJDKPath(editor);
     await execSdkManager(sdkManagerPath, javaSdk, ['--licenses']);
     await execSdkManager(sdkManagerPath, javaSdk, ['--update']);
     await execSdkManager(sdkManagerPath, javaSdk, ['platform-tools', `platforms;android-${androidTargetSdk}`]);
-    sdkPath = await getAndroidSdkPath(rootEditorPath, androidTargetSdk);
+    sdkPath = await getAndroidSdkPath(editor, androidTargetSdk);
     if (!sdkPath) {
-        throw new Error(`Failed to install android-${androidTargetSdk} in ${rootEditorPath}`);
+        throw new Error(`Failed to install android-${androidTargetSdk} in ${editor.editorRootPath}`);
     }
     logger.ci(`Target Android SDK Installed in:\n  > "${sdkPath}"`);
 }
@@ -3255,27 +3253,73 @@ async function createRepositoryCfg() {
     const fileHandle = await fs_1.default.promises.open(path_1.default.join(androidPath, 'repositories.cfg'), 'w');
     await fileHandle.close();
 }
-async function getJDKPath(rootEditorPath) {
-    const jdkPath = await (0, utilities_1.ResolveGlobToPath)([rootEditorPath, '**', 'AndroidPlayer', 'OpenJDK']);
-    if (!jdkPath) {
-        throw new Error(`Failed to resolve OpenJDK in ${rootEditorPath}`);
+async function getJDKPath(editor) {
+    let jdkPath = undefined;
+    if (editor.version.isGreaterThanOrEqualTo('2019.0.0')) {
+        logger.debug('Using JDK bundled with Unity 2019+');
+        jdkPath = await (0, utilities_1.ResolveGlobToPath)([editor.editorRootPath, '**', 'AndroidPlayer', 'OpenJDK/']);
+        if (!jdkPath) {
+            throw new Error(`Failed to resolve OpenJDK in ${editor.editorRootPath}`);
+        }
+    }
+    else {
+        logger.debug('Using system JDK for Unity versions prior to 2019');
+        jdkPath = process.env.JAVA_HOME || process.env.JDK_HOME;
+        if (!jdkPath) {
+            throw new Error('JDK installation not found: No system JAVA_HOME or JDK_HOME defined');
+        }
     }
     await fs_1.default.promises.access(jdkPath, fs_1.default.constants.R_OK);
     logger.ci(`jdkPath:\n  > "${jdkPath}"`);
     return jdkPath;
 }
-async function getSdkManager(rootEditorPath) {
+async function getSdkManager(editor) {
     let globPath = [];
-    switch (process.platform) {
-        case 'darwin':
-        case 'linux':
-            globPath = [rootEditorPath, '**', 'AndroidPlayer', '**', 'sdkmanager'];
-            break;
-        case 'win32':
-            globPath = [rootEditorPath, '**', 'AndroidPlayer', '**', 'sdkmanager.bat'];
-            break;
-        default:
-            throw new Error(`Unsupported platform: ${process.platform}`);
+    if (editor.version.range('>=2019.0.0 <2021.0.0')) {
+        logger.debug('Using sdkmanager bundled with Unity 2019 and 2020');
+        switch (process.platform) {
+            case 'darwin':
+            case 'linux':
+                globPath = [editor.editorRootPath, '**', 'AndroidPlayer', '**', 'sdkmanager'];
+                break;
+            case 'win32':
+                globPath = [editor.editorRootPath, '**', 'AndroidPlayer', '**', 'sdkmanager.bat'];
+                break;
+            default:
+                throw new Error(`Unsupported platform: ${process.platform}`);
+        }
+    }
+    else if (editor.version.range('>=2021.0.0')) {
+        logger.debug('Using cmdline-tools sdkmanager bundled with Unity 2021+');
+        switch (process.platform) {
+            case 'darwin':
+            case 'linux':
+                globPath = [editor.editorRootPath, '**', 'AndroidPlayer', '**', 'cmdline-tools', '**', 'sdkmanager'];
+                break;
+            case 'win32':
+                globPath = [editor.editorRootPath, '**', 'AndroidPlayer', '**', 'cmdline-tools', '**', 'sdkmanager.bat'];
+                break;
+            default:
+                throw new Error(`Unsupported platform: ${process.platform}`);
+        }
+    }
+    else {
+        logger.debug('Using system sdkmanager');
+        const systemSdkPath = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME;
+        if (!systemSdkPath) {
+            throw new Error('Android installation not found: No system ANDROID_SDK_ROOT or ANDROID_HOME defined');
+        }
+        switch (process.platform) {
+            case 'darwin':
+            case 'linux':
+                globPath = [systemSdkPath, 'cmdline-tools', 'latest', 'bin', 'sdkmanager'];
+                break;
+            case 'win32':
+                globPath = [systemSdkPath, 'cmdline-tools', 'latest', 'bin', 'sdkmanager.bat'];
+                break;
+            default:
+                throw new Error(`Unsupported platform: ${process.platform}`);
+        }
     }
     const sdkmanagerPath = await (0, utilities_1.ResolveGlobToPath)(globPath);
     if (!sdkmanagerPath) {
@@ -3285,18 +3329,35 @@ async function getSdkManager(rootEditorPath) {
     logger.ci(`sdkmanagerPath:\n  > "${sdkmanagerPath}"`);
     return sdkmanagerPath;
 }
-async function getAndroidSdkPath(rootEditorPath, androidTargetSdk) {
-    logger.ci(`Attempting to locate Android SDK Path...\n  > editorPath: ${rootEditorPath}\n  > androidTargetSdk: ${androidTargetSdk}`);
+async function getAndroidSdkPath(editor, androidTargetSdk) {
+    logger.ci(`Attempting to locate Android SDK Path...\n  > editorRootPath: ${editor.editorRootPath}\n  > androidTargetSdk: ${androidTargetSdk}`);
     let sdkPath;
-    try {
-        sdkPath = await (0, utilities_1.ResolveGlobToPath)([rootEditorPath, '**', 'PlaybackEngines', 'AndroidPlayer', 'SDK', 'platforms', `android-${androidTargetSdk}/`]);
-        await fs_1.default.promises.access(sdkPath, fs_1.default.constants.R_OK);
+    // if 2019+ test editor path, else use system android installation
+    if (editor.version.isGreaterThanOrEqualTo('2019.0.0')) {
+        logger.debug('Using Android SDK bundled with Unity 2019+');
+        try {
+            sdkPath = await (0, utilities_1.ResolveGlobToPath)([editor.editorRootPath, '**', 'PlaybackEngines', 'AndroidPlayer', 'SDK', 'platforms', `android-${androidTargetSdk}/`]);
+        }
+        catch (error) {
+            logger.debug(`android-${androidTargetSdk} not installed`);
+            return undefined;
+        }
     }
-    catch (error) {
-        logger.debug(`android-${androidTargetSdk} not installed`);
-        return undefined;
+    else { // fall back to system android installation
+        logger.debug('Using system Android SDK for Unity versions prior to 2019');
+        try {
+            const systemSdkPath = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME;
+            if (!systemSdkPath) {
+                logger.debug('Android installation not found: No system ANDROID_SDK_ROOT or ANDROID_HOME defined');
+                return undefined;
+            }
+            sdkPath = await (0, utilities_1.ResolveGlobToPath)([systemSdkPath, 'platforms', `android-${androidTargetSdk}/`]);
+        }
+        catch (error) {
+            logger.debug(`android-${androidTargetSdk} not installed`);
+            return undefined;
+        }
     }
-    logger.ci(`Android sdkPath:\n  > "${sdkPath}"`);
     return sdkPath;
 }
 async function execSdkManager(sdkManagerPath, javaPath, args) {
@@ -3306,22 +3367,24 @@ async function execSdkManager(sdkManagerPath, javaPath, args) {
     if (sdkManagerPath.includes(path_1.default.sep)) {
         fs_1.default.accessSync(sdkManagerPath, fs_1.default.constants.R_OK | fs_1.default.constants.X_OK);
     }
+    if (process.platform === 'win32' && !await (0, utilities_1.isProcessElevated)()) {
+        throw new Error('Android SDK installation requires elevated (administrator) privileges. Please rerun as Administrator.');
+    }
     try {
-        exitCode = await new Promise((resolve, reject) => {
+        exitCode = await new Promise(async (resolve, reject) => {
+            let cmdEnv = { ...process.env };
+            cmdEnv.JAVA_HOME = javaPath;
+            cmdEnv.JDK_HOME = javaPath;
+            cmdEnv.SKIP_JDK_VERSION_CHECK = 'true';
             let cmd = sdkManagerPath;
             let cmdArgs = args;
             if (process.platform === 'win32') {
-                if (!(0, utilities_1.isProcessElevated)()) {
-                    throw new Error('Android SDK installation requires elevated (administrator) privileges. Please rerun as Administrator.');
-                }
                 cmd = 'cmd.exe';
                 cmdArgs = ['/c', sdkManagerPath, ...args];
             }
             const child = (0, child_process_1.spawn)(cmd, cmdArgs, {
                 stdio: ['pipe', 'pipe', 'pipe'],
-                env: {
-                    JAVA_HOME: process.platform === 'win32' ? `"${javaPath}"` : javaPath
-                }
+                env: cmdEnv
             });
             const sigintHandler = () => child.kill('SIGINT');
             const sigtermHandler = () => child.kill('SIGTERM');
@@ -4163,7 +4226,34 @@ class UnityEditor {
         else {
             this.version = version;
         }
-        this.autoAddNoGraphics = this.version.satisfies('>2018.0.0');
+        this.autoAddNoGraphics = this.version.isGreaterThan('2018.0.0');
+        const hubMetaDataPath = path.join(this.editorRootPath, 'metadata.hub.json');
+        if (!fs.existsSync(hubMetaDataPath)) {
+            const metadata = {
+                productName: `Unity ${this.version.version.toString()}`,
+                entitlements: [],
+                releaseStream: '',
+                isLTS: null
+            };
+            fs.writeFileSync(hubMetaDataPath, JSON.stringify(metadata), { encoding: 'utf-8' });
+        }
+        else {
+            const metadataContent = fs.readFileSync(hubMetaDataPath, { encoding: 'utf-8' });
+            const metadata = JSON.parse(metadataContent);
+            if (!metadata.productName) {
+                // projectName must be the first property
+                const newMetadata = {
+                    productName: `Unity ${this.version.version.toString()}`
+                };
+                Object.keys(metadata).forEach(key => {
+                    if (key === 'productName') {
+                        return;
+                    }
+                    newMetadata[key] = metadata[key];
+                });
+                fs.writeFileSync(hubMetaDataPath, JSON.stringify(newMetadata), { encoding: 'utf-8' });
+            }
+        }
     }
     /**
      * Get the full path to a Unity project template based on the provided template name or regex pattern.
@@ -4177,12 +4267,12 @@ class UnityEditor {
             this.logger.warn(`No Unity templates found for ${this.version.toString()}`);
             return undefined;
         }
-        // Build a regex to match the template name and version
-        // e.g., com.unity.template.3d(-cross-platform)?.*[0-9]+\.[0-9]+\.[0-9]+\.tgz
-        // Accepts either a full regex or a simple string
+        // Build a regex to match the template name and optional version suffix
+        // e.g., com.unity.template.3d(-cross-platform)?.*
+        // Supports files (.tgz / .tar.gz) and legacy folder templates without a suffix.
         let regex;
         try {
-            regex = new RegExp(`^${template}.*[0-9]+\\.[0-9]+\\.[0-9]+\\.tgz$`);
+            regex = new RegExp(`^${template}(?:[-.].*)?(?:\.tgz|\.tar\.gz)?$`);
         }
         catch (e) {
             throw new Error(`Invalid template regex: ${template}`);
@@ -4207,9 +4297,12 @@ class UnityEditor {
      * @returns An array of available template file names.
      */
     GetAvailableTemplates() {
+        if (this.version.isLessThan('2018.0.0')) {
+            this.logger.warn(`Unity version ${this.version.toString()} does not support project templates.`);
+            return [];
+        }
         let templateDir;
         let editorRoot = path.dirname(this.editorPath);
-        const templates = [];
         if (process.platform === 'darwin') {
             templateDir = path.join(path.dirname(editorRoot), 'Resources', 'PackageManager', 'ProjectTemplates');
         }
@@ -4217,16 +4310,17 @@ class UnityEditor {
             templateDir = path.join(editorRoot, 'Data', 'Resources', 'PackageManager', 'ProjectTemplates');
         }
         this.logger.debug(`Looking for templates in: ${templateDir}`);
-        // Check if the template directory exists
         if (!fs.existsSync(templateDir) ||
             !fs.statSync(templateDir).isDirectory()) {
-            return templates;
+            return [];
         }
-        // Find all .tgz packages in the template directory
-        const packages = fs.readdirSync(templateDir)
-            .filter(f => f.endsWith('.tgz'))
-            .map(f => path.join(templateDir, f));
-        templates.push(...packages);
+        const templates = [];
+        const entries = fs.readdirSync(templateDir, { withFileTypes: true });
+        for (const entry of entries) {
+            if (entry.isFile() && (entry.name.endsWith('.tgz') || entry.name.endsWith('.tar.gz'))) {
+                templates.push(path.join(templateDir, entry.name));
+            }
+        }
         this.logger.debug(`Found ${templates.length} templates:\n${templates.map(t => `  - ${t}`).join('\n')}`);
         return templates;
     }
@@ -4545,17 +4639,18 @@ class UnityHub {
             'Unexpected error attempting to determine if executable file exists',
             'dri3 extension not supported',
             'Failed to connect to the bus:',
+            'Error: No modules found to install.',
             'Checking for beta autoupdate feature for deb/rpm distributions',
             'Found package-type: deb',
             'XPC error for connection com.apple.backupd.sandbox.xpc: Connection invalid',
-            'Error: No modules found to install.',
             'Failed to execute the command due the following, please see \'-- --headless help\' for assistance.',
-            'Invalid key: The GraphQL query at the field at',
-            'You have to request `id` or `_id` fields for all selection sets or create a custom `keys` config for `UnityReleaseLabel`.',
+            'Unable to move the cache: Access is denied.',
             'Entities without keys will be embedded directly on the parent entity. If this is intentional, create a `keys` config for `UnityReleaseLabel` that always returns null.',
             'https://bit.ly/2XbVrpR#15',
             'Interaction is not allowed with the Security Server." (-25308)',
             'Network service crashed, restarting service.',
+            'Invalid key: The GraphQL query at the field at',
+            'You have to request `id` or `_id` fields for all selection sets or create a custom `keys` config for `UnityReleaseLabel`.',
         ];
         try {
             exitCode = await new Promise((resolve, reject) => {
@@ -4583,8 +4678,7 @@ class UnityHub {
                     try {
                         const chunk = data.toString();
                         const fullChunk = lineBuffer + chunk;
-                        const lines = fullChunk.split('\n') // split by newline
-                            .map(line => line.replace(/\r$/, '')) // remove trailing carriage return
+                        const lines = fullChunk.split(/\r?\n/) // split by newline
                             .filter(line => line.length > 0); // filter out empty lines
                         if (!chunk.endsWith('\n')) {
                             lineBuffer = lines.pop() || '';
@@ -4592,8 +4686,7 @@ class UnityHub {
                         else {
                             lineBuffer = '';
                         }
-                        const outputLines = lines.filter(line => !ignoredLines.some(ignored => line.includes(ignored)));
-                        if (outputLines.includes(tasksCompleteMessage)) {
+                        if (lines.includes(tasksCompleteMessage)) {
                             isHubTaskComplete = true;
                             if (child?.pid) {
                                 try {
@@ -4617,9 +4710,9 @@ class UnityHub {
                                 }
                             }
                         }
-                        for (const line of outputLines) {
+                        for (const line of lines) {
                             output += `${line}\n`;
-                            if (!options.silent) {
+                            if (!options.silent && !ignoredLines.some(ignored => line.includes(ignored))) {
                                 process.stdout.write(`${line}\n`);
                             }
                         }
@@ -4633,8 +4726,7 @@ class UnityHub {
                 function flushOutput() {
                     try {
                         if (lineBuffer.length > 0) {
-                            const lines = lineBuffer.split('\n') // split by newline
-                                .map(line => line.replace(/\r$/, '')) // remove trailing carriage return
+                            const lines = lineBuffer.split(/\r?\n/) // split by newline
                                 .filter(line => line.length > 0); // filter out empty lines
                             lineBuffer = '';
                             const outputLines = lines.filter(line => !ignoredLines.some(ignored => line.includes(ignored)));
@@ -4699,6 +4791,7 @@ class UnityHub {
                     case 'No modules found to install.':
                         break;
                     default:
+                        this.logger.debug(output);
                         throw new Error(`Failed to execute Unity Hub (exit code: ${exitCode}) ${errorMessage}`);
                 }
             }
@@ -5013,7 +5106,7 @@ chmod -R 777 "$hubPath"`]);
             return new unity_editor_1.UnityEditor(path.normalize(editorPath), unityVersion);
         }
         try {
-            this.logger.info(`Checking installed modules for Unity ${unityVersion.toString()}...`);
+            this.logger.info(`Validating installed modules for Unity ${unityVersion.toString()}...`);
             const [installedModules, additionalModules] = await this.checkEditorModules(editorPath, unityVersion, modules);
             if (installedModules && installedModules.length > 0) {
                 this.logger.info(`Installed Modules:`);
@@ -5032,6 +5125,9 @@ chmod -R 777 "$hubPath"`]);
             if (error.message.includes(`No modules found`)) {
                 await (0, utilities_1.DeleteDirectory)(editorPath);
                 await this.GetEditor(unityVersion, modules);
+            }
+            else {
+                throw error;
             }
         }
         return new unity_editor_1.UnityEditor(path.normalize(editorPath), unityVersion);
@@ -5101,7 +5197,7 @@ chmod -R 777 "$hubPath"`]);
                 }
                 else if (allowPartialMatches) {
                     // Fallback: semver satisfies
-                    const versionEditors = editors.filter(e => e.version && unityVersion.satisfies(e.version.version));
+                    const versionEditors = editors.filter(e => e.version && unityVersion.satisfies(e.version));
                     if (versionEditors.length === 0) {
                         return undefined;
                     }
@@ -5236,33 +5332,48 @@ done
             }
         };
         this.logger.debug(`Get Unity Release: ${JSON.stringify(request, null, 2)}`);
-        const { data, error } = await releasesClient.api.Release.getUnityReleases(request);
-        if (error) {
-            throw new Error(`Failed to get Unity releases: ${JSON.stringify(error, null, 2)}`);
+        async function getRelease() {
+            const { data, error } = await releasesClient.api.Release.getUnityReleases(request);
+            if (error) {
+                throw new Error(`Failed to get Unity releases: ${JSON.stringify(error, null, 2)}`);
+            }
+            if (!data || !data.results || data.results.length === 0) {
+                throw new Error(`No Unity releases found for version: ${version}`);
+            }
+            // Filter to stable 'f' releases only unless the user explicitly asked for a pre-release
+            const isExplicitPrerelease = /[abcpx]$/.test(unityVersion.version) || /[abcpx]/.test(unityVersion.version);
+            const releases = (data.results || [])
+                .filter(release => isExplicitPrerelease || release.version.includes('f'))
+                .map(release => ({
+                unityRelease: release,
+                unityVersion: new unity_version_1.UnityVersion(release.version, release.shortRevision, unityVersion.architecture)
+            }));
+            if (releases.length === 0) {
+                throw new Error(`No suitable Unity releases (stable) found for version: ${version}`);
+            }
+            releases.sort((a, b) => unity_version_1.UnityVersion.compare(b.unityVersion, a.unityVersion));
+            logging_1.Logger.instance.debug(`Found ${releases.length} matching Unity releases for version: ${version}`);
+            releases.forEach(release => {
+                logging_1.Logger.instance.debug(` - ${release.unityRelease.version} (${release.unityRelease.shortRevision}) - ${release.unityRelease.recommended}`);
+            });
+            const latest = releases[0].unityRelease;
+            return latest;
         }
-        if (!data || !data.results || data.results.length === 0) {
-            throw new Error(`No Unity releases found for version: ${version}`);
+        try {
+            return await getRelease();
         }
-        // Filter to stable 'f' releases only unless the user explicitly asked for a pre-release
-        const isExplicitPrerelease = /[abcpx]$/.test(unityVersion.version) || /[abcpx]/.test(unityVersion.version);
-        const releases = (data.results || [])
-            .filter(release => isExplicitPrerelease || release.version.includes('f'))
-            .map(release => ({
-            unityRelease: release,
-            unityVersion: new unity_version_1.UnityVersion(release.version, release.shortRevision, unityVersion.architecture)
-        }));
-        if (releases.length === 0) {
-            throw new Error(`No suitable Unity releases (stable) found for version: ${version}`);
+        catch (error) {
+            if (error instanceof Error && error.message.includes('fetch failed')) {
+                // Transient network error, retry once
+                return await getRelease();
+            }
+            throw new Error(`Failed to get Unity releases: ${error}`);
         }
-        releases.sort((a, b) => unity_version_1.UnityVersion.compare(b.unityVersion, a.unityVersion));
-        this.logger.debug(`Found ${releases.length} matching Unity releases for version: ${version}`);
-        releases.forEach(release => {
-            this.logger.debug(` - ${release.unityRelease.version} (${release.unityRelease.shortRevision}) - ${release.unityRelease.recommended}`);
-        });
-        const latest = releases[0].unityRelease;
-        return latest;
     }
     async fallbackVersionLookup(unityVersion) {
+        if (!unityVersion.isFullyQualified()) {
+            throw new Error(`Cannot lookup changeset for non-fully-qualified Unity version: ${unityVersion.toString()}`);
+        }
         const url = `https://unity.com/releases/editor/whats-new/${unityVersion.version}`;
         this.logger.debug(`Fetching release page: "${url}"`);
         let response;
@@ -5299,7 +5410,7 @@ done
         const editorRootPath = unity_editor_1.UnityEditor.GetEditorRootPath(editorPath);
         const modulesPath = path.join(editorRootPath, 'modules.json');
         this.logger.debug(`Editor Modules Manifest:\n  > "${modulesPath}"`);
-        const output = await this.Exec([...args, '--cm']);
+        const output = await this.Exec([...args, '--cm'], { showCommand: true, silent: false });
         const moduleMatches = output.matchAll(/Omitting module (?<module>.+) because it's already installed/g);
         if (moduleMatches) {
             const omittedModules = [...moduleMatches].map(match => match.groups?.module);
@@ -5592,17 +5703,14 @@ class UnityProject {
         this.projectVersionPath = path_1.default.join(this.projectPath, 'ProjectSettings', 'ProjectVersion.txt');
         fs_1.default.accessSync(this.projectVersionPath, fs_1.default.constants.R_OK);
         const versionText = fs_1.default.readFileSync(this.projectVersionPath, 'utf-8');
-        const match = versionText.match(/m_EditorVersionWithRevision: (?<version>(?:(?<major>\d+)\.)?(?:(?<minor>\d+)\.)?(?:(?<patch>\d+[abcfpx]\d+)\b))\s?(?:\((?<changeset>\w+)\))?/);
+        const match = versionText.match(/(?:m_EditorVersion|m_EditorVersionWithRevision): (?<version>(?:(?<major>\d+)\.)?(?:(?<minor>\d+)\.)?(?:(?<patch>\d+[abcfpx]\d+)\b))\s?(?:\((?<changeset>\w+)\))?/);
         if (!match) {
-            throw Error(`No version match found!`);
+            throw Error(`No version match found!\nProjectVersion.txt content:\n${versionText}`);
         }
         if (!match.groups?.version) {
-            throw Error(`No version group found!`);
+            throw Error(`No version group found!\nProjectVersion.txt content:\n${versionText}`);
         }
-        if (!match.groups?.changeset) {
-            throw Error(`No changeset group found!`);
-        }
-        this.version = new unity_version_1.UnityVersion(match.groups.version, match.groups.changeset, undefined);
+        this.version = new unity_version_1.UnityVersion(match.groups.version, match.groups?.changeset, undefined);
     }
     /**
      * Gets the Unity project located at the specified path, or the current working directory if no path is provided.
@@ -5687,11 +5795,14 @@ class UnityVersion {
             : resolvedArchitecture;
     }
     static compare(a, b) {
-        const baseComparison = (0, semver_1.compare)(a.semVer, b.semVer, true);
+        const baseComparison = UnityVersion.baseCompare(a, b);
         if (baseComparison !== 0) {
             return baseComparison;
         }
         return UnityVersion.compareBuildMetadata(a.semVer, b.semVer);
+    }
+    static baseCompare(a, b) {
+        return (0, semver_1.compare)(a.semVer, b.semVer, true);
     }
     toString() {
         return this.changeset ? `${this.version} (${this.changeset})` : this.version;
@@ -5737,11 +5848,26 @@ class UnityVersion {
         return this;
     }
     satisfies(version) {
-        const coercedVersion = (0, semver_1.coerce)(version);
-        if (!coercedVersion) {
-            throw new Error(`Invalid version to check against: ${version}`);
-        }
-        return (0, semver_1.satisfies)(coercedVersion, `^${this.semVer.version}`);
+        return (0, semver_1.satisfies)(version.semVer, `^${this.semVer.version}`);
+    }
+    isGreaterThan(other) {
+        const otherVersion = other instanceof UnityVersion ? other : new UnityVersion(other);
+        return UnityVersion.baseCompare(this, otherVersion) > 0;
+    }
+    isGreaterThanOrEqualTo(other) {
+        const otherVersion = other instanceof UnityVersion ? other : new UnityVersion(other);
+        return UnityVersion.baseCompare(this, otherVersion) >= 0;
+    }
+    isLessThan(other) {
+        const otherVersion = other instanceof UnityVersion ? other : new UnityVersion(other);
+        return UnityVersion.baseCompare(this, otherVersion) < 0;
+    }
+    isLessThanOrEqualTo(other) {
+        const otherVersion = other instanceof UnityVersion ? other : new UnityVersion(other);
+        return UnityVersion.baseCompare(this, otherVersion) <= 0;
+    }
+    range(string, options = undefined) {
+        return (0, semver_1.satisfies)(this.semVer, string, options);
     }
     equals(other) {
         return UnityVersion.compare(this, other) === 0;
@@ -5990,9 +6116,8 @@ async function PromptForSecretInput(prompt) {
             // mask the previous line with asterisks in place of each character
             readline.moveCursor(process.stdout, 0, -1);
             readline.clearLine(process.stdout, 0);
-            process.stdout.write(prompt + '*'.repeat(input.length) + '\n');
+            process.stdout.write(`${prompt + '*'.repeat(input.length)}\n`);
             rl.close();
-            console.log(); // Don't use logger. Move to next line after input.
             resolve(input);
         });
     });
@@ -6469,15 +6594,15 @@ async function KillChildProcesses(procInfo) {
  * Checks if the current process is running with elevated (administrator) privileges.
  * @returns True if the process is elevated, false otherwise.
  */
-function isProcessElevated() {
+async function isProcessElevated() {
     if (process.platform !== 'win32') {
         return true;
     } // We can sudo easily on non-windows platforms
-    const probe = (0, child_process_1.spawnSync)('powershell.exe', [
+    const output = await Exec('powershell', [
         '-NoLogo', '-NoProfile', '-Command',
-        "[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent().IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"
-    ], { encoding: 'utf8' });
-    return probe.status === 0 && probe.stdout.trim().toLowerCase() === 'true';
+        "(New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"
+    ], { silent: true, showCommand: false });
+    return output.trim().toLowerCase() === 'true';
 }
 //# sourceMappingURL=utilities.js.map
 
@@ -9084,7 +9209,7 @@ const { MAX_LENGTH, MAX_SAFE_INTEGER } = __nccwpck_require__(2293)
 const { safeRe: re, t } = __nccwpck_require__(9523)
 
 const parseOptions = __nccwpck_require__(785)
-const { compareIdentifiers } = __nccwpck_require__(2463)
+const { compareIdentifiers } = __nccwpck_require__(5865)
 class SemVer {
   constructor (version, options) {
     options = parseOptions(options)
@@ -9492,7 +9617,7 @@ module.exports = cmp
 
 /***/ }),
 
-/***/ 3466:
+/***/ 5280:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 "use strict";
@@ -9948,7 +10073,7 @@ module.exports = valid
 const internalRe = __nccwpck_require__(9523)
 const constants = __nccwpck_require__(2293)
 const SemVer = __nccwpck_require__(8088)
-const identifiers = __nccwpck_require__(2463)
+const identifiers = __nccwpck_require__(5865)
 const parse = __nccwpck_require__(5925)
 const valid = __nccwpck_require__(9601)
 const clean = __nccwpck_require__(8848)
@@ -9971,7 +10096,7 @@ const neq = __nccwpck_require__(6017)
 const gte = __nccwpck_require__(5522)
 const lte = __nccwpck_require__(7520)
 const cmp = __nccwpck_require__(5098)
-const coerce = __nccwpck_require__(3466)
+const coerce = __nccwpck_require__(5280)
 const Comparator = __nccwpck_require__(1532)
 const Range = __nccwpck_require__(9828)
 const satisfies = __nccwpck_require__(6055)
@@ -10101,7 +10226,7 @@ module.exports = debug
 
 /***/ }),
 
-/***/ 2463:
+/***/ 5865:
 /***/ ((module) => {
 
 "use strict";
@@ -45628,10 +45753,10 @@ exports.mapIncludes = mapIncludes;
 
 
 var Alias = __nccwpck_require__(5639);
-var Collection = __nccwpck_require__(2240);
+var Collection = __nccwpck_require__(3466);
 var identity = __nccwpck_require__(5589);
 var Pair = __nccwpck_require__(246);
-var toJS = __nccwpck_require__(2358);
+var toJS = __nccwpck_require__(2463);
 var Schema = __nccwpck_require__(6831);
 var stringifyDocument = __nccwpck_require__(5225);
 var anchors = __nccwpck_require__(8459);
@@ -46564,7 +46689,7 @@ var anchors = __nccwpck_require__(8459);
 var visit = __nccwpck_require__(6796);
 var identity = __nccwpck_require__(5589);
 var Node = __nccwpck_require__(1399);
-var toJS = __nccwpck_require__(2358);
+var toJS = __nccwpck_require__(2463);
 
 class Alias extends Node.NodeBase {
     constructor(source) {
@@ -46678,7 +46803,7 @@ exports.Alias = Alias;
 
 /***/ }),
 
-/***/ 2240:
+/***/ 3466:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -46845,7 +46970,7 @@ exports.isEmptyPath = isEmptyPath;
 
 var applyReviver = __nccwpck_require__(3412);
 var identity = __nccwpck_require__(5589);
-var toJS = __nccwpck_require__(2358);
+var toJS = __nccwpck_require__(2463);
 
 class NodeBase {
     constructor(type) {
@@ -46940,7 +47065,7 @@ exports.createPair = createPair;
 
 var identity = __nccwpck_require__(5589);
 var Node = __nccwpck_require__(1399);
-var toJS = __nccwpck_require__(2358);
+var toJS = __nccwpck_require__(2463);
 
 const isScalarValue = (value) => !value || (typeof value !== 'function' && typeof value !== 'object');
 class Scalar extends Node.NodeBase {
@@ -46975,7 +47100,7 @@ exports.isScalarValue = isScalarValue;
 
 var stringifyCollection = __nccwpck_require__(2466);
 var addPairToJSMap = __nccwpck_require__(4676);
-var Collection = __nccwpck_require__(2240);
+var Collection = __nccwpck_require__(3466);
 var identity = __nccwpck_require__(5589);
 var Pair = __nccwpck_require__(246);
 var Scalar = __nccwpck_require__(9338);
@@ -47130,10 +47255,10 @@ exports.findPair = findPair;
 
 var createNode = __nccwpck_require__(9652);
 var stringifyCollection = __nccwpck_require__(2466);
-var Collection = __nccwpck_require__(2240);
+var Collection = __nccwpck_require__(3466);
 var identity = __nccwpck_require__(5589);
 var Scalar = __nccwpck_require__(9338);
-var toJS = __nccwpck_require__(2358);
+var toJS = __nccwpck_require__(2463);
 
 class YAMLSeq extends Collection.Collection {
     static get tagName() {
@@ -47255,7 +47380,7 @@ var log = __nccwpck_require__(6909);
 var merge = __nccwpck_require__(9614);
 var stringify = __nccwpck_require__(8409);
 var identity = __nccwpck_require__(5589);
-var toJS = __nccwpck_require__(2358);
+var toJS = __nccwpck_require__(2463);
 
 function addPairToJSMap(ctx, map, { key, value }) {
     if (identity.isNode(key) && key.addToJSMap)
@@ -47379,7 +47504,7 @@ exports.isSeq = isSeq;
 
 /***/ }),
 
-/***/ 2358:
+/***/ 2463:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -50657,7 +50782,7 @@ exports.merge = merge;
 
 
 var identity = __nccwpck_require__(5589);
-var toJS = __nccwpck_require__(2358);
+var toJS = __nccwpck_require__(2463);
 var YAMLMap = __nccwpck_require__(6011);
 var YAMLSeq = __nccwpck_require__(5161);
 var pairs = __nccwpck_require__(9841);
@@ -63307,7 +63432,7 @@ const main = async () => {
             core.info(`UNITY_EDITOR_PATH:\n  > ${unityEditor.editorPath}`);
             core.exportVariable('UNITY_EDITOR_PATH', unityEditor.editorPath);
             if (modules.includes('android') && unityProjectPath !== undefined) {
-                await (0, unity_cli_1.CheckAndroidSdkInstalled)(unityEditor.editorPath, unityProjectPath);
+                await (0, unity_cli_1.CheckAndroidSdkInstalled)(unityEditor, unityProjectPath);
             }
             installedEditors.push({ version: unityVersion.version, path: unityEditor.editorPath });
         }
