@@ -33742,7 +33742,7 @@ async function ValidateInputs() {
     if (!installPath) {
         core.debug('No install path specified, using default Unity Hub install path.');
     }
-    return [versions, modules, unityProjectPath, installPath];
+    return { versions, modules, unityProjectPath, installPath };
 }
 function getArrayInput(key) {
     let input = core.getInput(key);
@@ -63408,9 +63408,9 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __nccwpck_require__(2186);
 const inputs_1 = __nccwpck_require__(7063);
 const unity_cli_1 = __nccwpck_require__(4858);
-const main = async () => {
+async function main() {
     try {
-        const [versions, modules, unityProjectPath, installPath] = await (0, inputs_1.ValidateInputs)();
+        const { versions, modules, unityProjectPath, installPath } = await (0, inputs_1.ValidateInputs)();
         if (unityProjectPath) {
             core.info(`UNITY_PROJECT_PATH:\n  > ${unityProjectPath}`);
             core.exportVariable('UNITY_PROJECT_PATH', unityProjectPath);
@@ -63446,7 +63446,7 @@ const main = async () => {
     catch (error) {
         core.setFailed(error.stack);
     }
-};
+}
 main();
 
 })();

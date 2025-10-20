@@ -5,9 +5,9 @@ import {
     CheckAndroidSdkInstalled,
 } from '@rage-against-the-pixel/unity-cli';
 
-const main = async () => {
+async function main() {
     try {
-        const [versions, modules, unityProjectPath, installPath] = await ValidateInputs();
+        const { versions, modules, unityProjectPath, installPath } = await ValidateInputs();
 
         if (unityProjectPath) {
             core.info(`UNITY_PROJECT_PATH:\n  > ${unityProjectPath}`);
@@ -29,7 +29,7 @@ const main = async () => {
             await unityHub.SetInstallPath(installPath);
         }
 
-        const installedEditors: { version: string; path: string }[] = [];
+        const installedEditors: { version: string; path: string; }[] = [];
 
         for (const unityVersion of versions) {
             const unityEditor = await unityHub.GetEditor(unityVersion, modules);
@@ -53,6 +53,6 @@ const main = async () => {
     } catch (error) {
         core.setFailed(error.stack);
     }
-};
+}
 
 main();
