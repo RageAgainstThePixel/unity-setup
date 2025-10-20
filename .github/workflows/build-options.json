@@ -19,7 +19,7 @@
   "include": [
     {
       "os": "ubuntu-latest",
-      "build-targets": "StandaloneLinux64, Android, iOS, WebGL",
+      "build-targets": "StandaloneLinux64, Android, WebGL",
       "modules": "linux-server"
     },
     {
@@ -70,7 +70,7 @@
     {
       "os": "ubuntu-latest",
       "unity-version": "None",
-      "build-targets": "StandaloneLinux64, Android, iOS, WebGL",
+      "build-targets": "StandaloneLinux64, Android, WebGL",
       "modules": "linux-server"
     },
     {

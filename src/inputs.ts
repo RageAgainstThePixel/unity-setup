@@ -8,7 +8,7 @@ import {
     ResolveGlobToPath
 } from '@rage-against-the-pixel/unity-cli';
 
-export async function ValidateInputs(): Promise<[UnityVersion[], string[], string | null, string]> {
+export async function ValidateInputs(): Promise<{ versions: UnityVersion[], modules: string[], unityProjectPath: string | null, installPath: string }> {
     const modules: string[] = [];
     const architectureInput = core.getInput('architecture') || getInstallationArch();
     let architecture: 'X86_64' | 'ARM64' | null = null;
@@ -115,7 +115,7 @@ export async function ValidateInputs(): Promise<[UnityVersion[], string[], strin
         core.debug('No install path specified, using default Unity Hub install path.');
     }
 
-    return [versions, modules, unityProjectPath, installPath];
+    return { versions, modules, unityProjectPath, installPath };
 }
 
 function getArrayInput(key: string): string[] {
