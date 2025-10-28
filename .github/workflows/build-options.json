@@ -54,19 +54,22 @@
       "os": "ubuntu-latest",
       "unity-version": "2019.4.40f1",
       "build-targets": "None",
-      "modules": "None"
+      "modules": "None",
+      "hub-version": "3.12.0"
     },
     {
       "os": "ubuntu-latest",
       "unity-version": "2018.4.36f1 (6cd387d23174)",
       "build-targets": "None",
-      "modules": "None"
+      "modules": "None",
+      "hub-version": "3.12.0"
     },
     {
       "os": "ubuntu-latest",
       "unity-version": "2017.4.40f1 (6e14067f8a9a)",
       "build-targets": "None",
-      "modules": "None"
+      "modules": "None",
+      "hub-version": "3.12.0"
     }
   ],
   "exclude": [
