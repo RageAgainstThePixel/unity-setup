@@ -3533,7 +3533,7 @@ class LicensingClient {
             await fs.promises.access(this.unityHub.rootDirectory, fs.constants.R_OK);
         }
         catch (error) {
-            await this.unityHub.Install();
+            throw new Error('Unity Hub is not installed or not accessible. Please install Unity Hub before using the Licensing Client.');
         }
         const licensingClientExecutable = process.platform === 'win32' ? 'Unity.Licensing.Client.exe' : 'Unity.Licensing.Client';
         const licenseClientPath = await (0, utilities_1.ResolveGlobToPath)([this.unityHub.rootDirectory, '**', licensingClientExecutable]);
@@ -4235,6 +4235,14 @@ class UnityEditor {
             this.version = version;
         }
         this.autoAddNoGraphics = this.version.isGreaterThan('2018.0.0');
+        // check if we have permissions to write to this file
+        try {
+            fs.accessSync(this.editorRootPath, fs.constants.W_OK);
+        }
+        catch (error) {
+            return;
+        }
+        // ensure metadata.hub.json exists and has a productName entry
         const hubMetaDataPath = path.join(this.editorRootPath, 'metadata.hub.json');
         if (!fs.existsSync(hubMetaDataPath)) {
             const metadata = {
@@ -4843,40 +4851,55 @@ class UnityHub {
      * @param autoUpdate If true, automatically updates the Unity Hub if it is already installed. Default is true.
      * @returns The path to the Unity Hub executable.
      */
-    async Install(autoUpdate = true) {
+    async Install(autoUpdate = true, version) {
+        if (autoUpdate && version) {
+            throw new Error('Cannot use autoUpdate with version.');
+        }
         let isInstalled = false;
         try {
             await fs.promises.access(this.executable, fs.constants.X_OK);
             isInstalled = true;
         }
         catch {
-            await this.installHub();
+            await this.installHub(version);
         }
         if (isInstalled && autoUpdate) {
             const installedVersion = await this.getInstalledHubVersion();
             this.logger.ci(`Installed Unity Hub version: ${installedVersion.version}`);
-            let latestVersion = undefined;
-            try {
-                latestVersion = await this.getLatestHubVersion();
-                this.logger.ci(`Latest Unity Hub version: ${latestVersion.version}`);
+            let versionToInstall = null;
+            if (!version) {
+                try {
+                    versionToInstall = await this.getLatestHubVersion();
+                    this.logger.ci(`Latest Unity Hub version: ${versionToInstall.version}`);
+                }
+                catch (error) {
+                    this.logger.warn(`Failed to get latest Unity Hub version: ${error}`);
+                }
             }
-            catch (error) {
-                this.logger.warn(`Failed to get latest Unity Hub version: ${error}`);
+            else {
+                versionToInstall = (0, semver_1.coerce)(version);
             }
-            if (latestVersion && (0, semver_1.compare)(installedVersion, latestVersion) < 0) {
-                this.logger.info(`Updating Unity Hub from ${installedVersion.version} to ${latestVersion.version}...`);
+            if (versionToInstall === null ||
+                !versionToInstall &&
+                    !(0, semver_1.valid)(versionToInstall)) {
+                throw new Error(`Invalid Unity Hub version to install: ${versionToInstall}`);
+            }
+            const mustInstall = version || (versionToInstall && (0, semver_1.compare)(installedVersion, versionToInstall) < 0);
+            if (mustInstall) {
+                this.logger.info(`Updating Unity Hub from ${installedVersion.version} to ${versionToInstall.version}...`);
                 if (process.platform === 'darwin') {
                     await (0, utilities_1.Exec)('sudo', ['rm', '-rf', this.rootDirectory], { silent: true, showCommand: true });
-                    await this.installHub();
+                    await this.installHub(version);
                 }
                 else if (process.platform === 'win32') {
-                    const uninstaller = path.join(path.dirname(this.executable), 'Uninstall Unity Hub.exe');
+                    const uninstaller = path.join(this.rootDirectory, 'Uninstall Unity Hub.exe');
                     await (0, utilities_1.Exec)('powershell', [
                         '-NoProfile',
                         '-Command',
                         `Start-Process -FilePath '${uninstaller}' -ArgumentList '/S' -Verb RunAs -Wait`
                     ], { silent: true, showCommand: true });
-                    await this.installHub();
+                    await (0, utilities_1.DeleteDirectory)(this.rootDirectory);
+                    await this.installHub(version);
                 }
                 else if (process.platform === 'linux') {
                     await (0, utilities_1.Exec)('sudo', ['sh', '-c', `#!/bin/bash
@@ -4884,7 +4907,10 @@ set -e
 wget -qO - https://hub.unity3d.com/linux/keys/public | gpg --dearmor | sudo tee /usr/share/keyrings/Unity_Technologies_ApS.gpg >/dev/null
 sudo sh -c 'echo "deb [signed-by=/usr/share/keyrings/Unity_Technologies_ApS.gpg] https://hub.unity3d.com/linux/repos/deb stable main" > /etc/apt/sources.list.d/unityhub.list'
 sudo apt-get update --allow-releaseinfo-change
-sudo apt-get install -y --no-install-recommends --only-upgrade unityhub`]);
+sudo apt-get install -y --no-install-recommends --only-upgrade unityhub${version ? '=' + version : ''}`]);
+                }
+                else {
+                    throw new Error(`Unsupported platform: ${process.platform}`);
                 }
             }
             else {
@@ -4894,11 +4920,19 @@ sudo apt-get install -y --no-install-recommends --only-upgrade unityhub`]);
         await fs.promises.access(this.executable, fs.constants.X_OK);
         return this.executable;
     }
-    async installHub() {
-        this.logger.ci(`Installing Unity Hub...`);
+    async installHub(version) {
+        this.logger.ci(`Installing Unity Hub${version ? ' ' + version : ''}...`);
+        if (!version) {
+            switch (process.platform) {
+                case 'win32':
+                case 'darwin':
+                    version = 'prod';
+                    break;
+            }
+        }
         switch (process.platform) {
             case 'win32': {
-                const url = 'https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup.exe';
+                const url = `https://public-cdn.cloud.unity3d.com/hub/${version}/UnityHubSetup.exe`;
                 const downloadPath = path.join((0, utilities_1.GetTempDir)(), 'UnityHubSetup.exe');
                 await (0, utilities_1.DownloadFile)(url, downloadPath);
                 this.logger.info(`Running Unity Hub installer...`);
@@ -4917,7 +4951,7 @@ sudo apt-get install -y --no-install-recommends --only-upgrade unityhub`]);
                 break;
             }
             case 'darwin': {
-                const baseUrl = 'https://public-cdn.cloud.unity3d.com/hub/prod';
+                const baseUrl = `https://public-cdn.cloud.unity3d.com/hub/${version}`;
                 const url = `${baseUrl}/UnityHubSetup-${process.arch}.dmg`;
                 const downloadPath = path.join((0, utilities_1.GetTempDir)(), `UnityHubSetup-${process.arch}.dmg`);
                 await (0, utilities_1.DownloadFile)(url, downloadPath);
@@ -4966,11 +5000,12 @@ wget -qO - https://hub.unity3d.com/linux/keys/public | gpg --dearmor | tee /usr/
 echo "deb [signed-by=/usr/share/keyrings/Unity_Technologies_ApS.gpg] https://hub.unity3d.com/linux/repos/deb stable main" > /etc/apt/sources.list.d/unityhub.list
 echo "deb https://archive.ubuntu.com/ubuntu jammy main universe" | tee /etc/apt/sources.list.d/jammy.list
 apt-get update
-apt-get install -y --no-install-recommends unityhub ffmpeg libgtk2.0-0 libglu1-mesa libgconf-2-4 libncurses5
+apt-get install -y --no-install-recommends unityhub${version ? '=' + version : ''} ffmpeg libgtk2.0-0 libglu1-mesa libgconf-2-4 libncurses5
 apt-get clean
 sed -i 's/^\\(.*DISPLAY=:.*XAUTHORITY=.*\\)\\( "\\$@" \\)2>&1$/\\1\\2/' /usr/bin/xvfb-run
 printf '#!/bin/bash\nxvfb-run --auto-servernum /opt/unityhub/unityhub "$@" 2>/dev/null' | tee /usr/bin/unity-hub >/dev/null
 chmod 777 /usr/bin/unity-hub
+which unityhub || { echo "Unity Hub installation failed"; exit 1; }
 hubPath=$(which unityhub)
 
 if [ -z "$hubPath" ]; then
@@ -4985,7 +5020,8 @@ chmod -R 777 "$hubPath"`]);
                 throw new Error(`Unsupported platform: ${process.platform}`);
         }
         await fs.promises.access(this.executable, fs.constants.X_OK);
-        this.logger.debug(`Unity Hub install complete`);
+        const installedVersion = await this.getInstalledHubVersion();
+        this.logger.info(`Unity Hub ${installedVersion} installed successfully.`);
     }
     async getInstalledHubVersion() {
         let asarPath = undefined;
@@ -5005,8 +5041,15 @@ chmod -R 777 "$hubPath"`]);
         catch {
             throw new Error('Unity Hub is not installed.');
         }
-        const fileBuffer = asar.extractFile(asarPath, 'package.json');
-        const packageJson = JSON.parse(fileBuffer.toString());
+        asar.uncacheAll();
+        const fileBuffer = asar.extractFile(asarPath, 'package.json').toString('utf-8');
+        let packageJson;
+        try {
+            packageJson = JSON.parse(fileBuffer);
+        }
+        catch (error) {
+            throw new Error(`Failed to parse Unity Hub package.json: ${error}\n${fileBuffer}`);
+        }
         const version = (0, semver_1.coerce)(packageJson.version);
         if (!version || !(0, semver_1.valid)(version)) {
             throw new Error(`Failed to parse Unity Hub version: ${packageJson.version}`);
@@ -6259,7 +6302,7 @@ async function Exec(command, args, options = { silent: false, showCommand: true 
             }
         }
         if (exitCode !== 0) {
-            throw new Error(`${command} failed with exit code ${exitCode}`);
+            throw new Error(`${command} failed with exit code ${exitCode}\n${output}`);
         }
     }
     return output;
@@ -63443,8 +63486,12 @@ async function main() {
             core.exportVariable('UNITY_PROJECT_PATH', unityProjectPath);
         }
         const autoUpdate = core.getInput('auto-update-hub');
+        const hubVersion = core.getInput('hub-version');
+        if (autoUpdate === 'true' && hubVersion && hubVersion.length > 0) {
+            throw new Error('Cannot specify a specific Unity Hub version when auto-update is set to true.');
+        }
         const unityHub = new unity_cli_1.UnityHub();
-        const unityHubPath = await unityHub.Install(autoUpdate === 'true');
+        const unityHubPath = await unityHub.Install(autoUpdate === 'true', hubVersion);
         if (!unityHubPath || unityHubPath.length === 0) {
             throw new Error('Failed to install or locate Unity Hub!');
         }
