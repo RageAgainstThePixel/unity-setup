@@ -33,6 +33,7 @@ jobs:
           remove_tool_cache: false
       - uses: actions/checkout@v5
       - uses: ./ # RageAgainstThePixel/unity-setup
+        id: unity-setup
         with:
           version-file: None
           unity-version: ${{ matrix.unity-version }}
@@ -42,9 +43,35 @@ jobs:
           hub-version: ${{ contains(matrix.modules, 'None') && '3.12.0' || '' }}
       - run: |
           echo 'UNITY_HUB_PATH: ${{ env.UNITY_HUB_PATH }}'
+          echo 'steps.unity-setup.outputs.unity-hub-path: ${{ steps.unity-setup.outputs.unity-hub-path }}'
           echo 'UNITY_EDITORS: ${{ env.UNITY_EDITORS }}'
+          echo 'steps.unity-setup.outputs.unity-editors: ${{ steps.unity-setup.outputs.unity-editors }}'
           echo 'UNITY_EDITOR_PATH: ${{ env.UNITY_EDITOR_PATH }}'
+          echo 'steps.unity-setup.outputs.unity-editor-path: ${{ steps.unity-setup.outputs.unity-editor-path }}'
           echo 'UNITY_PROJECT_PATH: ${{ env.UNITY_PROJECT_PATH }}'
+          echo 'steps.unity-setup.outputs.unity-project-path: ${{ steps.unity-setup.outputs.unity-project-path }}'
+          
+          # validate both the env and output variables are the same
+          if [[ "${{ env.UNITY_HUB_PATH }}" != "${{ steps.unity-setup.outputs.unity-hub-path }}" ]]; then
+            echo "Error: UNITY_HUB_PATH env and output do not match!"
+            exit 1
+          fi
+          
+          if [[ "${{ env.UNITY_EDITORS }}" != "${{ steps.unity-setup.outputs.unity-editors }}" ]]; then
+            echo "Error: UNITY_EDITORS env and output do not match!"
+            exit 1
+          fi
+          
+          if [[ "${{ env.UNITY_EDITOR_PATH }}" != "${{ steps.unity-setup.outputs.unity-editor-path }}" ]]; then
+            echo "Error: UNITY_EDITOR_PATH env and output do not match!"
+            exit 1
+          fi
+          
+          if [[ "${{ env.UNITY_PROJECT_PATH }}" != "${{ steps.unity-setup.outputs.unity-project-path }}" ]]; then
+            echo "Error: UNITY_PROJECT_PATH env and output do not match!"
+            exit 1
+          fi
+          
           # If unity-version is None, UNITY_EDITOR_PATH must be empty
           if [[ "${{ matrix.unity-version }}" == "None" ]]; then
             if [[ -n "${{ env.UNITY_EDITOR_PATH }}" ]]; then
