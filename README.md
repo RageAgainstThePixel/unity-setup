@@ -93,6 +93,7 @@ Steps outputs available for use in subsequent steps:
 
 > [!TIP]
 > prefix step outputs with the step id you set in your workflow. In the example above, the step id is `unity-setup`:
+>
 > `${{ steps.unity-setup.outputs.unity-hub-path }}`
 
 - `unity-hub-path`: The file path to the Unity Hub installation.
@@ -106,6 +107,7 @@ Environment variables available for use in subsequent steps:
 
 > [!TIP]
 > prefix environment variables with `env.` when using in subsequent steps. For example:
+>
 > `${{ env.UNITY_HUB_PATH }}`.
 
 - `UNITY_HUB_PATH`: The path to the installed unity hub.
