@@ -31,7 +31,7 @@ main();
  * @returns A string representing the cache key.
  */
 function getInstallationCacheKey(versions: UnityVersion[], modules: string[]): InstallationCacheKeys {
-    let cacheKey = 'unity-setup';
+    let cacheKey = `unity-setup-${process.platform}`;
     let restoreKeys: string[] = [];
 
     for (const version of versions) {

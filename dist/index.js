@@ -124362,7 +124362,7 @@ async function main() {
 }
 main();
 function getInstallationCacheKey(versions, modules) {
-    let cacheKey = 'unity-setup';
+    let cacheKey = `unity-setup-${process.platform}`;
     let restoreKeys = [];
     for (const version of versions) {
         cacheKey += `-${version.version}`;
