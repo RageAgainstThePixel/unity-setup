@@ -124364,14 +124364,13 @@ main();
 function getInstallationCacheKey(versions, modules) {
     let cacheKey = 'unity-setup';
     let restoreKeys = [];
-    restoreKeys.push(`${cacheKey}-`);
     for (const version of versions) {
         cacheKey += `-${version.version}`;
-        restoreKeys.push(`${cacheKey}-`);
+        restoreKeys.push(`${cacheKey}`);
     }
     for (const module of modules) {
         cacheKey += `-${module}`;
-        restoreKeys.push(`${cacheKey}-`);
+        restoreKeys.push(`${cacheKey}`);
     }
     return {
         primaryKey: cacheKey,

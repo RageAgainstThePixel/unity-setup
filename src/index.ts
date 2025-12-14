@@ -33,16 +33,15 @@ main();
 function getInstallationCacheKey(versions: UnityVersion[], modules: string[]): InstallationCacheKeys {
     let cacheKey = 'unity-setup';
     let restoreKeys: string[] = [];
-    restoreKeys.push(`${cacheKey}-`);
 
     for (const version of versions) {
         cacheKey += `-${version.version}`;
-        restoreKeys.push(`${cacheKey}-`);
+        restoreKeys.push(`${cacheKey}`);
     }
 
     for (const module of modules) {
         cacheKey += `-${module}`;
-        restoreKeys.push(`${cacheKey}-`);
+        restoreKeys.push(`${cacheKey}`);
     }
 
     return {
