@@ -124346,13 +124346,11 @@ const core = __nccwpck_require__(42186);
 const cache = __nccwpck_require__(27799);
 const inputs_1 = __nccwpck_require__(7063);
 const unity_cli_1 = __nccwpck_require__(24858);
-const crypto = __nccwpck_require__(6113);
 const IS_POST = !!core.getState('isPost');
 async function main() {
     try {
         if (!IS_POST) {
             await setup();
-            core.saveState('isPost', true);
         }
         else {
             await post();
@@ -124364,21 +124362,21 @@ async function main() {
 }
 main();
 function getInstallationCacheKey(versions, modules) {
-    const changesets = versions.map(v => v.changeset).sort();
-    const uuid = UUID(`${changesets.join('-')}|${modules.sort().join('-')}`);
-    return `unity-setup-cache-${process.platform}-${uuid}`;
-}
-function UUID(value) {
-    const md5 = crypto.createHash('md5');
-    const hash = md5.update(value, 'utf8').digest();
-    const uuid = [
-        hash.subarray(0, 4).reverse().toString('hex'),
-        hash.subarray(4, 6).reverse().toString('hex'),
-        hash.subarray(6, 8).reverse().toString('hex'),
-        hash.subarray(8, 10).toString('hex'),
-        hash.subarray(10, 16).toString('hex')
-    ].join('-');
-    return uuid;
+    let cacheKey = 'unity-setup-cache';
+    let restoreKeys = [];
+    restoreKeys.push(`${cacheKey}-`);
+    for (const version of versions) {
+        cacheKey += `-${version.version}`;
+        restoreKeys.push(`${cacheKey}-`);
+    }
+    for (const module of modules) {
+        cacheKey += `-${module}`;
+        restoreKeys.push(`${cacheKey}-`);
+    }
+    return {
+        primaryKey: cacheKey,
+        restoreKeys: restoreKeys
+    };
 }
 async function setup() {
     var _a;
@@ -124408,8 +124406,8 @@ async function setup() {
     if (cacheInstallationInput) {
         const unityInstallPath = await unityHub.GetInstallPath();
         const cacheKey = getInstallationCacheKey(versions, modules);
-        core.saveState('cache-key', cacheKey);
-        const restoreKey = await cache.restoreCache([unityInstallPath], cacheKey);
+        core.saveState('cache-key', cacheKey.primaryKey);
+        const restoreKey = await cache.restoreCache([unityInstallPath], cacheKey.primaryKey, cacheKey.restoreKeys);
         core.saveState('cache-hit', restoreKey !== undefined);
     }
     const installedEditors = [];
@@ -124429,6 +124427,7 @@ async function setup() {
     core.exportVariable('UNITY_EDITORS', JSON.stringify(installedEditors));
     core.setOutput('unity-editors', JSON.stringify(installedEditors));
     core.info('Unity Setup Complete!');
+    core.saveState('isPost', true);
     process.exit(0);
 }
 async function post() {
