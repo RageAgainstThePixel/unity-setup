@@ -65,7 +65,7 @@ async function setup() {
     if (cacheInstallationInput) {
         core.saveState('saveCache', true);
         const unityInstallPath = await unityHub.GetInstallPath();
-        cache.restoreCache([unityInstallPath], getInstallationCacheKey());
+        await cache.restoreCache([unityInstallPath], getInstallationCacheKey());
     }
 
     const installedEditors: { version: string; path: string; }[] = [];
