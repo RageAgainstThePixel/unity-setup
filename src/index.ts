@@ -31,7 +31,7 @@ main();
  * @returns A string representing the cache key.
  */
 function getInstallationCacheKey(versions: UnityVersion[], modules: string[]): InstallationCacheKeys {
-    let cacheKey = 'unity-setup-cache';
+    let cacheKey = 'unity-setup';
     let restoreKeys: string[] = [];
     restoreKeys.push(`${cacheKey}-`);
 
@@ -93,8 +93,15 @@ async function setup() {
         const unityInstallPath = await unityHub.GetInstallPath();
         const cacheKey = getInstallationCacheKey(versions, modules);
         core.saveState('cache-key', cacheKey.primaryKey);
+        core.info(`unity installation cache key: ${cacheKey.primaryKey}`);
         const restoreKey = await cache.restoreCache([unityInstallPath], cacheKey.primaryKey, cacheKey.restoreKeys);
-        core.saveState('cache-hit', restoreKey === cacheKey.primaryKey);
+        const cacheHit = restoreKey === cacheKey.primaryKey;
+
+        if (!cacheHit) {
+            core.info('No unity installation cache found. Installation will be saved in post step.');
+        }
+
+        core.saveState('cache-hit', cacheHit);
     }
 
     const installedEditors: { version: string; path: string; }[] = [];
@@ -135,7 +142,7 @@ async function post() {
     const cacheHit = core.getState('cache-hit') === 'true';
 
     if (cacheHit) {
-        core.info('Cache hit occurred, skipping cache save.');
+        core.info(`Cache hit for ${cacheKey}, skipping cache save.`);
         return;
     }
 
@@ -152,7 +159,7 @@ async function post() {
         }
 
         await cache.saveCache([unityInstallPath], cacheKey);
-        core.info('Unity installation cache saved.');
+        core.info(`Unity installation cache saved with key: ${cacheKey}`);
         process.exit(0);
     }
 }
