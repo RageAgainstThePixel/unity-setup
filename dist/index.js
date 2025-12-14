@@ -124341,6 +124341,7 @@ var __webpack_exports__ = {};
 var exports = __webpack_exports__;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+const fs = __nccwpck_require__(57147);
 const core = __nccwpck_require__(42186);
 const cache = __nccwpck_require__(27799);
 const inputs_1 = __nccwpck_require__(7063);
@@ -124419,9 +124420,25 @@ async function post() {
         core.info('Saving Unity installation cache...');
         const unityHub = new unity_cli_1.UnityHub();
         const unityInstallPath = await unityHub.GetInstallPath();
+        if (!await isInstallationPathValid(unityInstallPath)) {
+            core.warning(`Unity installation path "${unityInstallPath}" is invalid, skipping cache save.`);
+            return;
+        }
         await cache.saveCache([unityInstallPath], getInstallationCacheKey());
         core.info('Unity installation cache saved.');
     }
+}
+async function isInstallationPathValid(path) {
+    if (!path || path.length === 0) {
+        return false;
+    }
+    try {
+        await fs.promises.access(path, fs.constants.R_OK);
+    }
+    catch (_a) {
+        return false;
+    }
+    return true;
 }
 
 })();

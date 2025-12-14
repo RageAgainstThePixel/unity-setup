@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import core = require('@actions/core');
 import cache = require('@actions/cache');
 import { ValidateInputs } from './inputs';
@@ -98,7 +99,25 @@ async function post() {
         core.info('Saving Unity installation cache...');
         const unityHub = new UnityHub();
         const unityInstallPath = await unityHub.GetInstallPath();
+        if (!await isInstallationPathValid(unityInstallPath)) {
+            core.warning(`Unity installation path "${unityInstallPath}" is invalid, skipping cache save.`);
+            return;
+        }
         await cache.saveCache([unityInstallPath], getInstallationCacheKey());
         core.info('Unity installation cache saved.');
     }
+}
+
+async function isInstallationPathValid(path: string): Promise<boolean> {
+    if (!path || path.length === 0) {
+        return false;
+    }
+
+    try {
+        await fs.promises.access(path, fs.constants.R_OK);
+    } catch {
+        return false;
+    }
+
+    return true;
 }
