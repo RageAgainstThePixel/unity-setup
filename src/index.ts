@@ -13,10 +13,10 @@ const SAVE_CACHE = !!core.getState('saveCache');
 async function main() {
     try {
         if (!IS_POST) {
-            await step();
+            await setup();
             core.saveState('isPost', true);
         } else {
-            post();
+            await post();
         }
     } catch (error) {
         core.setFailed(error.stack);
@@ -29,7 +29,7 @@ function getInstallationCacheKey() {
     return `unity-setup-cache-${process.platform}`;
 }
 
-async function step() {
+async function setup() {
     const { versions, modules, unityProjectPath, installPath } = await ValidateInputs();
 
     if (unityProjectPath) {

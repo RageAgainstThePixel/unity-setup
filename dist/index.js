@@ -124351,11 +124351,11 @@ const SAVE_CACHE = !!core.getState('saveCache');
 async function main() {
     try {
         if (!IS_POST) {
-            await step();
+            await setup();
             core.saveState('isPost', true);
         }
         else {
-            post();
+            await post();
         }
     }
     catch (error) {
@@ -124366,7 +124366,7 @@ main();
 function getInstallationCacheKey() {
     return `unity-setup-cache-${process.platform}`;
 }
-async function step() {
+async function setup() {
     var _a;
     const { versions, modules, unityProjectPath, installPath } = await (0, inputs_1.ValidateInputs)();
     if (unityProjectPath) {
