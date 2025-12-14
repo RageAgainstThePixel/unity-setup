@@ -40,6 +40,7 @@ steps:
       unity-version: ${{ matrix.unity-version }} # overrides version in version-file
       build-targets: ${{ matrix.build-targets }}
       modules: ${{ matrix.modules }}
+      cache-installation: true # Caches the Unity installation between workflow runs
 
   - run: |
       echo "Step Outputs:"
@@ -67,6 +68,7 @@ steps:
 | `install-path` | Specify the path where Unity will be installed to. | false |
 | `auto-update-hub` | Automatically update Unity Hub to the latest version before installing Unity Editors. Can be `true` or `false`. Default is `true`. | false |
 | `hub-version` | Specify a specific version of Unity Hub to install. Example: `3.12.0`. When set, auto-update-hub is automatically disabled. | false |
+| `cache-installation` | Cache the Unity installation between workflow runs to speed up subsequent runs. Can be `true` or `false`. Default is `false`. | false |
 
 #### unity-version formats
 

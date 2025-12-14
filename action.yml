@@ -36,7 +36,7 @@ inputs:
     required: false
     default: ''
   cache-installation:
-    description: 'Cache Unity Editor installations between workflow runs. Can be `true` or `false`.'
+    description: 'Cache the Unity installation between workflow runs to speed up subsequent runs. Can be `true` or `false`.'
     required: false
     default: 'false'
 outputs:

@@ -94,7 +94,7 @@ async function setup() {
         const cacheKey = getInstallationCacheKey(versions, modules);
         core.saveState('cache-key', cacheKey.primaryKey);
         const restoreKey = await cache.restoreCache([unityInstallPath], cacheKey.primaryKey, cacheKey.restoreKeys);
-        core.saveState('cache-hit', restoreKey !== undefined);
+        core.saveState('cache-hit', restoreKey === cacheKey.primaryKey);
     }
 
     const installedEditors: { version: string; path: string; }[] = [];
@@ -153,6 +153,7 @@ async function post() {
 
         await cache.saveCache([unityInstallPath], cacheKey);
         core.info('Unity installation cache saved.');
+        process.exit(0);
     }
 }
 
