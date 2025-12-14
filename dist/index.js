@@ -124346,8 +124346,8 @@ const core = __nccwpck_require__(42186);
 const cache = __nccwpck_require__(27799);
 const inputs_1 = __nccwpck_require__(7063);
 const unity_cli_1 = __nccwpck_require__(24858);
+const crypto = __nccwpck_require__(6113);
 const IS_POST = !!core.getState('isPost');
-const SAVE_CACHE = !!core.getState('saveCache');
 async function main() {
     try {
         if (!IS_POST) {
@@ -124363,8 +124363,22 @@ async function main() {
     }
 }
 main();
-function getInstallationCacheKey() {
-    return `unity-setup-cache-${process.platform}`;
+function getInstallationCacheKey(versions, modules) {
+    const changesets = versions.map(v => v.changeset).sort();
+    const uuid = UUID(`${changesets.join('-')}|${modules.sort().join('-')}`);
+    return `unity-setup-cache-${process.platform}-${uuid}`;
+}
+function UUID(value) {
+    const md5 = crypto.createHash('md5');
+    const hash = md5.update(value, 'utf8').digest();
+    const uuid = [
+        hash.subarray(0, 4).reverse().toString('hex'),
+        hash.subarray(4, 6).reverse().toString('hex'),
+        hash.subarray(6, 8).reverse().toString('hex'),
+        hash.subarray(8, 10).toString('hex'),
+        hash.subarray(10, 16).toString('hex')
+    ].join('-');
+    return uuid;
 }
 async function setup() {
     var _a;
@@ -124392,9 +124406,11 @@ async function setup() {
     }
     const cacheInstallationInput = ((_a = core.getInput('cache-installation')) === null || _a === void 0 ? void 0 : _a.toLowerCase()) === 'true';
     if (cacheInstallationInput) {
-        core.saveState('saveCache', true);
         const unityInstallPath = await unityHub.GetInstallPath();
-        await cache.restoreCache([unityInstallPath], getInstallationCacheKey());
+        const cacheKey = getInstallationCacheKey(versions, modules);
+        core.saveState('cache-key', cacheKey);
+        const restoreKey = await cache.restoreCache([unityInstallPath], cacheKey);
+        core.saveState('cache-hit', restoreKey !== undefined);
     }
     const installedEditors = [];
     for (const unityVersion of versions) {
@@ -124416,7 +124432,18 @@ async function setup() {
     process.exit(0);
 }
 async function post() {
-    if (SAVE_CACHE) {
+    const cacheKey = core.getState('cache-key');
+    if (!cacheKey) {
+        core.info('No cache key found, skipping cache save.');
+        return;
+    }
+    const cacheHit = core.getState('cache-hit') === 'true';
+    if (cacheHit) {
+        core.info('Cache hit occurred, skipping cache save.');
+        return;
+    }
+    const saveCache = cacheKey && cacheKey.length > 0 && !cacheHit;
+    if (saveCache) {
         core.info('Saving Unity installation cache...');
         const unityHub = new unity_cli_1.UnityHub();
         const unityInstallPath = await unityHub.GetInstallPath();
@@ -124424,7 +124451,7 @@ async function post() {
             core.warning(`Unity installation path "${unityInstallPath}" is invalid, skipping cache save.`);
             return;
         }
-        await cache.saveCache([unityInstallPath], getInstallationCacheKey());
+        await cache.saveCache([unityInstallPath], cacheKey);
         core.info('Unity installation cache saved.');
     }
 }
