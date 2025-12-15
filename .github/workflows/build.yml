@@ -38,7 +38,6 @@ jobs:
           modules: ${{ matrix.modules }}
           auto-update-hub: ${{ !contains(matrix.modules, 'None') }}
           hub-version: ${{ contains(matrix.modules, 'None') && '3.12.0' || '' }}
-          cache-installation: ${{ !contains(matrix.unity-version, 'None') }}
       - run: |
           ENV_UNITY_HUB_PATH="${{ env.UNITY_HUB_PATH }}"
           echo "env.UNITY_HUB_PATH: \"${ENV_UNITY_HUB_PATH}\""
