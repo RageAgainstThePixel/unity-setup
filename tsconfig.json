@@ -1,8 +1,9 @@
 {
     "compilerOptions": {
-        "target": "es2018",
-        "module": "commonjs",
-        "moduleResolution": "node",
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "types": ["node"],
         "noImplicitAny": false,
         "removeComments": true,
         "preserveConstEnums": true,

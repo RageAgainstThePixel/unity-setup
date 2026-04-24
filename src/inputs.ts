@@ -1,14 +1,15 @@
-import fs = require('fs');
-import os = require('os');
-import path = require('path');
-import core = require('@actions/core');
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import * as core from '@actions/core';
 import {
     UnityHub,
     UnityVersion,
     ResolveGlobToPath
 } from '@rage-against-the-pixel/unity-cli';
+import { formatError } from './util';
 
-export async function ValidateInputs(): Promise<{ versions: UnityVersion[], modules: string[], unityProjectPath: string | null, installPath: string }> {
+export async function ValidateInputs(): Promise<{ versions: UnityVersion[], modules: string[], unityProjectPath: string | null, installPath: string | undefined }> {
     const modules: string[] = [];
     const architectureInput = core.getInput('architecture') || getInstallationArch();
     let architecture: 'X86_64' | 'ARM64' | null = null;
@@ -74,7 +75,7 @@ export async function ValidateInputs(): Promise<{ versions: UnityVersion[], modu
 
     const versions = getUnityVersionsFromInput(architecture);
     const versionFilePath = await getVersionFilePath();
-    const unityProjectPath = versionFilePath !== undefined ? path.join(versionFilePath, '..', '..') : undefined;
+    const unityProjectPath = versionFilePath !== undefined ? path.join(versionFilePath, '..', '..') : null;
 
     if (versionFilePath) {
         core.info(`versionFilePath:\n  > "${versionFilePath}"`);
@@ -99,7 +100,7 @@ export async function ValidateInputs(): Promise<{ versions: UnityVersion[], modu
         core.info(`  > None`);
     }
 
-    let installPath = core.getInput('install-path');
+    let installPath: string | undefined = core.getInput('install-path');
 
     if (installPath) {
         installPath = path.normalize(installPath.trim());
@@ -166,7 +167,8 @@ async function getVersionFilePath(): Promise<string | undefined> {
     }
 
     if (!projectVersionPath) {
-        projectVersionPath = await ResolveGlobToPath([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
+        const workspace = process.env.GITHUB_WORKSPACE ?? '';
+        projectVersionPath = await ResolveGlobToPath([workspace, '**', 'ProjectVersion.txt']);
     }
 
     if (projectVersionPath) {
@@ -174,15 +176,15 @@ async function getVersionFilePath(): Promise<string | undefined> {
             await fs.promises.access(projectVersionPath, fs.constants.R_OK);
             return projectVersionPath;
         } catch (error) {
-            core.debug(error);
+            core.debug(formatError(error));
             try {
-                projectVersionPath = path.join(process.env.GITHUB_WORKSPACE, projectVersionPath);
+                projectVersionPath = path.join(process.env.GITHUB_WORKSPACE!, projectVersionPath);
                 await fs.promises.access(projectVersionPath, fs.constants.R_OK);
                 return projectVersionPath;
             } catch (error) {
-                core.error(error);
+                core.error(formatError(error));
                 try {
-                    projectVersionPath = await ResolveGlobToPath([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
+                    projectVersionPath = await ResolveGlobToPath([process.env.GITHUB_WORKSPACE ?? '', '**', 'ProjectVersion.txt']);
                     await fs.promises.access(projectVersionPath, fs.constants.R_OK);
                     return projectVersionPath;
                 } catch (error) {
@@ -236,13 +238,13 @@ function getUnityVersionsFromInput(architecture: 'X86_64' | 'ARM64' | null): Uni
         }
 
         const changeset = match.groups.changeset;
-        const unityVersion = new UnityVersion(version, changeset, architecture);
+        const unityVersion = new UnityVersion(version, changeset, architecture ?? undefined);
         core.debug(`  > ${unityVersion.toString()}`);
 
         try {
             versions.push(unityVersion);
-        } catch (e) {
-            core.error(`Invalid Unity version: ${unityVersion.toString()}\nError: ${e.message}`);
+        } catch (error) {
+            core.error(`Invalid Unity version: ${unityVersion.toString()}\nError: ${formatError(error)}`);
         }
     }
 
@@ -262,13 +264,14 @@ async function getUnityVersionFromFile(versionFilePath: string, architecture: 'X
         throw Error(`No version match found!`);
     }
 
-    if (!match.groups.version) {
+    const groups = match.groups;
+    if (!groups?.version) {
         throw Error(`No version group found!`);
     }
 
-    if (!match.groups.changeset) {
+    if (!groups.changeset) {
         throw Error(`No changeset group found!`);
     }
 
-    return new UnityVersion(match.groups.version, match.groups.changeset, architecture);
+    return new UnityVersion(groups.version, groups.changeset, architecture ?? undefined);
 }

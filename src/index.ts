@@ -1,7 +1,9 @@
+import 'source-map-support/register';
 import * as fs from 'fs';
-import core = require('@actions/core');
-import cache = require('@actions/cache');
+import * as core from '@actions/core';
+import * as cache from '@actions/cache';
 import { ValidateInputs } from './inputs';
+import { formatError } from './util';
 import {
     UnityHub,
     CheckAndroidSdkInstalled,
@@ -18,7 +20,7 @@ async function main() {
             await post();
         }
     } catch (error) {
-        core.setFailed(error.stack);
+        core.setFailed(formatError(error));
     }
 }
 
@@ -112,7 +114,7 @@ async function setup() {
         core.exportVariable('UNITY_EDITOR_PATH', unityEditor.editorPath);
         core.setOutput('unity-editor-path', unityEditor.editorPath);
 
-        if (modules.includes('android') && unityProjectPath !== undefined) {
+        if (modules.includes('android') && unityProjectPath != null) {
             await CheckAndroidSdkInstalled(unityEditor, unityProjectPath);
         }
 
