@@ -11,7 +11,7 @@ import {
 export async function ValidateInputs(): Promise<{
     versions: UnityVersion[],
     modules: string[],
-    unityProjectPath: string | null,
+    unityProjectPath: string | undefined,
     installPath: string | undefined
 }> {
     const modules: string[] = [];
@@ -184,13 +184,13 @@ async function getVersionFilePath(): Promise<string | undefined> {
         } catch (error) {
             core.debug(error);
             try {
-                projectVersionPath = path.join(process.env.GITHUB_WORKSPACE, projectVersionPath);
+                projectVersionPath = path.join(workspace, projectVersionPath);
                 await fs.promises.access(projectVersionPath, fs.constants.R_OK);
                 return projectVersionPath;
             } catch (error) {
                 core.error(error);
                 try {
-                    projectVersionPath = await ResolveGlobToPath([process.env.GITHUB_WORKSPACE, '**', 'ProjectVersion.txt']);
+                    projectVersionPath = await ResolveGlobToPath([workspace, '**', 'ProjectVersion.txt']);
                     await fs.promises.access(projectVersionPath, fs.constants.R_OK);
                     return projectVersionPath;
                 } catch (error) {
