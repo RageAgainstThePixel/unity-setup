@@ -23,7 +23,7 @@ jobs:
     steps:
       - name: Free Disk Space
         if: ${{ matrix.os == 'ubuntu-latest' && (matrix.unity-version != '2018' && matrix.unity-version != '2017.4.40f1') }}
-        uses: endersonmenezes/free-disk-space@e6ed9b02e683a3b55ed0252f1ee469ce3b39a885 # v3.1.0
+        uses: endersonmenezes/free-disk-space@230e80ea48c76abde36bb8fb305e52563c649d4e # v3.2.2
         with:
           remove_android: true
           remove_dotnet: false
@@ -70,17 +70,17 @@ jobs:
             echo "Error: UNITY_EDITORS env and output do not match!"
             exit 1
           fi
-          
+
           if [[ "${ENV_UNITY_EDITOR_PATH}" != "${STEPS_UNITY_EDITOR_PATH}" ]]; then
             echo "Error: UNITY_EDITOR_PATH env and output do not match!"
             exit 1
           fi
-          
+
           if [[ "${ENV_UNITY_PROJECT_PATH}" != "${STEPS_UNITY_PROJECT_PATH}" ]]; then
             echo "Error: UNITY_PROJECT_PATH env and output do not match!"
             exit 1
           fi
-          
+
           # If unity-version is None, UNITY_EDITOR_PATH must be empty
           if [[ "${{ matrix.unity-version }}" == "None" ]]; then
             if [[ -n "${{ env.UNITY_EDITOR_PATH }}" ]]; then
