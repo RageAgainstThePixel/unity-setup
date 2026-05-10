@@ -21,14 +21,11 @@ strategy:
       - 6000
   include:
     - os: ubuntu-latest
-      build-targets: StandaloneLinux64, Android, iOS
+      build-targets: StandaloneLinux64, Android, WebGL
       modules: linux-server
     - os: windows-latest
       build-targets: StandaloneWindows64, Android, WSAPlayer
       modules: windows-server
-    - os: macos-13
-      build-targets: StandaloneOSX, Android, iOS
-      modules: mac-server
     - os: macos-latest
       build-targets: StandaloneOSX, Android, iOS, VisionOS
       modules: mac-server
@@ -36,7 +33,7 @@ steps:
   - uses: RageAgainstThePixel/unity-setup@v2
     id: unity-setup
     with:
-      version-file: 'path/to/your/ProjectSettings.ProjectVersion.txt'
+      version-file: 'path/to/your/unity/project/ProjectSettings/ProjectVersion.txt'
       unity-version: ${{ matrix.unity-version }} # overrides version in version-file
       build-targets: ${{ matrix.build-targets }}
       modules: ${{ matrix.modules }}
@@ -67,7 +64,7 @@ steps:
 | `architecture` | Specify the architecture to install. Either `x86_64` or `arm64`. | false |
 | `install-path` | Specify the path where Unity will be installed to. | false |
 | `auto-update-hub` | Automatically update Unity Hub to the latest version before installing Unity Editors. Can be `true` or `false`. Default is `true`. | false |
-| `hub-version` | Specify a specific version of Unity Hub to install. Example: `3.12.0`. When set, auto-update-hub is automatically disabled. | false |
+| `hub-version` | Specify a specific version of Unity Hub to install. Example: `3.12.0`. When set, `auto-update-hub` is automatically disabled. | false |
 | `cache-installation` | Cache the Unity installation between workflow runs to speed up subsequent runs. Can be `true` or `false`. Default is `false`. | false |
 
 > [!NOTE]
