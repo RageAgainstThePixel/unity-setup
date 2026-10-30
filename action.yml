@@ -9,11 +9,11 @@ inputs:
     required: false
     default: ''
   unity-version:
-    description: 'Specify the Unity version(s) to install. Unity 6 (`6000`) or newer. example: `6000.2.1f1 (c7b5465681fb)`. ***This will override any version specified in the `version-file`!***'
+    description: 'Specify the Unity version(s) to install. example: `2019.4.13f1 (518737b1de84)`. ***This will override any version specified in the `version-file`!***'
     required: false
     default: ''
   build-targets:
-    description: 'Specify the build targets to install modules for. One or more of `StandaloneWindows64` `WSAPlayer` `StandaloneOSX` `iOS` `StandaloneLinux64` `Android` `WebGL` `VisionOS`.'
+    description: 'Specify the build targets to install modules for. One or more of `StandaloneWindows64` `WSAPlayer` `StandaloneOSX` `iOS` `StandaloneLinux64` `Android` `Lumin` `WebGL` `VisionOS`.'
     required: false
     default: ''
   modules:
@@ -28,7 +28,7 @@ inputs:
     description: 'Specify the path where Unity will be installed to.'
     required: false
   unity-cli-version:
-    description: 'The version of the official Unity CLI to install, such as `1.0.0-beta.14`, or `latest`. Defaults to `1.0.0-beta.14`, the version this release is tested against. A matching CLI already on the PATH is reused.'
+    description: 'The version of the official Unity CLI to install, such as `1.0.0-beta.14`, or `latest`. Defaults to `UNITY_CLI_VERSION` when an earlier step set it, otherwise `latest`.'
     required: false
     default: ''
   cache-installation:
@@ -37,11 +37,9 @@ inputs:
     default: 'false'
 outputs:
   unity-cli-path:
-    description: 'The file path to the Unity CLI executable.'
+    description: 'The file path to the official Unity CLI executable.'
   unity-cli-version:
-    description: 'The installed Unity CLI version.'
-  unity-hub-path:
-    description: 'Deprecated. The file path to the Unity CLI executable, kept for workflows written against v2.'
+    description: 'The installed official Unity CLI version.'
   unity-editors:
     description: 'A JSON array of all installed Unity Editors on the runner.'
   unity-editor-path:

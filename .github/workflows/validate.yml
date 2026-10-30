@@ -1,31 +1,40 @@
 name: validate
 on:
   schedule:
-    - cron: '0 0 * * 0' # Run every Sunday at midnight
+    - cron: '0 8 1 * *' # monthly: the pre-Unity 6 editors, which no longer change
   push:
     branches: [main]
   pull_request:
     branches: ['*']
     types: [opened, synchronize, reopened, ready_for_review]
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
+    inputs:
+      editors:
+        description: Which editors to test
+        type: choice
+        options: [unity-6-and-newer, legacy]
+        default: unity-6-and-newer
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # the monthly legacy run gets its own group, so a push to main does not cancel it
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'schedule' && 'legacy' || inputs.editors || 'unity-6-and-newer' }}
   cancel-in-progress: true
 jobs:
   setup:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-slim
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: .github/
       - uses: RageAgainstThePixel/job-builder@v1
         id: setup-jobs
         with:
-          build-options: ./.github/workflows/build-options.json
+          # pull requests and pushes test Unity 6 and newer; 4.7.2 through 2022.3 run monthly or on demand
+          build-options: ${{ (github.event_name == 'schedule' || inputs.editors == 'legacy') && './.github/workflows/build-options-legacy.json' || './.github/workflows/build-options.json' }}
+          # one group per editor version, and every group runs at once
           group-by: unity-version
           job-name-prefix: Install
     outputs:
@@ -39,7 +48,6 @@ jobs:
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.jobs) }}
       fail-fast: false
-      max-parallel: 1
     secrets: inherit
     uses: ./.github/workflows/build.yml
     with:
@@ -48,8 +56,9 @@ jobs:
     needs: [setup, validate]
     if: always()
     runs-on: ubuntu-slim
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
-      - uses: Kesin11/actions-timeline@v3
+      - uses: Kesin11/actions-timeline@460b1f8a750077029ad3589824d371b200e91dcf # v3.2.1
         continue-on-error: true

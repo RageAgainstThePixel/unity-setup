@@ -2,7 +2,7 @@
 
 A GitHub Action for setting up the [Unity Game Engine](https://unity.com) on GitHub Action Runners.
 
-v3 installs editors with Unity's official [Unity CLI](https://docs.unity.com/en-us/unity-cli/unity-cli-reference) instead of Unity Hub, and supports Unity 6 (`6000`) and newer. Use `RageAgainstThePixel/unity-setup@v2` for older editors.
+v3 installs editors with Unity's official [Unity CLI](https://docs.unity.com/en-us/unity-cli/unity-cli-reference) through [unity-cli](https://github.com/RageAgainstThePixel/unity-cli) v4, with no Unity Hub. 4.x and 5.x editors install from Unity's archives.
 
 ## How to use
 
@@ -14,7 +14,10 @@ strategy:
     os: [ubuntu-latest, windows-latest, macos-latest]
     unity-version:
       - None
-      - 6000.2.15f1 (0707b6d1e918)
+      - 2019.4.40f1 (ffc62b691db5)
+      - 2020.x
+      - 2021.3.x
+      - 2022.3
       - 6000.0.x
       - 6000.1.*
       - 6000
@@ -57,12 +60,12 @@ steps:
 | name | description | required |
 | ----------- | ----------- | ----------- |
 | `version-file` | Specify a path to search for the unity project version text file. Useful if there are multiple projects in a single repo. Pass `None` if creating a new project to skip file search. | false |
-| `unity-version` | Specify the Unity version(s) to install. Unity 6 (`6000`) or newer. example: `6000.2.1f1 (c7b5465681fb)`. ***This will override any version specified in the `version-file`!*** | false |
-| `build-targets` | Specify the build targets to install for. Remaps to corresponding module. One or more of `StandaloneWindows64` `WSAPlayer` `StandaloneOSX` `iOS` `StandaloneLinux64` `Android` `WebGL` `VisionOS`. | false |
+| `unity-version` | Specify the Unity version(s) to install. example: `2019.4.13f1 (518737b1de84)`. ***This will override any version specified in the `version-file`!*** | false |
+| `build-targets` | Specify the build targets to install for. Remaps to corresponding module. One or more of `StandaloneWindows64` `WSAPlayer` `StandaloneOSX` `iOS` `StandaloneLinux64` `Android` `Lumin` `WebGL` `VisionOS`. | false |
 | `modules` | Modules to install with the editor. This list can be different per editor version. | false |
 | `architecture` | Specify the architecture to install. Either `x86_64` or `arm64`. | false |
 | `install-path` | Specify the path where Unity will be installed to. | false |
-| `unity-cli-version` | The version of the official Unity CLI to install, such as `1.0.0-beta.14`, or `latest`. Default is `1.0.0-beta.14`. A matching CLI already on the PATH is reused. | false |
+| `unity-cli-version` | The version of the official Unity CLI to install, such as `1.0.0-beta.14`, or `latest`. Defaults to `UNITY_CLI_VERSION` when an earlier step set it, otherwise `latest`. | false |
 | `cache-installation` | Cache the Unity installation between workflow runs to speed up subsequent runs. Can be `true` or `false`. Default is `false`. | false |
 
 > [!NOTE]
@@ -72,10 +75,10 @@ steps:
 
 Use any of the following patterns to control how the editor version is resolved:
 
-- Fully qualified: `6000.2.15f1` or `6000.2.15f1 (0707b6d1e918)`
+- Fully qualified: `2022.3.62f1` or `2019.4.40f1 (ffc62b691db5)`
 - Major + minor: `6000.2` → latest stable in the 6000.2.x line
-- Major only: `6000` → latest stable in that major (e.g., `6000.2.1f1`)
-- Wildcards: `6000.x`, `6000.2.*`, `6000.0.x`
+- Major only: `6000` or `2022` → latest stable in that major (e.g., `6000.2.1f1`, `2022.3.x`)
+- Wildcards: `2021.3.x`, `2022.3.*`, `6000.0.x`
 - Exact year+minor with trailing zero: `6000.0.0` confines selection to the 6000.0.x line
 
 > [!NOTE]
@@ -96,9 +99,8 @@ Steps outputs available for use in subsequent steps:
 >
 > `${{ steps.unity-setup.outputs.unity-cli-path }}`
 
-- `unity-cli-path`: The file path to the Unity CLI executable.
-- `unity-cli-version`: The installed Unity CLI version.
-- `unity-hub-path`: Deprecated, same as `unity-cli-path`.
+- `unity-cli-path`: The file path to the official Unity CLI executable.
+- `unity-cli-version`: The installed official Unity CLI version.
 - `unity-editors`: A JSON array of all installed Unity Editors on the runner.
 - `unity-editor-path`: The path to the latest installed version of Unity.
 - `unity-project-path`: The file path to the Unity project.
@@ -112,9 +114,8 @@ Environment variables available for use in subsequent steps:
 >
 > `${{ env.UNITY_CLI_PATH }}`.
 
-- `UNITY_CLI_PATH`: The path to the Unity CLI executable.
-- `UNITY_CLI_VERSION`: The installed Unity CLI version.
-- `UNITY_HUB_PATH`: Deprecated, same as `UNITY_CLI_PATH`.
+- `UNITY_CLI_PATH`: The path to the official Unity CLI executable.
+- `UNITY_CLI_VERSION`: The installed official Unity CLI version.
 - `UNITY_EDITORS`: A JSON array of all installed Unity Editors on the runner.
 - `UNITY_EDITOR_PATH`: The path to the latest installed version of Unity.
 - `UNITY_PROJECT_PATH`: The path to the Unity project.

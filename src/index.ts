@@ -2,10 +2,12 @@ import * as fs from 'fs';
 import * as core from '@actions/core';
 import * as cache from '@actions/cache';
 import { ValidateInputs } from './inputs';
-import { setupUnityCli } from './unity-cli';
-import { UnityCliClient } from './unity-editor';
-import { UnityVersion, resolveUnityVersion } from './unity-version';
-import { checkAndroidSdkInstalled } from './android-sdk';
+import {
+    CheckAndroidSdkInstalled,
+    UnityCli,
+    UnityInstaller,
+    UnityVersion,
+} from '@rage-against-the-pixel/unity-cli';
 
 const IS_POST = !!core.getState('isPost');
 
@@ -63,34 +65,24 @@ async function setup() {
         core.setOutput('unity-project-path', unityProjectPath);
     }
 
-    const unityCli = await setupUnityCli(core.getInput('unity-cli-version') || undefined);
-    core.info(`UNITY_CLI_PATH:\n  > ${unityCli.path}`);
-    core.setOutput('unity-cli-path', unityCli.path);
+    const unityCli = await UnityCli.Get(core.getInput('unity-cli-version') || undefined);
+    core.info(`UNITY_CLI_PATH:\n  > ${unityCli.executable}`);
+    core.exportVariable('UNITY_CLI_PATH', unityCli.executable);
+    core.setOutput('unity-cli-path', unityCli.executable);
     core.setOutput('unity-cli-version', unityCli.version);
-    core.saveState('unity-cli-path', unityCli.path);
-    // kept for workflows written against v2, the CLI replaces Unity Hub
-    core.exportVariable('UNITY_HUB_PATH', unityCli.path);
-    core.setOutput('unity-hub-path', unityCli.path);
+    core.saveState('unity-cli-path', unityCli.executable);
+    core.saveState('unity-cli-version', unityCli.version);
+    const installer = new UnityInstaller(unityCli);
 
-    const client = new UnityCliClient(unityCli.path);
-
-    if (installPath) {
-        await client.setInstallPath(installPath);
-    }
-
-    const resolvedVersions: UnityVersion[] = [];
-
-    for (const unityVersion of versions) {
-        const resolved = await resolveUnityVersion(unityVersion);
-        core.info(`Resolved Unity ${unityVersion.toString()}:\n  > ${resolved.toString()}`);
-        resolvedVersions.push(resolved);
+    if (installPath && installPath.length > 0) {
+        await installer.SetInstallPath(installPath);
     }
 
     const cacheInstallationInput = core.getInput('cache-installation')?.toLowerCase() === 'true';
 
-    if (cacheInstallationInput && resolvedVersions.length > 0) {
-        const unityInstallPath = await client.getInstallPath();
-        const cacheKey = getInstallationCacheKey(resolvedVersions, modules);
+    if (cacheInstallationInput) {
+        const unityInstallPath = await installer.GetInstallPath();
+        const cacheKey = getInstallationCacheKey(versions, modules);
         core.saveState('cache-key', cacheKey.primaryKey);
         core.info(`unity installation cache key: ${cacheKey.primaryKey}`);
         const restoreKey = await cache.restoreCache([unityInstallPath], cacheKey.primaryKey, cacheKey.restoreKeys);
@@ -105,15 +97,15 @@ async function setup() {
 
     const installedEditors: { version: string; path: string; }[] = [];
 
-    for (const unityVersion of resolvedVersions) {
-        const unityEditor = await client.getEditor(unityVersion, modules);
+    for (const unityVersion of versions) {
+        const unityEditor = await installer.GetEditor(unityVersion, modules);
         core.info(`UNITY_EDITOR_PATH:\n  > ${unityEditor.editorPath}`);
         // always sets to the latest installed editor path
         core.exportVariable('UNITY_EDITOR_PATH', unityEditor.editorPath);
         core.setOutput('unity-editor-path', unityEditor.editorPath);
 
         if (modules.includes('android') && unityProjectPath !== undefined) {
-            await checkAndroidSdkInstalled(unityEditor, unityProjectPath);
+            await CheckAndroidSdkInstalled(unityEditor, unityProjectPath);
         }
 
         installedEditors.push({ version: unityVersion.version, path: unityEditor.editorPath });
@@ -145,18 +137,22 @@ async function post() {
         return;
     }
 
-    core.info('Saving Unity installation cache...');
-    const client = new UnityCliClient(core.getState('unity-cli-path'));
-    const unityInstallPath = await client.getInstallPath();
+    const saveCache = cacheKey && cacheKey.length > 0 && !cacheHit;
 
-    if (!await isInstallationPathValid(unityInstallPath)) {
-        core.warning(`Unity installation path "${unityInstallPath}" is invalid, skipping cache save.`);
-        return;
+    if (saveCache) {
+        core.info('Saving Unity installation cache...');
+        const unityCli = new UnityCli(core.getState('unity-cli-path'), core.getState('unity-cli-version'));
+        const unityInstallPath = await unityCli.GetInstallPath();
+
+        if (!await isInstallationPathValid(unityInstallPath)) {
+            core.warning(`Unity installation path "${unityInstallPath}" is invalid, skipping cache save.`);
+            return;
+        }
+
+        await cache.saveCache([unityInstallPath], cacheKey);
+        core.info(`Unity installation cache saved with key: ${cacheKey}`);
+        process.exit(0);
     }
-
-    await cache.saveCache([unityInstallPath], cacheKey);
-    core.info(`Unity installation cache saved with key: ${cacheKey}`);
-    process.exit(0);
 }
 
 async function isInstallationPathValid(path: string): Promise<boolean> {
