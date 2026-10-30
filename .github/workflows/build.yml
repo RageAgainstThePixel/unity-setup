@@ -17,13 +17,14 @@ jobs:
     timeout-minutes: 30
     env:
       UNITY_EDITORS: '' # set by the unity-setup action
+      UNITY_CLI_PATH: '' # set by the unity-setup action
       UNITY_HUB_PATH: '' # set by the unity-setup action
       UNITY_EDITOR_PATH: '' # set by the unity-setup action
       UNITY_PROJECT_PATH: '' # set by the unity-setup action
     steps:
       - name: Free Disk Space
-        if: ${{ matrix.os == 'ubuntu-latest' && (matrix.unity-version != '2018' && matrix.unity-version != '2017.4.40f1') }}
-        uses: endersonmenezes/free-disk-space@7901478139cff6e9d44df5972fd8ab8fcade4db1 # v3.2.2
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        uses: endersonmenezes/free-disk-space@v3
         with:
           remove_android: true
           remove_dotnet: false
@@ -36,9 +37,12 @@ jobs:
           unity-version: ${{ matrix.unity-version }}
           build-targets: ${{ matrix.build-targets }}
           modules: ${{ matrix.modules }}
-          auto-update-hub: ${{ !contains(matrix.modules, 'None') }}
-          hub-version: ${{ contains(matrix.modules, 'None') && '3.12.0' || '' }}
       - run: |
+          "${UNITY_CLI_PATH}" --version
+          if [[ "${UNITY_CLI_PATH}" != "${{ steps.unity-setup.outputs.unity-cli-path }}" ]]; then
+            echo "Error: UNITY_CLI_PATH env and output do not match!"
+            exit 1
+          fi
           ENV_UNITY_HUB_PATH="${{ env.UNITY_HUB_PATH }}"
           echo "env.UNITY_HUB_PATH: \"${ENV_UNITY_HUB_PATH}\""
           STEPS_UNITY_HUB_PATH="${{ steps.unity-setup.outputs.unity-hub-path }}"
