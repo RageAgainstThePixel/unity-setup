@@ -66,6 +66,8 @@ steps:
 | `architecture` | Specify the architecture to install. Either `x86_64` or `arm64`. | false |
 | `install-path` | Specify the path where Unity will be installed to. | false |
 | `unity-cli-version` | The version of the official Unity CLI to install, such as `1.0.0-beta.14`, or `latest`. Defaults to `UNITY_CLI_VERSION` when an earlier step set it, otherwise `latest`. | false |
+| `channels` | The release channels to accept when resolving a partial `unity-version`, as comma-separated letters: `f` (stable), `p` (patch), `b` (beta), `a` (alpha), `x` (experimental). Default is `f`. | false |
+| `allow-security-alert` | Install editors that carry a Unity Security Alert, with a warning instead of an error. Can be `true` or `false`. Default is `false`. | false |
 | `cache-installation` | Cache the Unity installation between workflow runs to speed up subsequent runs. Can be `true` or `false`. Default is `false`. | false |
 
 > [!NOTE]

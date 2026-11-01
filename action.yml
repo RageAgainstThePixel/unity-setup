@@ -31,6 +31,14 @@ inputs:
     description: 'The version of the official Unity CLI to install, such as `1.0.0-beta.14`, or `latest`. Defaults to `UNITY_CLI_VERSION` when an earlier step set it, otherwise `latest`.'
     required: false
     default: ''
+  channels:
+    description: 'The release channels to accept when resolving a partial `unity-version`, as comma-separated letters: `f` (stable), `p` (patch), `b` (beta), `a` (alpha), `x` (experimental). A stable release still wins once a stream has one.'
+    required: false
+    default: 'f'
+  allow-security-alert:
+    description: 'Install editors that carry a Unity Security Alert, with a warning instead of an error. Can be `true` or `false`.'
+    required: false
+    default: 'false'
   cache-installation:
     description: 'Cache the Unity installation between workflow runs to speed up subsequent runs. Can be `true` or `false`.'
     required: false

@@ -51,6 +51,26 @@ function getInstallationCacheKey(versions: UnityVersion[], modules: string[]): I
     };
 }
 
+/**
+ * Reads the release channels to accept when resolving a partial version.
+ * @returns The channel letters, f (stable) by default.
+ */
+function getChannels(): string[] {
+    const allowed = ['f', 'p', 'b', 'a', 'x'];
+    const channels = (core.getInput('channels') || 'f')
+        .split(/[ ,]+/)
+        .map(channel => channel.trim().toLowerCase())
+        .filter(Boolean);
+
+    for (const channel of channels) {
+        if (!allowed.includes(channel)) {
+            throw new Error(`Invalid channel '${channel}'. Expected one or more of: ${allowed.join(', ')}.`);
+        }
+    }
+
+    return channels;
+}
+
 interface InstallationCacheKeys {
     primaryKey: string;
     restoreKeys: string[];
@@ -95,10 +115,14 @@ async function setup() {
         core.saveState('cache-hit', cacheHit);
     }
 
+    const channels = getChannels();
+    const allowSecurityAlert = core.getBooleanInput('allow-security-alert');
     const installedEditors: { version: string; path: string; }[] = [];
 
     for (const unityVersion of versions) {
-        const unityEditor = await installer.GetEditor(unityVersion, modules);
+        const unityEditor = await installer.GetEditor(unityVersion, modules, channels, {
+            securityAlert: allowSecurityAlert ? 'allow' : 'enforce',
+        });
         core.info(`UNITY_EDITOR_PATH:\n  > ${unityEditor.editorPath}`);
         // always sets to the latest installed editor path
         core.exportVariable('UNITY_EDITOR_PATH', unityEditor.editorPath);

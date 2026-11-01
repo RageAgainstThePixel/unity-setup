@@ -7,6 +7,10 @@ on:
       matrix:
         required: true
         type: string
+      allow-security-alert:
+        required: false
+        type: boolean
+        default: false
 jobs:
   build:
     name: ${{ matrix.name }}
@@ -16,6 +20,9 @@ jobs:
       fail-fast: false
     # a hung download must not hold the matrix; rows that install the Android module and its SDK get more
     timeout-minutes: ${{ contains(matrix.build-targets, 'Android') && 60 || 45 }}
+    defaults:
+      run:
+        shell: bash
     env:
       UNITY_EDITORS: '' # set by the unity-setup action
       UNITY_CLI_PATH: '' # set by the unity-setup action
@@ -41,7 +48,6 @@ jobs:
       - name: Restore Linux editor packages
         id: linux-packages
         if: ${{ runner.os == 'Linux' && matrix.unity-version != 'None' }}
-        shell: bash
         run: |
           echo "key=unity-linux-packages-${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
           echo "restore-key=unity-linux-packages-${ImageOS}-" >> "$GITHUB_OUTPUT"
@@ -56,7 +62,6 @@ jobs:
           restore-keys: ${{ steps.linux-packages.outputs.restore-key }}
       - name: Seed apt with cached packages
         if: ${{ steps.linux-packages-cache.outputs.cache-matched-key != '' }}
-        shell: bash
         run: |
           count=$(find "${RUNNER_TEMP}/apt-packages" -maxdepth 1 -name '*.deb' | wc -l | tr -d ' ')
           echo "Restored ${count} cached packages"
@@ -70,10 +75,12 @@ jobs:
           unity-version: ${{ matrix.unity-version }}
           build-targets: ${{ matrix.build-targets }}
           modules: ${{ matrix.modules }}
+          # streams that only have betas or alphas so far resolve to those; a stable release wins once there is one
+          channels: f,b,a
+          allow-security-alert: ${{ inputs.allow-security-alert }}
       - name: Collect Linux editor packages
         id: linux-packages-collect
         if: ${{ steps.linux-packages.outcome == 'success' && steps.linux-packages-cache.outputs.cache-hit != 'true' }}
-        shell: bash
         run: |
           sudo chown -R "$(id -u):$(id -g)" "${RUNNER_TEMP}/apt-packages"
           count=$(find "${RUNNER_TEMP}/apt-packages" -maxdepth 1 -name '*.deb' | wc -l | tr -d ' ')
