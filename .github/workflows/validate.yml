@@ -24,7 +24,7 @@ jobs:
     permissions:
       contents: read
     # pull requests and pushes test the streams Unity lists; the older editors run monthly or on demand
-    uses: RageAgainstThePixel/workflows/.github/workflows/unity-stream-matrix.yml@dev/unity-stream-matrix
+    uses: RageAgainstThePixel/workflows/.github/workflows/unity-stream-matrix.yml@main
     with:
       legacy: ${{ inputs.editors == 'legacy' }}
       job-name-prefix: Install
