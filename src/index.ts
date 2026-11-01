@@ -8,6 +8,7 @@ import {
     UnityInstaller,
     UnityVersion,
 } from '@rage-against-the-pixel/unity-cli';
+import { ClassifyFailure } from '@rage-against-the-pixel/unity-cli/dist/failure-markers';
 
 const IS_POST = !!core.getState('isPost');
 
@@ -19,6 +20,14 @@ async function main() {
             await post();
         }
     } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const marker = ClassifyFailure(message);
+
+        if (marker) {
+            // a failure a rerun can clear carries the marker retry-failed-jobs looks for
+            core.notice(message, { title: marker });
+        }
+
         core.setFailed(error.stack);
     }
 }
@@ -99,6 +108,7 @@ async function setup() {
     }
 
     const cacheInstallationInput = core.getInput('cache-installation')?.toLowerCase() === 'true';
+    let cacheRestored = false;
 
     if (cacheInstallationInput) {
         const unityInstallPath = await installer.GetInstallPath();
@@ -113,9 +123,25 @@ async function setup() {
         }
 
         core.saveState('cache-hit', cacheHit);
+        cacheRestored = !!restoreKey;
     }
 
     const channels = getChannels();
+
+    if (cacheRestored && process.platform === 'linux') {
+        // unity-cli installs the editor's system packages only when it installs the editor itself,
+        // and the cache restores just the editor folder, so a fresh runner still needs them
+        const linuxInstaller = installer as unknown as { installLinuxDependencies?: (version: UnityVersion) => Promise<void> };
+
+        if (typeof linuxInstaller.installLinuxDependencies === 'function') {
+            for (const unityVersion of versions) {
+                await linuxInstaller.installLinuxDependencies.call(installer, await installer.resolveVersion(unityVersion, channels));
+            }
+        } else {
+            core.warning('Unable to install the Linux editor dependencies for the restored Unity installation.');
+        }
+    }
+
     const allowSecurityAlert = core.getBooleanInput('allow-security-alert');
     const installedEditors: { version: string; path: string; }[] = [];
 

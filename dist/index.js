@@ -106366,6 +106366,7 @@ const core = __nccwpck_require__(42186);
 const cache = __nccwpck_require__(27799);
 const inputs_1 = __nccwpck_require__(7063);
 const unity_cli_1 = __nccwpck_require__(24858);
+const failure_markers_1 = __nccwpck_require__(8545);
 const IS_POST = !!core.getState('isPost');
 async function main() {
     try {
@@ -106377,6 +106378,11 @@ async function main() {
         }
     }
     catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const marker = (0, failure_markers_1.ClassifyFailure)(message);
+        if (marker) {
+            core.notice(message, { title: marker });
+        }
         core.setFailed(error.stack);
     }
 }
@@ -106430,6 +106436,7 @@ async function setup() {
         await installer.SetInstallPath(installPath);
     }
     const cacheInstallationInput = ((_a = core.getInput('cache-installation')) === null || _a === void 0 ? void 0 : _a.toLowerCase()) === 'true';
+    let cacheRestored = false;
     if (cacheInstallationInput) {
         const unityInstallPath = await installer.GetInstallPath();
         const cacheKey = getInstallationCacheKey(versions, modules);
@@ -106441,8 +106448,20 @@ async function setup() {
             core.info('No unity installation cache found. Installation will be saved in post step.');
         }
         core.saveState('cache-hit', cacheHit);
+        cacheRestored = !!restoreKey;
     }
     const channels = getChannels();
+    if (cacheRestored && process.platform === 'linux') {
+        const linuxInstaller = installer;
+        if (typeof linuxInstaller.installLinuxDependencies === 'function') {
+            for (const unityVersion of versions) {
+                await linuxInstaller.installLinuxDependencies.call(installer, await installer.resolveVersion(unityVersion, channels));
+            }
+        }
+        else {
+            core.warning('Unable to install the Linux editor dependencies for the restored Unity installation.');
+        }
+    }
     const allowSecurityAlert = core.getBooleanInput('allow-security-alert');
     const installedEditors = [];
     for (const unityVersion of versions) {
